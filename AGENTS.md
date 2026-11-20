@@ -8,7 +8,7 @@ Read this file before starting work. Read the Linear issue before starting it.
 
 | Path                     | What                                                                                                                                                                                                                                                                                               |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web`               | SvelteKit web app (TypeScript), built as a static single-page app with no server. Not scaffolded yet.                                                                                                                                                                                              |
+| `apps/web`               | SvelteKit web app (TypeScript), built as a static single-page app with no server.                                                                                                                                                                                                                  |
 | `tools/devtools`         | Repository tools in TypeScript that Node runs with no build step, such as the poster behind `comment.yml` (`node tools/devtools/src/devtools.ts pr`).                                                                                                                                              |
 | `docs/`                  | [repository setup](docs/setup.md). The design record, `docs/design.md`, arrives with the first design issue.                                                                                                                                                                                       |
 | `.github/workflows`      | `ci.yml` (checks), `branch-push.yml` and `branch-pr.yml` (a draft PR for each agent branch), `comment.yml` (posts as desertthunder-bot), `release.yml` (release-please), `deploy.yml` (publishes each version tag to Cloudflare Pages, and redeploys the newest by hand). No workflow runs Claude. |
@@ -115,6 +115,7 @@ Creating issues:
 - Assign it to the driver when you create it. For now the driver is Owais.
 - Set team `SLD`, the project and the version label. Add blocked-by relations when they're known.
 - One issue is one pull request. Add sub-issues only for pieces that must land in the same pull request. Projects group related issues: a big area gets its own project, not a parent issue with many sub-issues.
+- Sibling sub-issues block one another in the order to work them. A sub-issue is never blocked by its parent.
 - A design issue (the artboards for a look) stands on its own. Never make it a sibling sub-issue of the issue that builds the look; it blocks the issues that build it.
 - Structure: a dated **Decision** line first when the issue records one (see [Decisions](#decisions)), then **Why**, **Scope**, **Acceptance criteria**, **Out of scope**, then a collapsible **Agent notes** section for implementation detail.
 - Product requirements stay in Linear. Development docs go in `docs/`.
