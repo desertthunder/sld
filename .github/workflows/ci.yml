@@ -67,6 +67,18 @@ jobs:
       - run: pnpm --filter @sld/web check
       - run: pnpm --filter @sld/web test
       - run: pnpm --filter @sld/web build
+      # Deploy refuses a build like this, but only once a release is tagged.
+      - name: Check the build serves the app shell for every path
+        run: |
+          build=apps/web/build
+          if [[ ! -f $build/index.html ]]; then
+            echo "::error title=web::$build/index.html is missing."
+            exit 1
+          fi
+          if [[ -f $build/404.html ]]; then
+            echo "::error title=web::$build/404.html exists, so Pages won't serve the app shell for deck URLs."
+            exit 1
+          fi
 
   devtools:
     needs: changes
