@@ -3,10 +3,6 @@
 # runs only when its files (or shared config) change. The `ci` job always runs
 # and fails if any job that ran failed, so it is the only required status
 # check.
-#
-# The `web` job also waits for apps/web to exist: the `changes` job reports
-# `web` as false while apps/web/package.json is missing.
-# TODO: drop the `web` step in `changes` once the app is scaffolded.
 name: CI
 
 on:
@@ -28,7 +24,7 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      web: ${{ steps.web.outputs.run }}
+      web: ${{ steps.filter.outputs.web }}
       devtools: ${{ steps.filter.outputs.devtools }}
     steps:
       - uses: actions/checkout@v5
@@ -52,16 +48,6 @@ jobs:
               - tools/devtools/**
               - .github/workflows/comment.yml
               - *shared_ts
-      - name: Run the web job only once apps/web exists
-        id: web
-        env:
-          CHANGED: ${{ steps.filter.outputs.web }}
-        run: |
-          if [[ $CHANGED == true && -f apps/web/package.json ]]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
 
   web:
     needs: changes
