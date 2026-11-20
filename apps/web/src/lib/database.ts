@@ -10,6 +10,9 @@ export function createDatabase(client: PGliteInterface): Database {
 	return drizzle({ client: client as PGlite });
 }
 
+/** What the database worker posts when this tab's worker holds the database and cannot open it. */
+export type OpenFailedMessage = { type: 'open-failed'; error: unknown };
+
 const shared: { opening?: Promise<Database> } = {};
 
 /**
@@ -17,7 +20,9 @@ const shared: { opening?: Promise<Database> } = {};
  * worker to hold the database and serves the other tabs through it.
  */
 export async function openDatabase(): Promise<Database> {
-	shared.opening ??= connect();
+	shared.opening ??= connect(
+		new Worker(new URL('database-worker.ts', import.meta.url), { type: 'module', name: 'sld-database' })
+	);
 	try {
 		return await shared.opening;
 	} catch (error) {
@@ -26,7 +31,22 @@ export async function openDatabase(): Promise<Database> {
 	}
 }
 
-async function connect(): Promise<Database> {
-	const worker = new Worker(new URL('database-worker.ts', import.meta.url), { type: 'module', name: 'sld-database' });
-	return createDatabase(await PGliteWorker.create(worker));
+/** Connects through `worker` once the database is open, and rejects if the worker fails to load or to open it. */
+export async function connect(worker: Worker): Promise<Database> {
+	const failed = new Promise<never>((_resolve, reject) => {
+		worker.addEventListener('error', (event) => {
+			reject(new Error(event.message || 'The database worker failed to load'));
+		});
+		worker.addEventListener('message', (event: MessageEvent<OpenFailedMessage | undefined>) => {
+			if (event.data?.type === 'open-failed') reject(event.data.error);
+		});
+	});
+	try {
+		const client = await Promise.race([PGliteWorker.create(worker), failed]);
+		await Promise.race([client.waitReady, failed]);
+		return createDatabase(client);
+	} catch (error) {
+		worker.terminate();
+		throw error;
+	}
 }

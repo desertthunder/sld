@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { boot, startBoot } from '#lib/boot.svelte.ts';
-	import { openDatabase } from '#lib/database.ts';
 
 	let { children } = $props();
 
 	onMount(() => {
-		startBoot(openDatabase);
+		startBoot(async () => {
+			const { openDatabase } = await import('#lib/database.ts');
+			return openDatabase();
+		});
 	});
 </script>
 
