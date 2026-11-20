@@ -7,7 +7,8 @@ describe('app info', () => {
 	});
 
 	it('says what the app does in interface copy', () => {
-		expect(appSummary).toContain('deck');
-		expect(appSummary).toContain('present');
+		expect(appSummary).toMatch(/\bdeck\b/);
+		expect(appSummary).toMatch(/\bpresent\b/);
+		expect(appSummary).not.toMatch(/presentation file|\btheme|\brender/i);
 	});
 });

@@ -115,7 +115,7 @@ Creating issues:
 - Assign it to the driver when you create it. For now the driver is Owais.
 - Set team `SLD`, the project and the version label. Add blocked-by relations when they're known.
 - One issue is one pull request. Add sub-issues only for pieces that must land in the same pull request. Projects group related issues: a big area gets its own project, not a parent issue with many sub-issues.
-- A sub-issue is blocked only by its sibling sub-issues, which gives the order to work them, and never by its parent.
+- Sibling sub-issues block one another in the order to work them. A sub-issue is never blocked by its parent.
 - A design issue (the artboards for a look) stands on its own. Never make it a sibling sub-issue of the issue that builds the look; it blocks the issues that build it.
 - Structure: a dated **Decision** line first when the issue records one (see [Decisions](#decisions)), then **Why**, **Scope**, **Acceptance criteria**, **Out of scope**, then a collapsible **Agent notes** section for implementation detail.
 - Product requirements stay in Linear. Development docs go in `docs/`.
