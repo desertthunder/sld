@@ -1,0 +1,287 @@
+# Publishes the static web app (apps/web/build) to a Cloudflare Pages project
+# for a release: a tag `vX.Y.Z` that Release (release.yml) made on main.
+# Every Deploy run that uploads runs for such a tag, so the build knows its
+# version tag. A tag push deploys that tag. A run by hand from main
+# (Actions -> Deploy -> Run workflow) redeploys the newest release: its
+# `redeploy` job dispatches Deploy again on that tag, and refuses while there
+# is no release yet.
+# The project is named by the variable CLOUDFLARE_PROJECT_NAME, set on the
+# `deploy` environment or the repository, or `sld` without one, and is
+# created with `main` as its production branch if the account has no project
+# of that name.
+# Wrangler uploads the build as a direct upload and prints the deployment's URL
+# in the log.
+#
+# The upload job runs in the `deploy` environment, which holds
+# CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID and lets only jobs on `main`
+# or a `v*` tag read them (docs/setup.md, Deploys). A run from any other ref
+# fails before its job starts, so it can't reach the token. Before that job,
+# the `ref` job, which holds no secret, refuses a tag that isn't `vX.Y.Z` or
+# whose commit isn't on main. Only desertthunder-bot may create `v*` tags (the
+# `release tags` ruleset), so a tag can't carry an edited copy of this file.
+#
+# The adapter writes the app shell as index.html and no 404.html, so Pages
+# serves the shell for every path it has no file for and a deck URL opens the
+# app. _headers makes every response cross-origin isolated, which the markdown
+# parser's shared WebAssembly memory needs.
+name: Deploy
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# An unnamed shell runs as `bash -e` without pipefail, so a failed upload piped
+# into tee would pass. Naming bash adds pipefail.
+defaults:
+  run:
+    shell: bash
+
+# A newer run waits for the running one in its group rather than canceling it
+# halfway through an upload, and GitHub keeps only the newest waiting run per
+# group. Tag pushes have a group of their own, so only a newer release can take
+# a waiting release's place; a redeploy by hand (a run dispatched on a tag)
+# has another, so it never cancels a release. The two can overlap, so the
+# upload step skips a tag that a newer release has replaced. Any other ref,
+# such as main's `redeploy` run, gets a group of its own.
+concurrency:
+  group: deploy-${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && 'release' || github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v') && 'redeploy' || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # A run by hand from main: finds the newest release tag on main and runs
+  # Deploy on it, so the redeploy builds and uploads as that tag. A dispatch
+  # made with the workflow's own token still starts a run. Holds no secret.
+  redeploy:
+    if: github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Run Deploy on the newest release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+        run: |
+          if [[ $REF != refs/heads/main ]]; then
+            echo "::error title=Deploy::Run Deploy by hand from main, not $REF."
+            exit 1
+          fi
+          # The newest `vX.Y.Z` tag by version. Only desertthunder-bot makes
+          # them, on main; the compare below checks that.
+          if ! tag=$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/v" \
+            --jq '.[].ref | ltrimstr("refs/tags/") | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))' | sort -V | tail -n 1); then
+            echo "::error title=Deploy::Couldn't list the release tags; see the log above."
+            exit 1
+          fi
+          if [[ -z $tag ]]; then
+            echo "::error title=Deploy::There is no release yet, so there is nothing to redeploy. Merging the release pull request makes the first one."
+            exit 1
+          fi
+          if ! status=$(gh api "repos/$GH_REPO/compare/$tag...main" --jq .status); then
+            echo "::error title=Deploy::Couldn't compare $tag with main; see the log above."
+            exit 1
+          fi
+          if [[ $status != ahead && $status != identical ]]; then
+            echo "::error title=Deploy::The newest release tag $tag is not on main ($status)."
+            exit 1
+          fi
+          gh workflow run deploy.yml --ref "$tag"
+          echo "Redeploying $tag: see the Deploy run on $tag." | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Holds no secret and no environment: it decides whether the upload job may
+  # start. The run must be for a version tag, `vX.Y.Z`, pushed or dispatched,
+  # and the tag's commit must be on main. The ref names are untrusted, so they
+  # reach the shell through env only.
+  ref:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check the ref is a version tag on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          DELETED: ${{ github.event.deleted || false }}
+        run: |
+          if [[ ($EVENT != push && $EVENT != workflow_dispatch) || $REF != refs/tags/v* ]]; then
+            echo "::error title=Deploy::Deploy runs on a version tag or by hand from main, not $EVENT on $REF."
+            exit 1
+          fi
+          if [[ $DELETED == true ]]; then
+            echo "::error title=Deploy::${REF#refs/tags/} was deleted; there is nothing to deploy."
+            exit 1
+          fi
+          if [[ ! ${REF#refs/tags/} =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Deploy::${REF#refs/tags/} is not a version tag vX.Y.Z."
+            exit 1
+          fi
+          if [[ ! $SHA =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error title=Deploy::The run's commit is not a SHA."
+            exit 1
+          fi
+          # The commit is on main when main has every commit it has: comparing
+          # it with main, main is ahead or the same.
+          if ! status=$(gh api "repos/$GH_REPO/compare/$SHA...main" --jq .status); then
+            echo "::error title=Deploy::Couldn't compare ${REF#refs/tags/} with main; see the log above."
+            exit 1
+          fi
+          if [[ $status != ahead && $status != identical ]]; then
+            echo "::error title=Deploy::${REF#refs/tags/} points at $SHA, which is not on main ($status)."
+            exit 1
+          fi
+          echo "Deploying ${REF#refs/tags/} at $SHA, which is on main."
+
+  pages:
+    needs: ref
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: deploy
+      url: ${{ steps.wrangler.outputs.url }}
+    steps:
+      # Until Cloudflare is set up the environment has no secrets; say so
+      # before spending a build on it.
+      - name: Check the Cloudflare secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            if [[ -z ${!name} ]]; then
+              echo "::error title=Deploy::The deploy environment has no secret $name: see docs/setup.md, Deploys."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      # The name reaches wrangler as an argument, so check it before the build.
+      # Cloudflare allows lowercase letters, digits and hyphens, up to 58
+      # characters; the name is also the pages.dev subdomain, so it can't start
+      # or end with a hyphen, and a leading hyphen would read as an option.
+      - name: Check the Pages project name
+        id: project
+        env:
+          PROJECT_NAME: ${{ vars.CLOUDFLARE_PROJECT_NAME || 'sld' }}
+          # [a-z] means only ASCII letters in the C locale.
+          LC_ALL: C
+        run: |
+          pattern='^[a-z0-9]([a-z0-9-]{0,56}[a-z0-9])?$'
+          if [[ ! $PROJECT_NAME =~ $pattern ]]; then
+            echo "::error title=Deploy::CLOUDFLARE_PROJECT_NAME must be 1 to 58 lowercase letters, digits and hyphens, starting and ending with a letter or digit: see docs/setup.md, Deploys."
+            exit 1
+          fi
+          echo "name=$PROJECT_NAME" >> "$GITHUB_OUTPUT"
+          echo "Deploying to the Pages project $PROJECT_NAME."
+
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @sld/web build
+
+      # With a 404.html in the build, Pages would stop serving the shell for
+      # deck URLs. Without both headers the page is not cross-origin isolated
+      # and the markdown parser can't start.
+      - name: Check the app shell and the isolation headers
+        run: |
+          build=apps/web/build
+          for file in index.html _headers; do
+            if [[ ! -f $build/$file ]]; then
+              echo "::error title=Deploy::$build/$file is missing."
+              exit 1
+            fi
+          done
+          if [[ -f $build/404.html ]]; then
+            echo "::error title=Deploy::$build/404.html exists, so Pages won't serve the app shell for deck URLs."
+            exit 1
+          fi
+          for header in Cross-Origin-Opener-Policy Cross-Origin-Embedder-Policy; do
+            if ! grep -qi "^[[:space:]]*$header:" "$build/_headers"; then
+              echo "::error title=Deploy::$build/_headers doesn't set $header."
+              exit 1
+            fi
+          done
+
+      # The list is the account's whole project list as JSON, so a failed
+      # lookup (a bad token, a network error) fails here instead of reading as
+      # a missing project. --reporter=silent keeps pnpm's progress out of the
+      # JSON. Listing and creating need only Cloudflare Pages: Edit. --force
+      # stops wrangler handing a new project to Workers, which it does when it
+      # thinks a coding agent is running it.
+      - name: Create the Pages project if it is missing
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+          PROJECT_NAME: ${{ steps.project.outputs.name }}
+        run: |
+          if ! pnpm --reporter=silent dlx wrangler@4.162.0 pages project list --json > "$RUNNER_TEMP/projects.json"; then
+            echo "::error title=Deploy::Couldn't list the Cloudflare Pages projects; see the log above."
+            exit 1
+          fi
+          found=$(jq -r --arg name "$PROJECT_NAME" \
+            'if type == "array" then any(.[]; .["Project Name"] == $name) else error("not a list") end' \
+            "$RUNNER_TEMP/projects.json") || found=
+          case $found in
+            true)
+              echo "The Pages project $PROJECT_NAME exists."
+              ;;
+            false)
+              echo "No Pages project $PROJECT_NAME; creating it with the production branch main."
+              pnpm dlx wrangler@4.162.0 pages project create "$PROJECT_NAME" --production-branch main --force
+              ;;
+            *)
+              echo "::error title=Deploy::The Cloudflare Pages project list wasn't the JSON list Deploy expects."
+              exit 1
+              ;;
+          esac
+
+      - name: Upload to Cloudflare Pages
+        id: wrangler
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+          COMMIT_SHA: ${{ github.sha }}
+          PROJECT_NAME: ${{ steps.project.outputs.name }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # A release run and a redeploy can overlap. Skip the upload when a
+          # newer release has been tagged since, so an older one never ends up
+          # live after it; the newer release's own run publishes it.
+          if ! newest=$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/v" \
+            --jq '.[].ref | ltrimstr("refs/tags/") | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))' | sort -V | tail -n 1); then
+            echo "::error title=Deploy::Couldn't list the release tags; see the log above."
+            exit 1
+          fi
+          if [[ $newest != "$TAG" ]]; then
+            echo "::notice title=Deploy::Not uploading $TAG: $newest is newer, and its own run publishes it."
+            echo "Skipped $TAG: $newest is newer." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          pnpm dlx wrangler@4.162.0 pages deploy apps/web/build \
+            --project-name "$PROJECT_NAME" --branch main --commit-hash "$COMMIT_SHA" \
+            --commit-dirty=false | tee "$RUNNER_TEMP/wrangler.log"
+          url=$(grep -oE 'https://[^[:space:]]+\.pages\.dev' "$RUNNER_TEMP/wrangler.log" | tail -n 1 || true)
+          if [[ -n $url ]]; then
+            echo "url=$url" >> "$GITHUB_OUTPUT"
+            echo "Published $url" >> "$GITHUB_STEP_SUMMARY"
+          fi

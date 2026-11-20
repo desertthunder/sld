@@ -1,0 +1,175 @@
+---
+name: implement
+description: Take a Linear issue (or an open draft pull request) to a reviewed pull request that is ready for Owais, by orchestrating four subagents in order - the implementer, a standard review-and-revise pass, an adversarial review-and-revise pass, and a verifier that runs the change for real. Use for /implement, or when asked to implement an issue end to end.
+argument-hint: <SLD-n | pr-number>
+---
+
+# Implement
+
+Orchestrate one issue from Linear to a pull request ready for Owais's review.
+This session dispatches, checks and reports; the work happens in four fresh
+subagents, one after the other. Never write the change or review a diff in this
+session's own context: the separation is what makes the review worth having.
+
+An `SLD-n` argument starts at **I**. A pull request number starts at **II**, for a
+draft opened another way.
+
+## Before dispatching
+
+1. Read the issue and its comments (`get_issue` with relations, `list_comments`).
+   Stop and ask if a blocked-by issue isn't Done, or if the acceptance criteria
+   need a decision the issue doesn't record.
+2. Move the issue to **In Progress**.
+3. Copy out what every subagent needs, since they may not have the Linear
+   tools: the issue id and title, its Why, Scope, Acceptance criteria and Out of
+   scope, and any Agent notes.
+
+## I. Implementer
+
+Dispatch the `implementer` agent with the issue text, the branch name
+(`claude/sld-<n>-<topic>`, new from `main`) and the checkout. It implements,
+runs `make ci`, commits with the first commit written as the pull request, and
+pushes. The Branch PR workflow opens the pull request as a draft.
+
+When it returns, confirm the branch head with `git ls-remote`, find the draft
+(`list_pull_requests` with `head`). If the implementer stopped without
+pushing, report why and stop.
+
+## II. Standard review and revise
+
+Subscribe to the pull request's activity (`subscribe_pr_activity`), so Owais's
+reviews reach this session; a pull request number argument starts here. Pin the
+head SHA and make a detached worktree at it, with dependencies installed
+when the change needs them to build:
+
+```sh
+git worktree add --detach ../<repo>-review-std <sha>
+```
+
+Dispatch the `reviewer` agent with the pull request number, the SHA, the
+worktree, the checkout on the branch and the issue text. It reviews at the
+pinned SHA, posts its report through the bot, revises the findings above `nit`
+in the checkout, pushes, and posts its answers. Remove the worktree when it
+returns and confirm its push.
+
+## III. Adversarial review and revise
+
+Pin the new head, make a fresh worktree (`../<repo>-review-adv`), and dispatch
+the `adversarial-reviewer` agent with the same inputs plus pass II's report and
+answers. It checks that pass II's fixes hold, hunts the worst cases, posts, revises,
+pushes and posts its answers. Remove the worktree when it returns and confirm
+its push.
+
+Each pass is a fresh agent: one that inherits this session's history, or the
+implementer's, is not a fresh reader. If a pass hits a stop condition, report it
+and stop; don't dispatch more agents to work around it.
+
+## IV. Verify
+
+Tests prove the logic; this step shows the change working in the running
+system. Pin the final head, make a fresh worktree (`../<repo>-verify`) with
+dependencies installed, and dispatch the `verifier` agent with the pull request
+number, the SHA, the worktree and the issue text.
+
+It applies wherever there is something to run: UI changes get screenshots of
+the app at phone and desktop widths, rendering changes get a sample deck's
+slides shown beside the same slides on `main`, and docs or workflow changes get the
+rendered result or a dry run. For a pure refactor, or docs with nothing to
+render, it says so in one line and the step ends.
+
+It publishes one Verification artifact for the pull request: the steps with
+screenshots, a table of acceptance criteria (passed or failed, how checked,
+where to see it), the commands to repeat it, and what it couldn't check and
+why. It then comments on the issue with the verdict, criteria passed out of
+checked and the artifact link, files learnings for later issues as Linear
+comments, and returns a Verdict, the artifact URL, the comment id, the criteria
+table, what it couldn't check and the learnings filed. A `not applicable` or
+`blocked` verdict posts no comment, except that a `blocked` rerun updates
+the earlier one. Remove the worktree when it returns.
+
+A failed criterion is a finding with no review comment id. Dispatch the
+`reviser` agent with it, the checkout on the branch and the issue text, confirm
+its push, and run IV again on the new head, passing the verifier the artifact
+URL and the comment id so it updates both. If the fix needs a decision the
+issue doesn't record, or the same criterion fails twice, stop. A `blocked`
+verdict, where the verifier couldn't run the change at all, also stops the run:
+report what blocked it.
+
+## Finish
+
+- `ci` is green on the final head (`pull_request_read` method `get_check_runs`).
+  A red check is this session's to fix or explain before going on.
+- It still merges: `mergeable_state` is `clean`, `blocked`, `draft` or
+  `unstable`. Read it again while GitHub answers `unknown`. On a conflict, merge
+  `main` into the branch (never rebase), resolve, run `make ci`, push, and ask
+  whether to run III again.
+- Attach the Verification artifact to the issue (`save_issue` with `links`,
+  titled after the artifact), and check that the verifier's comment on the
+  issue shows the head IV last verified and its verdict. When the verifier
+  returned `Comment: none` with its text, post that text with `save_comment`
+  (updating any earlier verification comment); without the Linear tools, give
+  the text and the artifact link in the report to Owais instead. Neither
+  applies when verification didn't.
+- The description still says what the branch does, in one paragraph of at most
+  four sentences and under 100 words before `Fixes SLD-n`. If it doesn't, say
+  so in the report to Owais; don't edit it in this session.
+
+Then post with `ready` set to `true` and a body whose first line is
+`Review loop finished at <full head sha>`, followed by one line per pass: what
+it found and what it fixed. The verify line links the Verification artifact
+and names any criterion that failed and the commit that fixed it, which no
+review pass read, or says in a few words why verification didn't apply. The bot marks the pull request ready,
+which requests Owais's review, then comments. Move the issue to **In Review**.
+
+Report the pull request link, the head, the check state, what each pass found,
+the Verification artifact link, and anything left for Owais to judge. For a
+change with something to look at (a component, a screen), start it
+(`make dev`), report the port with `report_preview_port`,
+and say so. Never approve, merge or turn on auto-merge.
+
+## Owais's reviews
+
+When Owais requests changes, this session revises; no workflow does. Read his
+review comments and their ids (as the `revise` skill says), dispatch the `reviser`
+agent with them, the checkout on the branch and the issue text, confirm its
+push, and post its answers with `answers` set to `true`. A plain comment gets a
+reply through the bot only when it asks something. Don't run II or III again
+unless he asks; the pull request stays ready.
+
+When no session is subscribed (the one that opened the pull request has ended),
+nothing revises on its own. Owais asks a session to pick it up; it subscribes
+to the pull request (`subscribe_pr_activity`) and follows this section.
+
+## Posting
+
+Everything on the pull request goes out as desertthunder-bot through the Bot
+comment workflow, never through a session's own GitHub access, which posts as
+Owais. GitHub MCP `actions_run_trigger`, method `run_workflow`, workflow
+`comment.yml`, ref `main`, inputs:
+
+| Post            | Inputs                                 |
+| --------------- | -------------------------------------- |
+| A review report | `pr`, `body`, `review` = full head SHA |
+| Revise answers  | `pr`, `body`, `answers` = `true`       |
+| Loop finished   | `pr`, `body`, `ready` = `true`         |
+
+The workflow runs as it is on `main`, so a pull request that changes
+`comment.yml`'s inputs can't use them before it merges; give Owais that post's
+text in the session instead, and say so in the report.
+
+The call returns once the run is queued, and the post usually lands within a
+minute or two. Foreground `sleep` is blocked, so poll: read `pull_request_read`
+(`get_reviews`, `get_review_comments` or `get_comments`) until it shows a bot
+post created after the dispatch. If none appears after a few reads, look at the
+newest `comment.yml` runs and report the failure. Never dispatch the same post
+twice.
+
+## Stop conditions
+
+Any of these ends the run without marking the pull request ready. Report why.
+
+- A fix needs a decision the issue doesn't record.
+- The same finding survives two revises without its cause changing.
+- `make ci` fails and the fix is outside the issue.
+- A verified criterion still fails after one revise.
+- The verifier returns `blocked`.

@@ -1,0 +1,123 @@
+# Checks every pull request and every push to main. Agent branches get theirs
+# from the pull request desertthunder-bot opens for them. Each package's job
+# runs only when its files (or shared config) change. The `ci` job always runs
+# and fails if any job that ran failed, so it is the only required status
+# check.
+#
+# The `web` job also waits for apps/web to exist: the `changes` job reports
+# `web` as false while apps/web/package.json is missing.
+# TODO: drop the `web` step in `changes` once the app is scaffolded.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      web: ${{ steps.web.outputs.run }}
+      devtools: ${{ steps.filter.outputs.devtools }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared_ts: &shared_ts
+              - package.json
+              - pnpm-lock.yaml
+              - pnpm-workspace.yaml
+              - .nvmrc
+              - eslint.config.js
+              - prettier.config.js
+              - .prettierignore
+              - .github/workflows/ci.yml
+            web:
+              - apps/web/**
+              - *shared_ts
+            devtools:
+              - tools/devtools/**
+              - .github/workflows/comment.yml
+              - *shared_ts
+      - name: Run the web job only once apps/web exists
+        id: web
+        env:
+          CHANGED: ${{ steps.filter.outputs.web }}
+        run: |
+          if [[ $CHANGED == true && -f apps/web/package.json ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm exec prettier --check apps/web && pnpm exec eslint apps/web
+      - run: pnpm --filter @sld/web check
+      - run: pnpm --filter @sld/web test
+      - run: pnpm --filter @sld/web build
+
+  devtools:
+    needs: changes
+    if: needs.changes.outputs.devtools == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm exec prettier --check tools/devtools && pnpm exec eslint tools/devtools
+      - run: pnpm --filter @sld/devtools check
+      - run: pnpm --filter @sld/devtools test
+      # comment.yml runs the tool with Node alone, so run it that way once.
+      - name: Dry run as comment.yml does
+        run: |
+          printf 'Review loop finished\n' > "$RUNNER_TEMP/body.md"
+          node tools/devtools/src/devtools.ts pr ready --repo "$GITHUB_REPOSITORY" --pr 1 --dry-run --body-file "$RUNNER_TEMP/body.md"
+
+  ci:
+    needs: [changes, web, devtools]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any job failed or was canceled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          # GitHub spells the result value "cancelled"; keep it as GitHub writes it.
+          for r in $RESULTS; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              exit 1
+            fi
+          done

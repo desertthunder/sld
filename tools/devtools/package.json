@@ -1,0 +1,17 @@
+{
+	"name": "@sld/devtools",
+	"private": true,
+	"license": "UNLICENSED",
+	"version": "0.0.1",
+	"type": "module",
+	"description": "Repository tools run by the workflows, such as the poster behind the Bot comment workflow. Node runs them as TypeScript, with no build step.",
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest --run"
+	},
+	"devDependencies": {
+		"@types/node": "^22",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.8"
+	}
+}

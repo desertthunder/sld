@@ -1,0 +1,123 @@
+# Opens a draft pull request for an agent's work branch (claude/ or codex/)
+# as desertthunder-bot, so Owais is never the author and can approve it, and
+# the pull request starts CI like any other (a pull request opened with the
+# workflow's own token starts no workflow). It stays a draft while the agent
+# runs the review loop (AGENTS.md); the bot marks it ready through the Bot
+# comment workflow, and only then does CODEOWNERS request Owais's review.
+# The title is the branch's first commit subject and the description is that
+# commit's body, so it needs no model. After that the PR's title and
+# description are edited on the PR. Nothing merges on its own: Owais
+# squash-merges by hand, removing the agents' trailers and adding his own.
+#
+# It runs on workflow_run, after Branch push (branch-push.yml) finishes, so
+# GitHub runs this file as it is on `main`, never a pushed branch's copy. Its
+# job runs in the `bot` environment, whose secrets DESERTTHUNDERBOT_APP_ID and
+# DESERTTHUNDERBOT_PRIVATE_KEY only jobs on `main` can read (docs/setup.md).
+# The job runs nothing from the branch: it reads the first commit's message
+# through the API and checks nothing out. The branch name and the commit text
+# are untrusted, so they reach the shell through env only.
+#
+# GitHub only runs workflow_run workflows from the default branch, so a
+# change to this file takes effect once it is on `main`.
+name: Branch PR
+
+on:
+  workflow_run:
+    workflows: [Branch push]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  pr:
+    # Pushes to this repository's agent branches only: no forks, no other
+    # branch, and no run of some other workflow that took the same name.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.path == '.github/workflows/branch-push.yml' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (startsWith(github.event.workflow_run.head_branch, 'claude/') ||
+       startsWith(github.event.workflow_run.head_branch, 'codex/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: bot
+    # On the job, not the workflow, so a run the `if` above skips (a failed
+    # push run, another workflow with the same name) never cancels this one.
+    concurrency:
+      group: branch-pr-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.DESERTTHUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.DESERTTHUNDERBOT_PRIVATE_KEY }}
+          # Only what this needs, whatever else the App is granted.
+          permission-contents: read
+          permission-pull-requests: write
+
+      - name: Open the PR unless one is open
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [[ ! $BRANCH =~ ^(claude|codex)/ ]]; then
+            echo "::error title=Branch PR::Not an agent branch."
+            exit 1
+          fi
+          if [[ ! $HEAD_SHA =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error title=Branch PR::The run's head is not a commit SHA."
+            exit 1
+          fi
+
+          number=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [[ -n "$number" ]]; then
+            # The title and description now belong to whoever edits the PR.
+            echo "PR #$number is already open; leaving its title and description as they are."
+            exit 0
+          fi
+
+          # The compare API lists the commits ahead of main, oldest first.
+          message=$(gh api "repos/$GH_REPO/compare/main...$HEAD_SHA" --jq '.commits[0].commit.message // empty')
+          if [[ -z "$message" ]]; then
+            echo "No commits ahead of main."
+            exit 0
+          fi
+
+          # As git's %s and %b: the first paragraph, joined onto one line and
+          # skipping any blank lines before it, is the title; the rest is the
+          # description, minus a closing paragraph of trailers
+          # (Co-Authored-By and the like).
+          title=$(printf '%s\n' "$message" | awk '/^[[:space:]]*$/ { if (seen) exit; next } { seen = 1; printf "%s%s", sep, $0; sep = " " }')
+          description=$(printf '%s\n' "$message" | awk '
+            !body { if ($0 ~ /^[[:space:]]*$/) { if (seen) body = 1 } else seen = 1; next }
+            { line[++n] = $0 }
+            END {
+              while (n > 0 && line[n] ~ /^[[:space:]]*$/) n--
+              first = 1
+              while (first <= n && line[first] ~ /^[[:space:]]*$/) first++
+              start = n
+              while (start >= first && line[start] !~ /^[[:space:]]*$/) start--
+              trailers = n >= first
+              for (i = start + 1; i <= n; i++) if (line[i] !~ /^[A-Za-z][A-Za-z0-9-]*: /) trailers = 0
+              if (trailers) { n = start; while (n > 0 && line[n] ~ /^[[:space:]]*$/) n-- }
+              for (i = first; i <= n; i++) print line[i]
+            }')
+          if [[ -z "$description" ]]; then
+            echo "::warning title=Branch PR::The first commit has no body, so the PR has no description. Write one on the PR."
+            description="No description yet."
+          fi
+          # The body is the description only: it becomes the squash commit body.
+          printf '%s\n' "$description" > "$RUNNER_TEMP/body.md"
+
+          # A draft, so CODEOWNERS asks for Owais's review only once the
+          # review loop marks it ready. gh's own output goes to an annotation,
+          # where a failure can be read without the log.
+          if ! out=$(gh pr create --draft --base main --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md" 2>&1); then
+            echo "::error title=gh pr create::$(printf '%s' "$out" | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "$out"

@@ -1,0 +1,58 @@
+# Keeps one release pull request open on `main` with release-please, and
+# when Owais merges it, tags the merge commit `vX.Y.Z` and publishes a GitHub
+# Release with the notes. The version, the changelog sections and the first
+# release (0.1.0) are set in release-please-config.json; the current version
+# is in .release-please-manifest.json. release-please writes CHANGELOG.md, and
+# nobody edits it by hand. What a version number means is in AGENTS.md
+# (Commits and pull requests).
+#
+# It runs as desertthunder-bot, for two reasons: the release pull request
+# then has the bot as its author, so Owais can approve it, and the bot's tag
+# starts Deploy (deploy.yml). A tag or pull request made with the workflow's
+# own token starts no other workflow. The job runs in the `bot` environment,
+# whose secrets DESERTTHUNDERBOT_APP_ID and DESERTTHUNDERBOT_PRIVATE_KEY only
+# jobs on `main` can read (docs/setup.md). It checks nothing out: release-please
+# reads and writes the repository through the API.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+# One run at a time, and never cancel one halfway through tagging.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: bot
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.DESERTTHUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.DESERTTHUNDERBOT_PRIVATE_KEY }}
+          # Only what this needs, whatever else the App is granted: contents
+          # to push the release branch, tag and publish the Release, pull
+          # requests to open, edit and label the release pull request.
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ steps.app.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Summarize
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: echo "Released $TAG; Deploy runs on the tag." >> "$GITHUB_STEP_SUMMARY"

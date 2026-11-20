@@ -1,0 +1,137 @@
+# Posts to a pull request as desertthunder-bot. Agent sessions never hold the
+# App's key, and posting with their own GitHub access would show the comment
+# as the person whose account the session uses, so they dispatch this
+# workflow instead:
+#
+#   gh workflow run comment.yml -f pr=<n> -f body="$(cat comment.md)"
+#
+# or, through the GitHub MCP tools, actions_run_trigger with method
+# run_workflow, workflow_id comment.yml, ref main and the same inputs.
+#
+# With `review`, the full SHA of the head a review read, the body is a review
+# report and posts as one review: each finding whose `<path>:<line>` falls in
+# the diff sits on that line, the rest is the review's body.
+#
+# With `answers` set to `true`, the body is a revise pass's answers, a line
+# `<comment id> · <outcome>` per review thread: they post as replies in one
+# review, and each thread whose outcome starts with `Fixed` or `Deferred` is
+# resolved.
+#
+# With `ready` set to `true`, the draft pull request is marked ready for
+# review, which requests Owais's review, then the body posts as a plain
+# comment (the line `Review loop finished at <sha>` and what each pass found).
+#
+# Ported from Reseed's Bot comment workflow; the logic lives in
+# tools/devtools (`devtools pr`), which Node runs as TypeScript with no
+# install or build step. Its job runs in the `bot` environment, which holds
+# the App's secrets, DESERTTHUNDERBOT_APP_ID and DESERTTHUNDERBOT_PRIVATE_KEY,
+# and lets only jobs on `main` read them (docs/setup.md): a dispatch on any
+# other ref fails before the job starts, so a branch's edited copy of this
+# file can't reach the key.
+name: Bot comment
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
+      body:
+        description: Comment text, in Markdown
+        required: true
+      review:
+        description: The head SHA a review read, to post the body as a review with its findings on the diff
+        required: false
+        default: ''
+      answers:
+        description: true to post the body as answers on review threads
+        required: false
+        default: 'false'
+      ready:
+        description: true to mark the draft ready for review, then post the body as a comment
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: bot
+    steps:
+      - name: Check the inputs
+        env:
+          PR: ${{ inputs.pr }}
+          BODY: ${{ inputs.body }}
+          REVIEW: ${{ inputs.review }}
+          ANSWERS: ${{ inputs.answers }}
+          READY: ${{ inputs.ready }}
+        run: |
+          if [[ ! $PR =~ ^[0-9]+$ ]]; then
+            echo "::error title=pr::'$PR' is not a pull request number."
+            exit 1
+          fi
+          for flag in "answers=$ANSWERS" "ready=$READY"; do
+            if [[ ${flag#*=} != true && ${flag#*=} != false ]]; then
+              echo "::error title=${flag%%=*}::'${flag#*=}' is not true or false."
+              exit 1
+            fi
+          done
+          modes=0
+          [[ -n $REVIEW ]] && modes=$((modes + 1))
+          [[ $ANSWERS == true ]] && modes=$((modes + 1))
+          [[ $READY == true ]] && modes=$((modes + 1))
+          if (( modes > 1 )); then
+            echo "::error title=mode::Set at most one of review, answers and ready."
+            exit 1
+          fi
+          printf '%s\n' "$BODY" > "$RUNNER_TEMP/body.md"
+
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.DESERTTHUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.DESERTTHUNDERBOT_PRIVATE_KEY }}
+          # Only what this needs, whatever else the App is granted. GitHub
+          # refuses an App token's GraphQL markPullRequestReadyForReview and
+          # resolveReviewThread without contents write, so the ready and
+          # answers modes need it. Only main's copy of this job holds the key.
+          permission-contents: write
+          permission-pull-requests: write
+
+      # devtools from the default branch, whatever ref the run was
+      # dispatched on.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      # The poster needs only Node. setup-node v5 turns on caching for the
+      # package manager that package.json names, and fails because this job
+      # installs no pnpm, so caching stays off.
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Post
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          HEAD_SHA: ${{ inputs.review }}
+          ANSWERS: ${{ inputs.answers }}
+          READY: ${{ inputs.ready }}
+        run: |
+          if [[ -n $HEAD_SHA ]]; then
+            mode=review
+          elif [[ $ANSWERS == true ]]; then
+            mode=answer
+          elif [[ $READY == true ]]; then
+            mode=ready
+          else
+            mode=comment
+          fi
+          node tools/devtools/src/devtools.ts pr "$mode" --body-file "$RUNNER_TEMP/body.md"

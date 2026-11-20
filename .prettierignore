@@ -1,0 +1,17 @@
+# Lockfiles
+pnpm-lock.yaml
+
+# Build output
+node_modules
+.svelte-kit
+build
+dist
+coverage
+
+# Not formatted by Prettier
+apps/web/static/
+.claude/
+
+# Written by release-please, in its own format
+CHANGELOG.md
+.release-please-manifest.json

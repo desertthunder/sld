@@ -1,0 +1,19 @@
+# Signals Branch PR (branch-pr.yml) that an agent's work branch (claude/ or
+# codex/) was pushed. It holds no secret and no token: a push-triggered
+# workflow runs whatever YAML the pushed branch holds, so anything this
+# workflow could reach, any branch could too. Branch PR runs from `main` on
+# this workflow's completion, in the `bot` environment, and opens the draft.
+name: Branch push
+
+on:
+  push:
+    branches: ['claude/**', 'codex/**']
+
+permissions: {}
+
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: echo "Branch PR picks this push up from main."
