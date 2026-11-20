@@ -6,15 +6,21 @@ export function errorText(error: unknown): string {
 	return error instanceof Error ? error.message || error.name : String(error);
 }
 
-/** Opens the database with `open` and records the outcome in `boot.state`. */
-export async function startBoot<T>(open: () => Promise<T>): Promise<T | undefined> {
+/**
+ * Opens the database with `open` and records the outcome in `boot.state`, including a failure `open` reports through
+ * `lost` after the database opened.
+ */
+export async function startBoot<T>(open: (lost: (error: unknown) => void) => Promise<T>): Promise<T | undefined> {
+	const lost = (error: unknown) => {
+		boot.state = { status: 'failed', error: errorText(error) };
+	};
 	boot.state = { status: 'opening' };
 	try {
-		const database = await open();
+		const database = await open(lost);
 		boot.state = { status: 'ready' };
 		return database;
 	} catch (error) {
-		boot.state = { status: 'failed', error: errorText(error) };
+		lost(error);
 		return undefined;
 	}
 }

@@ -79,6 +79,88 @@ describe('connect', () => {
 	});
 });
 
+class FakeChannel extends EventTarget {
+	static open = new Map<string, FakeChannel>();
+	postMessage = vi.fn();
+	close = vi.fn();
+
+	constructor(readonly name: string) {
+		super();
+		FakeChannel.open.set(name, this);
+	}
+
+	send(data: unknown) {
+		this.dispatchEvent(new MessageEvent('message', { data }));
+	}
+}
+
+function tabChannel(): FakeChannel | undefined {
+	return FakeChannel.open.values().find((channel) => channel.name.startsWith('pglite-tab:'));
+}
+
+async function readyWorker(onLost?: (error: unknown) => void) {
+	const worker = new FakeWorker();
+	const outcome = { isSettled: false };
+	const connecting = connect(asWorker(worker), onLost);
+	void connecting.then(() => (outcome.isSettled = true)).catch(() => (outcome.isSettled = true));
+	worker.send({ type: 'here' });
+	worker.send({ type: 'ready', id: 'sld' });
+	await vi.waitFor(() => expect(tabChannel()).toBeDefined());
+	return { worker, connecting, tab: tabChannel()!, outcome };
+}
+
+describe('connect after the worker is ready', () => {
+	beforeEach(() => {
+		FakeChannel.open.clear();
+		vi.stubGlobal('BroadcastChannel', FakeChannel);
+		vi.stubGlobal('navigator', {
+			locks: {
+				request: (_name: string, hold: () => Promise<void>) => {
+					void hold();
+					return Promise.resolve();
+				}
+			}
+		});
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('asks every version of the app to elect one leader for the database', async () => {
+		const { worker, connecting, tab } = await readyWorker();
+		expect(worker.postMessage).toHaveBeenCalledWith({ type: 'init', options: { id: 'sld' } });
+		tab.send({ type: 'connected' });
+		await connecting;
+	});
+
+	it('waits for the tab to connect to the database', async () => {
+		const { connecting, tab, outcome } = await readyWorker();
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(outcome.isSettled).toBe(false);
+		tab.send({ type: 'connected' });
+		await expect(connecting).resolves.toBeDefined();
+	});
+
+	it('fails and closes the client when the elected worker cannot open the database', async () => {
+		const { worker, connecting } = await readyWorker();
+		worker.send({ type: 'open-failed', error: new Error('IndexedDB is unavailable') });
+		await expect(connecting).rejects.toThrow('IndexedDB is unavailable');
+		expect(worker.terminate).toHaveBeenCalledOnce();
+		for (const channel of FakeChannel.open.values()) expect(channel.close).toHaveBeenCalled();
+	});
+
+	it('reports a failure after the database opened', async () => {
+		const onLost = vi.fn();
+		const { worker, connecting, tab } = await readyWorker(onLost);
+		tab.send({ type: 'connected' });
+		await connecting;
+		worker.send({ type: 'open-failed', error: new Error('IndexedDB is unavailable') });
+		expect(onLost).toHaveBeenCalledWith(new Error('IndexedDB is unavailable'));
+		expect(worker.terminate).toHaveBeenCalledOnce();
+	});
+});
+
 describe('openDatabase', () => {
 	beforeEach(() => {
 		FakeWorker.created = [];

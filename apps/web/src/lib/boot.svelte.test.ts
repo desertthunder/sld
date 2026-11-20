@@ -15,6 +15,17 @@ describe('startBoot', () => {
 		await expect(startBoot(() => Promise.reject(new Error('IndexedDB is unavailable')))).resolves.toBeUndefined();
 		expect(boot.state).toEqual({ status: 'failed', error: 'IndexedDB is unavailable' });
 	});
+
+	it('records a failure reported after the database opened', async () => {
+		let lose!: (error: unknown) => void;
+		await startBoot(async (lost) => {
+			lose = lost;
+			return 'database';
+		});
+		expect(boot.state).toEqual({ status: 'ready' });
+		lose(new Error('The database worker stopped'));
+		expect(boot.state).toEqual({ status: 'failed', error: 'The database worker stopped' });
+	});
 });
 
 describe('errorText', () => {
