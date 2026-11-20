@@ -1,10 +1,8 @@
+import { errorText } from '#lib/error-text.ts';
+
 export type BootState = { status: 'opening' } | { status: 'ready' } | { status: 'failed'; error: string };
 
 export const boot: { state: BootState } = $state({ state: { status: 'opening' } });
-
-export function errorText(error: unknown): string {
-	return error instanceof Error ? error.message || error.name : String(error);
-}
 
 /**
  * Opens the database with `open` and records the outcome in `boot.state`, including a failure `open` reports through

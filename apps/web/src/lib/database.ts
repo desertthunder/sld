@@ -10,8 +10,8 @@ export function createDatabase(client: PGliteInterface): Database {
 	return drizzle({ client: client as PGlite });
 }
 
-/** What the database worker posts when this tab's worker holds the database and cannot open it. */
-export type OpenFailedMessage = { type: 'open-failed'; error: unknown };
+/** What the database worker posts, with the error as plain text, when this tab's worker cannot open the database. */
+export type OpenFailedMessage = { type: 'open-failed'; error: string };
 
 // PGlite elects a leader among workers with the same id, which defaults to the worker's URL. The build hashes that URL,
 // so tabs on two versions of the app would each elect a leader and both open `idb://sld`.
@@ -63,7 +63,7 @@ export async function connect(worker: Worker, onLost: (error: unknown) => void =
 		);
 	});
 	worker.addEventListener('message', (event: MessageEvent<OpenFailedMessage | undefined>) => {
-		if (event.data?.type === 'open-failed') fail(event.data.error);
+		if (event.data?.type === 'open-failed') fail(new Error(event.data.error));
 	});
 	state.client = await Promise.race([PGliteWorker.create(worker, { id: electionId }), failed]);
 	await Promise.race([state.client.waitReady, failed]);

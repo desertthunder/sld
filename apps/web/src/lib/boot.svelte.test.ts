@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boot, errorText, startBoot } from '#lib/boot.svelte.ts';
+import { boot, startBoot } from '#lib/boot.svelte.ts';
 
 describe('startBoot', () => {
 	it('is opening until the database opens, then ready', async () => {
@@ -25,12 +25,5 @@ describe('startBoot', () => {
 		expect(boot.state).toEqual({ status: 'ready' });
 		lose(new Error('The database worker stopped'));
 		expect(boot.state).toEqual({ status: 'failed', error: 'The database worker stopped' });
-	});
-});
-
-describe('errorText', () => {
-	it('falls back to the error name or the thrown value', () => {
-		expect(errorText(new DOMException('', 'QuotaExceededError'))).toBe('QuotaExceededError');
-		expect(errorText('no worker')).toBe('no worker');
 	});
 });

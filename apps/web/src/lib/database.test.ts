@@ -65,7 +65,7 @@ describe('connect', () => {
 		const worker = new FakeWorker();
 		const connecting = connect(asWorker(worker));
 		worker.send({ type: 'here' });
-		worker.send({ type: 'open-failed', error: new Error('IndexedDB is unavailable') });
+		worker.send({ type: 'open-failed', error: 'IndexedDB is unavailable' });
 		await expect(connecting).rejects.toThrow('IndexedDB is unavailable');
 		expect(worker.terminate).toHaveBeenCalledOnce();
 	});
@@ -144,7 +144,7 @@ describe('connect after the worker is ready', () => {
 
 	it('fails and closes the client when the elected worker cannot open the database', async () => {
 		const { worker, connecting } = await readyWorker();
-		worker.send({ type: 'open-failed', error: new Error('IndexedDB is unavailable') });
+		worker.send({ type: 'open-failed', error: 'IndexedDB is unavailable' });
 		await expect(connecting).rejects.toThrow('IndexedDB is unavailable');
 		expect(worker.terminate).toHaveBeenCalledOnce();
 		for (const channel of FakeChannel.open.values()) expect(channel.close).toHaveBeenCalled();
@@ -155,7 +155,7 @@ describe('connect after the worker is ready', () => {
 		const { worker, connecting, tab } = await readyWorker(onLost);
 		tab.send({ type: 'connected' });
 		await connecting;
-		worker.send({ type: 'open-failed', error: new Error('IndexedDB is unavailable') });
+		worker.send({ type: 'open-failed', error: 'IndexedDB is unavailable' });
 		expect(onLost).toHaveBeenCalledWith(new Error('IndexedDB is unavailable'));
 		expect(worker.terminate).toHaveBeenCalledOnce();
 	});
