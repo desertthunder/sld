@@ -81,9 +81,9 @@ export async function codeBlockTree(
 			kind === 'plain' ? text(value) : span([`code-${kind}`], [text(value)])
 		);
 		if (index === 0 && label) {
-			const line = span(className, [span(['line-code'], content)]);
-			line.properties.dataLabel = label;
-			children.push(line);
+			const code = span(['line-code'], content);
+			code.properties.dataLabel = label;
+			children.push(span(className, [code]));
 		} else children.push(span(className, content));
 	}
 	const className = ['code-block'];

@@ -29,12 +29,14 @@
 	font: inherit;
 }
 
-/* The label is an attribute, never markup, so a fence's info string can't inject HTML. */
+/* The label is an attribute, never markup, so a fence's info string can't inject HTML. Numbered lines are positioned, so
+ * the label needs `z-index` to paint above a band. */
 .slide pre.code-block[data-label]::before {
 	content: attr(data-label);
 	position: absolute;
 	top: 19px;
 	right: var(--label-right);
+	z-index: 1;
 	color: var(--muted);
 	font-family: 'Mona Sans Variable', system-ui, sans-serif;
 	font-size: 20px;
@@ -94,19 +96,22 @@
 	user-select: none;
 }
 
-/* The label sits beside the first line, so that line keeps a hidden copy of the label at its end and clips its code
- * short of it. */
-.slide pre.code-block .line[data-label] {
-	display: inline-grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.slide pre.code-block .line[data-label] > .line-code {
+/* The label sits beside the first line, so that line's code wraps short of a hidden copy of the label and the line
+ * shows only its first row. A soft wrap adds nothing to copied text, where a grid or flex line would add a line break. */
+.slide pre.code-block .line:has(> .line-code) {
+	height: 1.5em;
+	height: 1lh;
 	overflow: hidden;
 }
 
-.slide pre.code-block .line[data-label]::after {
+.slide pre.code-block .line-code {
+	white-space: pre-wrap;
+	line-break: anywhere;
+}
+
+.slide pre.code-block .line-code::before {
 	content: attr(data-label);
+	float: right;
 	visibility: hidden;
 	margin-inline: var(--label-gap) calc(var(--label-right) - var(--code-inline));
 	font-family: 'Mona Sans Variable', system-ui, sans-serif;
