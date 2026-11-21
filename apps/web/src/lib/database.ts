@@ -1,4 +1,4 @@
-import type { PGlite, PGliteInterface } from '@electric-sql/pglite';
+import type { PGlite } from '@electric-sql/pglite';
 import { PGliteWorker } from '@electric-sql/pglite/worker';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { migrations } from 'virtual:migrations';
@@ -10,12 +10,43 @@ import {
 	type MigrationProgress
 } from '#lib/migrate.ts';
 
-export type Database = PgliteDatabase;
+/** The PGlite clients the app uses: the shared one in a worker, or one in memory. */
+export type Client = PGlite | PGliteWorker;
+
+/** A Drizzle database, with the client it wraps as `$client`. */
+export type Database = PgliteDatabase & { $client: Client };
 
 /** Wraps any PGlite client, in a worker or in memory, with Drizzle. */
-export function createDatabase(client: PGliteInterface): Database {
+export function createDatabase(client: Client): Database {
 	// Drizzle types its client as `PGlite`, but only calls the query and transaction methods every PGlite client has.
 	return drizzle({ client: client as PGlite });
+}
+
+/**
+ * Runs `write` against `database` and resolves once IndexedDB holds everything it wrote, so a reload or a closed tab
+ * keeps it. Report a write saved only once this resolves.
+ */
+export async function writeDurably<T>(database: Database, write: (database: Database) => Promise<T>): Promise<T> {
+	const result = await write(database);
+	await database.$client.syncToFs();
+	return result;
+}
+
+/**
+ * Asks the database to sync to IndexedDB whenever the page is hidden or about to unload. Browsers may stop a hidden or
+ * closing tab before the sync finishes, so this only narrows the window for a write still in flight; `writeDurably` is
+ * what makes a saved write survive.
+ */
+export function syncWhenHidden(
+	client: Pick<Client, 'syncToFs'>,
+	page: Pick<Window, 'addEventListener'>,
+	document: Pick<Document, 'addEventListener' | 'visibilityState'>
+): void {
+	const sync = () => void client.syncToFs().catch(() => {});
+	page.addEventListener('pagehide', sync);
+	document.addEventListener('visibilitychange', () => {
+		if (document.visibilityState === 'hidden') sync();
+	});
 }
 
 /** What the database worker posts, with the error as plain text, when this tab's worker cannot open the database. */
@@ -40,14 +71,10 @@ export async function openDatabase(
 ): Promise<Database> {
 	const progress = new BroadcastChannel(migrationChannelName);
 	progress.addEventListener('message', (event: MessageEvent<MigrationProgress>) => onProgress(event.data));
-	shared.opening ??= connect(
-		new Worker(new URL('database-worker.ts', import.meta.url), { type: 'module', name: 'sld-database' }),
-		migrations,
-		(error) => {
-			shared.opening = undefined;
-			onLost(error);
-		}
-	);
+	shared.opening ??= openShared((error) => {
+		shared.opening = undefined;
+		onLost(error);
+	});
 	try {
 		return await shared.opening;
 	} catch (error) {
@@ -56,6 +83,16 @@ export async function openDatabase(
 	} finally {
 		progress.close();
 	}
+}
+
+async function openShared(onLost: (error: unknown) => void): Promise<Database> {
+	const database = await connect(
+		new Worker(new URL('database-worker.ts', import.meta.url), { type: 'module', name: 'sld-database' }),
+		migrations,
+		onLost
+	);
+	syncWhenHidden(database.$client, globalThis, document);
+	return database;
 }
 
 /**
