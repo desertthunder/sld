@@ -3,12 +3,29 @@ import { deckFrontmatter, joinDeck, slideFrontmatter, splitDeck } from '#lib/dec
 
 const lines = (...rows: string[]) => rows.join('\n');
 
-/** The lines that carry text, leaving out blank lines and separators. */
+/**
+ * The lines that carry text, leaving out blank lines and every `---` except one right under plain paragraph text
+ * outside a list or blockquote, which is a setext underline or a YAML block's closing line and so must survive.
+ */
 function textLines(markdown: string): string[] {
-	return markdown
-		.replaceAll(/\r\n?/g, '\n')
-		.split('\n')
-		.filter((line) => line.trim() !== '' && line !== '---');
+	const kept: string[] = [];
+	let isParagraph = false;
+	let isInContainer = false;
+	for (const line of markdown.replaceAll(/\r\n?/g, '\n').split('\n')) {
+		if (line.trim() === '') {
+			isParagraph = false;
+			isInContainer = false;
+		} else if (line === '---') {
+			if (isParagraph && !isInContainer) kept.push(line);
+			isParagraph = false;
+			isInContainer = false;
+		} else {
+			kept.push(line);
+			if (/^(?:- |> |1\. )/.test(line)) isInContainer = true;
+			isParagraph = /^[A-Za-z|]/.test(line);
+		}
+	}
+	return kept;
 }
 
 describe('splitDeck', () => {
@@ -71,6 +88,24 @@ describe('splitDeck', () => {
 		expect(splitDeck(lines('#hashtag', '---', 'Text.')).slides).toEqual(['#hashtag\n---\nText.']);
 	});
 
+	it('splits on --- right after a list item, blockquote, thematic break or setext heading', () => {
+		expect(splitDeck(lines('- item', '---', '# Two')).slides).toEqual(['- item', '# Two']);
+		expect(splitDeck(lines('1. item', 'lazy text', '---', '# Two')).slides).toEqual([
+			'1. item\nlazy text',
+			'# Two'
+		]);
+		expect(splitDeck(lines('> quote', '---', '# Two')).slides).toEqual(['> quote', '# Two']);
+		expect(splitDeck(lines('***', '---', '# Two')).slides).toEqual(['***', '# Two']);
+		expect(splitDeck(lines('Title', '=====', '---', '# Two')).slides).toEqual(['Title\n=====', '# Two']);
+		expect(splitDeck(lines('Title', '---', '---', '# Two')).slides).toEqual(['Title\n---', '# Two']);
+	});
+
+	it('reads --- under paragraph text that no list can interrupt as a setext underline', () => {
+		for (const slide of [lines('Text', '2. not a list', '---'), lines('- a', '', 'b', '---')]) {
+			expect(splitDeck(slide).slides).toEqual([slide]);
+		}
+	});
+
 	it('leaves a table separator row alone', () => {
 		const table = lines('| a | b |', '| --- | --- |', '| 1 | 2 |', '', 'a | b', '--- | ---', '1 | 2');
 		expect(splitDeck(table).slides).toEqual([table]);
@@ -79,6 +114,13 @@ describe('splitDeck', () => {
 	it('splits only on an exact ---, not an indented, padded or longer one', () => {
 		const slide = lines('# One', '', '  ---', '', '--- ', '', '----', '', '***');
 		expect(splitDeck(slide).slides).toEqual([slide]);
+	});
+
+	it('ignores a byte order mark before the deck frontmatter', () => {
+		expect(splitDeck('\u{FEFF}---\ntitle: Talk\n---\n\n# One\n')).toEqual({
+			frontmatter: { format: 'yaml', raw: 'title: Talk', data: { title: 'Talk' }, title: 'Talk' },
+			slides: ['# One']
+		});
 	});
 
 	it('reads CRLF and CR line endings as LF', () => {
@@ -143,6 +185,16 @@ describe('splitDeck', () => {
 			'# One',
 			'---\nNote: one\n---\n\nText.'
 		]);
+	});
+
+	it('reads a --- after a blank line as a separator, never the close of a YAML block', () => {
+		expect(
+			splitDeck(lines('# Talk', '', '---', 'Speaker: Jane', 'Date: Nov 21', '', '---', '', '# Agenda')).slides
+		).toEqual(['# Talk', 'Speaker: Jane\nDate: Nov 21', '# Agenda']);
+		expect(splitDeck(lines('---', 'title: Talk', '', '---', '', '# One'))).toEqual({
+			frontmatter: undefined,
+			slides: ['title: Talk', '# One']
+		});
 	});
 
 	it('reads --- right after a separator as another separator', () => {
@@ -300,6 +352,13 @@ describe('deckFrontmatter', () => {
 		expect(deckFrontmatter({ title: undefined, scheme: null })).toBeUndefined();
 	});
 
+	it('leaves out null values nested in tables and arrays, as parsed YAML can hold them', () => {
+		const { frontmatter } = splitDeck(
+			lines('---', 'title: Talk', 'tags: [a, ~]', 'speaker:', '  name:', '---', '')
+		);
+		expect(deckFrontmatter(frontmatter!.data)?.data).toEqual({ title: 'Talk', tags: ['a'], speaker: {} });
+	});
+
 	it('writes frontmatter that splitDeck reads back, even when a value holds delimiter lines', () => {
 		const frontmatter = deckFrontmatter({ title: 'a\n+++\n---\nb', 'odd "key"': 1 });
 		const deck = { frontmatter, slides: ['# One'] };
@@ -349,6 +408,8 @@ describe('joinDeck', () => {
 			''
 		),
 		'fenced ---': lines('```md', '---', '```', '', '---', '', '~~~', '', '---', '~~~', ''),
+		'setext heading ending a slide': lines('# One', '', 'Heading', '---', '', '---', '', 'Two', ''),
+		'list and blockquote before separators': lines('- item', '', '---', '', '> quote', '', '---', '', 'Two', ''),
 		'setext heading and table': lines('Heading', '---', '', '| a |', '| --- |', '', '---', '', 'Two', ''),
 		'heading and fence before a separator': lines(
 			'# One',
@@ -435,6 +496,10 @@ describe('splitDeck and joinDeck on generated documents', () => {
 			'Note: text',
 			'  nested: 1',
 			'- item',
+			'1. item',
+			'> quote',
+			'===',
+			'-',
 			'# comment',
 			'```',
 			'```js',
