@@ -1,0 +1,2 @@
+# Pages serves app.html at /app itself. Every path below it gets the app shell too.
+/app/* /app.html 200

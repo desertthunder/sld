@@ -3,8 +3,9 @@ import adapter from '@sveltejs/adapter-static';
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	kit: {
-		// Cloudflare Pages serves `index.html` for unknown paths when the build has no `404.html`.
-		adapter: adapter({ fallback: 'index.html' })
+		// `index.html` is the prerendered landing page, so the app shell gets its own file, which
+		// `static/_redirects` serves for every path under `/app`.
+		adapter: adapter({ fallback: 'app.html' })
 	}
 };
 

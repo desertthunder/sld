@@ -29,9 +29,13 @@ build: ## Build every package
 	pnpm build
 
 # Deploy refuses a build like this, but only once a release is tagged.
-app-shell: ## Check the web build serves the app shell for every path
-	@if [ ! -f apps/web/build/index.html ]; then echo "::error title=web::apps/web/build/index.html is missing."; exit 1; fi
-	@if [ -f apps/web/build/404.html ]; then echo "::error title=web::apps/web/build/404.html exists, so Pages won't serve the app shell for deck URLs."; exit 1; fi
+app-shell: ## Check the web build serves the landing page at / and the app shell under /app
+	@for file in index.html app.html _redirects; do \
+		if [ ! -f apps/web/build/$$file ]; then echo "::error title=web::apps/web/build/$$file is missing."; exit 1; fi; \
+	done
+	@if ! grep -q '<h1' apps/web/build/index.html; then echo "::error title=web::apps/web/build/index.html isn't the prerendered landing page."; exit 1; fi
+	@if ! grep -Eq '^/app/\* +/app\.html +200$$' apps/web/build/_redirects; then echo "::error title=web::apps/web/build/_redirects doesn't serve app.html under /app."; exit 1; fi
+	@if [ -f apps/web/build/404.html ]; then echo "::error title=web::apps/web/build/404.html exists, so Pages would answer unknown paths with it."; exit 1; fi
 
 # comment.yml runs the poster with Node alone, so run it that way once.
 dry-run: ## Run the Bot comment poster as comment.yml does, posting nothing

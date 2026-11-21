@@ -54,7 +54,7 @@ Checks for what you touched, if you don't run `make ci`:
 - Mark deferred work in code with a `TODO:` comment that says what's left, never a task id or prose like "comes later".
 - Keep inline comments to a minimum. Comment only what the code can't say, such as a non-obvious reason or constraint, never what it does.
 - No editor-specific files (`.vscode/`, `.idea/`). Shared settings go in `.editorconfig`, Prettier and ESLint.
-- The web app renders on the client only: the root `+layout.ts` sets `ssr = false`.
+- The app renders on the client only: the `/app` layout sets `ssr = false`; `/` is prerendered.
 - Add a dependency only when the issue needs it. Say why in a short clause of the PR description.
 - Interface copy says _deck_, _slide_, _scheme_ and _present_. It never says _presentation file_, _theme_ for a color scheme, or _render_.
 - Write American English in identifiers, comments, tests, strings, interface copy, docs, agent files and PR text: _color_, _center_, _gray_, _normalize_, _behavior_.
