@@ -43,7 +43,7 @@ function plainLines(code: string): Token[][] {
  * A fenced code block as the stage shows it: one `span.line` per line, each token a `span.code-<kind>` whose color
  * comes from the scheme, so a new scheme recolors it without highlighting again. Shiki and a language's grammar are
  * downloaded only when a block names a language it knows; any other block, or one whose grammar fails to download,
- * shows as plain text.
+ * shows as plain text. Lines are dimmed only when the fence highlights a line the block has.
  */
 export async function codeBlockTree(
 	code: string,
@@ -55,8 +55,12 @@ export async function codeBlockTree(
 	let lines: Token[][] | undefined;
 	if (language) {
 		try {
-			const { highlightCode } = await import('#lib/code-highlight.ts');
-			lines = await highlightCode(source, language);
+			const { knownLanguage } = await import('#lib/code-languages.ts');
+			const id = knownLanguage(language);
+			if (id) {
+				const { highlightCode } = await import('#lib/code-highlight.ts');
+				lines = await highlightCode(source, id);
+			}
 		} catch {
 			// Shiki or the grammar didn't download, so the code shows as it would with no grammar.
 		}
@@ -64,9 +68,12 @@ export async function codeBlockTree(
 	lines ??= plainLines(source);
 	const ranges = lineHighlights(meta);
 	const children: HastNode[] = [];
+	let hasHighlights = false;
 	for (const [index, tokens] of lines.entries()) {
 		if (index > 0) children.push(text('\n'));
-		const className = isHighlighted(ranges, index + 1) ? ['line', 'highlighted'] : ['line'];
+		const highlighted = isHighlighted(ranges, index + 1);
+		hasHighlights ||= highlighted;
+		const className = highlighted ? ['line', 'highlighted'] : ['line'];
 		children.push(
 			span(
 				className,
@@ -78,7 +85,7 @@ export async function codeBlockTree(
 	}
 	const className = ['code-block'];
 	if (lineNumbers) className.push('line-numbers');
-	if (ranges.length > 0) className.push('has-highlights');
+	if (hasHighlights) className.push('has-highlights');
 	const properties: Element['properties'] = { className };
 	if (language) properties.dataLanguage = language;
 	if (lineNumbers) properties.style = `--line-digits: ${String(lines.length).length}`;

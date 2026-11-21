@@ -36,6 +36,12 @@ describe('code blocks', () => {
 		);
 	});
 
+	it('dim no line when the fence highlights only lines past the end', async () => {
+		const { html } = await renderSlide(lines('```ts {9}', 'let a;', 'let b;', '```'));
+		expect(html).toMatch(/^<pre class="code-block" data-language="ts">/);
+		expect(html).not.toContain('highlighted');
+	});
+
 	it('read line ranges written against the language', async () => {
 		const { html } = await renderSlide(lines('```ts{2} title="a.ts"', 'let a;', 'let b;', '```'));
 		expect(html).toMatch(
@@ -58,7 +64,7 @@ describe('code blocks', () => {
 		expect(html).toBe('<pre class="code-block"><code><span class="line">indented</span></code></pre>\n');
 	});
 
-	it('load no highlighter or grammar for a slide whose code blocks name no language', async () => {
+	it('load no highlighter or grammar for a slide whose code blocks name no language Shiki knows', async () => {
 		vi.resetModules();
 		const loads = vi.fn();
 		vi.doMock('#lib/code-highlight.ts', () => {
@@ -68,7 +74,25 @@ describe('code blocks', () => {
 		try {
 			const fresh = await import('#lib/slide-render.ts');
 			await fresh.renderSlide(
-				lines('# No code', '', 'Just `inline` code.', '', '    indented', '', '```', 'plain', '```')
+				lines(
+					'# No code',
+					'',
+					'Just `inline` code.',
+					'',
+					'    indented',
+					'',
+					'```',
+					'plain',
+					'```',
+					'',
+					'```text',
+					'plain',
+					'```',
+					'',
+					'```klingon',
+					"Qapla'!",
+					'```'
+				)
 			);
 			expect(loads).not.toHaveBeenCalled();
 			await fresh.renderSlide(lines('```ts', 'let a;', '```'));

@@ -2,6 +2,7 @@ import { createHighlighterCore, type HighlighterCore, type ThemeRegistrationRaw 
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import { bundledLanguages, type BundledLanguage } from 'shiki/langs';
 import { tokenSlots, type TokenKind } from '#lib/color-roles.ts';
+import { knownLanguage } from '#lib/code-languages.ts';
 
 /** A run of code and the kind of token it is. Each kind's color is the CSS variable `--code-<kind>`. */
 export type Token = { kind: TokenKind; text: string };
@@ -70,17 +71,14 @@ const theme: ThemeRegistrationRaw = {
 const kindOf = new Map(Object.keys(tokenSlots).map((kind) => [color(kind as TokenKind), kind as TokenKind]));
 
 // Shiki stops tokenizing a line after 500ms by default, so a busy tab would color a slide differently and cache it.
-// A time limit can't hold that steady, so the limit is on length: a longer line shows plain, and would overflow anyway.
-const maxLineLength = 1000;
+// The limits are on size instead, and code past them shows plain. This runs on the main thread, and some grammars take
+// time cubic in a line's length (bash takes 400ms on 1000 `<`), so the limits sit just past what the stage shows at
+// 20px: lines under 200 characters, and the first 100 lines.
+const maxLineLength = 200;
+const maxLines = 100;
 
 const state: { highlighter?: Promise<HighlighterCore> } = {};
 const loading = new Map<string, Promise<void>>();
-
-/** The id Shiki knows a fence's language by, or `undefined` when it has no grammar for it. */
-export function knownLanguage(language: string): BundledLanguage | undefined {
-	const id = language.toLowerCase();
-	return Object.hasOwn(bundledLanguages, id) ? (id as BundledLanguage) : undefined;
-}
 
 // The JavaScript regex engine runs every grammar Shiki bundles, so there's no second WebAssembly download.
 function highlighter(): Promise<HighlighterCore> {
@@ -88,11 +86,21 @@ function highlighter(): Promise<HighlighterCore> {
 	return state.highlighter;
 }
 
+// A grammar that failed to download is forgotten, so the next block in that language asks for it again.
+async function download(shiki: HighlighterCore, id: BundledLanguage): Promise<void> {
+	try {
+		await shiki.loadLanguage(bundledLanguages[id]);
+	} catch (error) {
+		loading.delete(id);
+		throw error;
+	}
+}
+
 async function loadLanguage(id: BundledLanguage): Promise<HighlighterCore> {
 	const shiki = await highlighter();
 	let loaded = loading.get(id);
 	if (!loaded) {
-		loaded = shiki.loadLanguage(bundledLanguages[id]);
+		loaded = download(shiki, id);
 		loading.set(id, loaded);
 	}
 	await loaded;
@@ -107,13 +115,14 @@ export async function highlightCode(code: string, language: string): Promise<Tok
 	const id = knownLanguage(language);
 	if (!id) return undefined;
 	const shiki = await loadLanguage(id);
-	const tokenLines = shiki.codeToTokensBase(code, {
+	const lines = code.split('\n');
+	const tokenLines = shiki.codeToTokensBase(lines.slice(0, maxLines).join('\n'), {
 		lang: id,
 		theme: theme.name,
 		tokenizeTimeLimit: 0,
 		tokenizeMaxLineLength: maxLineLength
 	});
-	return tokenLines.map((line) => {
+	const highlighted = tokenLines.map((line) => {
 		const tokens: Token[] = [];
 		for (const { content, color: tokenColor = '' } of line) {
 			const kind = kindOf.get(tokenColor) ?? 'plain';
@@ -123,4 +132,6 @@ export async function highlightCode(code: string, language: string): Promise<Tok
 		}
 		return tokens;
 	});
+	const rest = lines.slice(maxLines).map((line): Token[] => (line === '' ? [] : [{ kind: 'plain', text: line }]));
+	return [...highlighted, ...rest];
 }

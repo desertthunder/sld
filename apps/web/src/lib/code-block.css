@@ -33,13 +33,15 @@
 	line-height: 1.5;
 }
 
-/* An empty inline block has no height, so without `min-height` a blank line would collapse. */
+/* An empty inline block has no height, so without `min-height` a blank line would collapse. `1.5em` is the line
+ * height for browsers without `lh`, Firefox before 120 and Safari before 16.4. */
 .slide pre.code-block .line {
 	display: inline-block;
 	box-sizing: border-box;
 	width: calc(100% + 88px);
 	margin-inline: -44px;
 	padding-inline: 44px;
+	min-height: 1.5em;
 	min-height: 1lh;
 	vertical-align: top;
 }

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { highlightCode, knownLanguage, type Token } from '#lib/code-highlight.ts';
+import { describe, expect, it, vi } from 'vitest';
+import { highlightCode, type Token } from '#lib/code-highlight.ts';
 
 const sample = [
 	'// Split a deck on its rules.',
@@ -54,7 +54,8 @@ describe('highlightCode', () => {
 	});
 
 	it('shows a line too long to tokenize steadily as plain text', async () => {
-		const long = `let a = ${'1 + '.repeat(250)}1;`;
+		const long = `let a = ${'1 + '.repeat(47)}111;`;
+		expect(long).toHaveLength(200);
 		expect(await highlightCode(`let b;\n${long}`, 'ts')).toEqual([
 			[
 				{ kind: 'keyword', text: 'let' },
@@ -64,16 +65,47 @@ describe('highlightCode', () => {
 		]);
 	});
 
+	it('tokenizes a line of 199 characters', async () => {
+		const line = `let a = ${'1 + '.repeat(47)}11;`;
+		expect(line).toHaveLength(199);
+		expect((await highlightCode(line, 'ts'))![0][0]).toEqual({ kind: 'keyword', text: 'let' });
+	});
+
+	it('shows lines past the 100th as plain text', async () => {
+		const lines = await highlightCode(Array.from({ length: 102 }, () => 'let a;').join('\n'), 'ts');
+		expect(lines).toHaveLength(102);
+		expect(lines![99][0]).toEqual({ kind: 'keyword', text: 'let' });
+		expect(lines![100]).toEqual([{ kind: 'plain', text: 'let a;' }]);
+		expect(lines![101]).toEqual([{ kind: 'plain', text: 'let a;' }]);
+	});
+
+	it('asks for a grammar again after it failed to download', async () => {
+		vi.resetModules();
+		let calls = 0;
+		vi.doMock('shiki/langs', async () => {
+			const real = await vi.importActual<typeof import('shiki/langs')>('shiki/langs');
+			const ts = () => {
+				calls += 1;
+				return calls === 1 ? Promise.reject(new TypeError('Failed to fetch')) : real.bundledLanguages.ts();
+			};
+			return { ...real, bundledLanguages: { ...real.bundledLanguages, ts } };
+		});
+		try {
+			const fresh = await import('#lib/code-highlight.ts');
+			await expect(fresh.highlightCode('let a;', 'ts')).rejects.toThrow('Failed to fetch');
+			expect(await fresh.highlightCode('let a;', 'ts')).toEqual([
+				[
+					{ kind: 'keyword', text: 'let' },
+					{ kind: 'plain', text: ' a;' }
+				]
+			]);
+			expect(calls).toBe(2);
+		} finally {
+			vi.doUnmock('shiki/langs');
+		}
+	});
+
 	it('gives nothing for a language it has no grammar for', async () => {
 		expect(await highlightCode('let', 'not-a-language')).toBeUndefined();
-	});
-});
-
-describe('knownLanguage', () => {
-	it('knows only the languages Shiki bundles, never an object property', () => {
-		expect(knownLanguage('Rust')).toBe('rust');
-		for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
-			expect(knownLanguage(name), name).toBeUndefined();
-		}
 	});
 });
