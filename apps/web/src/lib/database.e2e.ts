@@ -29,7 +29,7 @@ async function recordMigrations(page: Page) {
 }
 
 async function waitForApp(page: Page) {
-	await expect(page.getByRole('heading', { level: 1, name: 'sld' })).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByRole('heading', { level: 1, name: 'sld', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 /**
