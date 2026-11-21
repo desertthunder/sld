@@ -110,4 +110,27 @@ describe('serializeSyncToFs', () => {
 		expect(fsSync).toHaveBeenCalledTimes(3);
 		await client.close();
 	});
+
+	it("makes a statement's own sync wait while another sync is waiting to start", async () => {
+		const client = await PGlite.create();
+		const { fs } = client;
+		const syncFiles = fs!.syncToFs.bind(fs);
+		const held = Promise.withResolvers<void>();
+		const fsSync = vi.spyOn(fs!, 'syncToFs').mockImplementationOnce(async () => {
+			await held.promise;
+			await syncFiles();
+		});
+		serializeSyncToFs(client);
+		const running = client.syncToFs();
+		await tick();
+		const waiting = client.syncToFs();
+		const query = settled(client.query('select 1'));
+		await tick();
+		expect(query.isSettled).toBe(false);
+		held.resolve();
+		await Promise.all([running, waiting]);
+		await vi.waitFor(() => expect(query.isSettled).toBe(true));
+		expect(fsSync).toHaveBeenCalledTimes(2);
+		await client.close();
+	});
 });

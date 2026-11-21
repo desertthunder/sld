@@ -105,3 +105,42 @@ test("a row saved in a tab that another tab's worker serves survives that tab re
 	await waitForApp(leader);
 	expect(await readNotes(leader)).toEqual([note]);
 });
+
+test("a write in a tab that another tab's worker serves fails or is saved when the other tab closes during it", async ({
+	context
+}) => {
+	const leader = await context.newPage();
+	await leader.goto('/app');
+	await waitForApp(leader);
+	const follower = await context.newPage();
+	await follower.goto('/app');
+	await waitForApp(follower);
+	await follower.evaluate(
+		async ({ url, body }) => {
+			const { openDatabase, writeDurably } = (await import(url)) as typeof DatabaseModule;
+			const database = await openDatabase();
+			await database.$client.exec('create table if not exists notes (body text not null)');
+			const outcome = { state: 'saving' };
+			Object.assign(globalThis, { outcome });
+			for (let index = 0; index < 4; index++) void database.$client.syncToFs().catch(() => {});
+			void (async () => {
+				try {
+					await writeDurably(database, ({ $client }) =>
+						$client.query('insert into notes (body) values ($1)', [body])
+					);
+					outcome.state = 'saved';
+				} catch (error) {
+					outcome.state = error instanceof Error ? error.message : String(error);
+				}
+			})();
+		},
+		{ url: databaseModule, body: note }
+	);
+	await leader.close();
+	const outcome = () =>
+		follower.evaluate(() => (globalThis as unknown as { outcome: { state: string } }).outcome.state);
+	await expect.poll(outcome, { timeout: 20_000 }).not.toBe('saving');
+	const notes = await readNotes(follower);
+	if ((await outcome()) === 'saved') expect(notes).toEqual([note]);
+	else expect(await outcome()).toMatch(/leader changed/i);
+});

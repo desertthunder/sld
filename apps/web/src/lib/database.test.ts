@@ -1,5 +1,5 @@
 import { PGlite } from '@electric-sql/pglite';
-import { PGliteWorker } from '@electric-sql/pglite/worker';
+import { LeaderChangedError, PGliteWorker } from '@electric-sql/pglite/worker';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { connect, createDatabase, openDatabase, syncWhenHidden, writeDurably, type Database } from '#lib/database.ts';
@@ -72,7 +72,39 @@ describe('writeDurably', () => {
 		expect(sync).not.toHaveBeenCalled();
 		await client.close();
 	});
+
+	it("rejects when another tab's worker takes over during the write, though the write never settles", async () => {
+		const { client, changeLeader, stop } = workerClient();
+		const saving = writeDurably(createDatabase(client), () => new Promise<never>(() => {}));
+		changeLeader();
+		await expect(saving).rejects.toBeInstanceOf(LeaderChangedError);
+		expect(stop).toHaveBeenCalledOnce();
+	});
+
+	it('stops listening for a new leader once the write is saved', async () => {
+		const { client, changeLeader, stop } = workerClient();
+		await expect(writeDurably(createDatabase(client), async () => 'saved')).resolves.toBe('saved');
+		expect(client.syncToFs).toHaveBeenCalledOnce();
+		expect(stop).toHaveBeenCalledOnce();
+		changeLeader();
+	});
 });
+
+function workerClient() {
+	const listeners: (() => void)[] = [];
+	const stop = vi.fn();
+	const client: PGliteWorker = Object.assign(Object.create(PGliteWorker.prototype) as PGliteWorker, {
+		syncToFs: vi.fn(async () => {}),
+		onLeaderChange: (listener: () => void) => {
+			listeners.push(listener);
+			return stop;
+		}
+	});
+	const changeLeader = () => {
+		for (const listener of listeners) listener();
+	};
+	return { client, stop, changeLeader };
+}
 
 function hiddenPage() {
 	const page = new EventTarget();

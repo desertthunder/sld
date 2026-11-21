@@ -1,5 +1,5 @@
 import type { PGlite } from '@electric-sql/pglite';
-import { PGliteWorker } from '@electric-sql/pglite/worker';
+import { LeaderChangedError, PGliteWorker } from '@electric-sql/pglite/worker';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { migrations } from 'virtual:migrations';
 import {
@@ -24,12 +24,25 @@ export function createDatabase(client: Client): Database {
 
 /**
  * Runs `write` against `database` and resolves once IndexedDB holds everything it wrote, so a reload or a closed tab
- * keeps it. Report a write saved only once this resolves.
+ * keeps it. Report a write saved only once this resolves. It rejects with a `LeaderChangedError` when a different
+ * tab's worker takes over the database during the write, which then may or may not have been saved.
  */
 export async function writeDurably<T>(database: Database, write: (database: Database) => Promise<T>): Promise<T> {
-	const result = await write(database);
-	await database.$client.syncToFs();
-	return result;
+	const { $client } = database;
+	const durably = async () => {
+		const result = await write(database);
+		await $client.syncToFs();
+		return result;
+	};
+	if (!($client instanceof PGliteWorker)) return durably();
+	// PGlite drops a call the tab sends while the new leader is still opening, so without this the write could wait forever.
+	const { promise: leaderChanged, reject } = Promise.withResolvers<never>();
+	const stop = $client.onLeaderChange(() => reject(new LeaderChangedError()));
+	try {
+		return await Promise.race([durably(), leaderChanged]);
+	} finally {
+		stop();
+	}
 }
 
 /**
