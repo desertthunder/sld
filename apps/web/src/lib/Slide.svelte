@@ -35,10 +35,16 @@
 		box-sizing: border-box;
 		padding: 64px 96px;
 		font-size: 32px;
+		overflow-wrap: anywhere;
+	}
+
+	.slide :global(:is(img, video)) {
+		max-width: 100%;
+		height: auto;
 	}
 
 	/* A trailing margin would make a slide that fits measure taller than the stage. */
-	.slide :global(:last-child) {
+	:where(.slide) :global(:last-child) {
 		margin-bottom: 0;
 	}
 </style>

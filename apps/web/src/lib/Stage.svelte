@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onDestroy, type Snippet } from 'svelte';
 	import { defaultAspect, fitStage, stageSize, type Aspect, type Fit } from '#lib/stage.ts';
 
 	let {
@@ -10,12 +10,38 @@
 
 	const size = $derived(stageSize(aspect));
 	const container = $state({ width: 0, height: 0 });
-	const content = $state({ height: 0 });
+	const content = $state({ width: 0, height: 0 });
 	const fit: Fit = $derived(fitStage(size, container));
+	let stage: HTMLElement | undefined = $state();
+
+	// A line too long for the stage, such as in a code block, widens neither the stage nor the content, so no resize
+	// reports it: measure the stage's scroll width whenever the slide's DOM, its height or its fonts change.
+	$effect(() => {
+		if (!stage) return;
+		const element = stage;
+		const slide = element.firstElementChild as Element;
+		const measure = () => (content.width = element.scrollWidth);
+		const resizes = new ResizeObserver(measure);
+		const mutations = new MutationObserver(measure);
+		resizes.observe(slide);
+		mutations.observe(slide, { subtree: true, childList: true, characterData: true, attributes: true });
+		document.fonts.addEventListener('loadingdone', measure);
+		measure();
+		return () => {
+			resizes.disconnect();
+			mutations.disconnect();
+			document.fonts.removeEventListener('loadingdone', measure);
+		};
+	});
 
 	$effect(() => {
 		// eslint-disable-next-line unicorn/no-top-level-assignment-in-function -- Svelte writes a bindable prop by assignment.
-		overflowing = content.height > size.height;
+		overflowing = content.height > size.height || content.width > size.width;
+	});
+
+	onDestroy(() => {
+		// eslint-disable-next-line unicorn/no-top-level-assignment-in-function -- Svelte writes a bindable prop by assignment.
+		overflowing = false;
 	});
 </script>
 
@@ -26,6 +52,7 @@
 	data-overflowing={overflowing}>
 	<div
 		class="stage"
+		bind:this={stage}
 		style:width="{size.width}px"
 		style:height="{size.height}px"
 		style:transform="translate({fit.x}px, {fit.y}px) scale({fit.scale})"

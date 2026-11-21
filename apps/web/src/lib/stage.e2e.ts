@@ -226,3 +226,32 @@ test('a slide that fits is not flagged for the margin under its last block', asy
 	await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
 	expect(await page.locator('.content').evaluate((content) => content.clientHeight)).toBe(1080);
 });
+
+test('a slide wider than the stage wraps what it can and is flagged for what it cannot', async ({ page }) => {
+	await page.goto('/app');
+	const article = page.locator('article.slide');
+	await expect(article).toBeVisible({ timeout: 30_000 });
+	const frame = page.locator('.frame');
+	const stageScrollWidth = () => page.locator('.stage').evaluate((stage) => stage.scrollWidth);
+	const wide = '<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="100"/>';
+
+	await article.evaluate(
+		(slide, wide) =>
+			(slide.innerHTML = `<p>https://example.com/${'x'.repeat(400)}</p><img src="data:image/svg+xml,${encodeURIComponent(wide)}">`),
+		wide
+	);
+	await expect
+		.poll(() => page.locator('.slide img').evaluate((image) => image.getBoundingClientRect().width))
+		.toBeGreaterThan(0);
+	expect(await stageScrollWidth()).toBe(1920);
+	await expect(frame).toHaveAttribute('data-overflowing', 'false');
+
+	// Growing a line that doesn't wrap changes neither the stage's size nor the slide's height.
+	await article.evaluate((slide) => (slide.innerHTML = '<pre><code>const deck = 1;</code></pre>'));
+	await expect(frame).toHaveAttribute('data-overflowing', 'false');
+	await page.locator('.slide code').evaluate((code) => (code.firstChild as Text).appendData(' + 1'.repeat(200)));
+	await expect(frame).toHaveAttribute('data-overflowing', 'true');
+
+	await page.locator('.slide code').evaluate((code) => ((code.firstChild as Text).data = 'const deck = 1;'));
+	await expect(frame).toHaveAttribute('data-overflowing', 'false');
+});
