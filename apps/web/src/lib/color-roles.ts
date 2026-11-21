@@ -48,7 +48,7 @@ export type AppRoles = Record<
 	Role
 >;
 
-/** The Base16 slot each kind of code token takes, after the Base16 styling guide. base08 stays unused until diffs. */
+/** The Base16 slot each kind of code token takes, after the Base16 styling guide. */
 export const tokenSlots = {
 	keyword: '0E',
 	string: '0B',
@@ -56,6 +56,7 @@ export const tokenSlots = {
 	function: '0D',
 	type: '0A',
 	escape: '0C',
+	tag: '08',
 	comment: '03',
 	plain: '05'
 } as const satisfies Record<string, Slot>;

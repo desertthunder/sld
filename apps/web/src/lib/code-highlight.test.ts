@@ -33,6 +33,20 @@ describe('highlightCode', () => {
 		`);
 	});
 
+	it('gives HTML and JSX tag names their own kind, components included', async () => {
+		const tsx = 'const view = <Slide markdown="a"><p>{count}</p></Slide>;';
+		expect(marked((await highlightCode(tsx, 'tsx'))!)).toMatchInlineSnapshot(`
+			[
+			  "[keyword:const] view = <[tag:Slide] [constant:markdown]=[string:"a"]><[tag:p]>[escape:{]count[escape:}]</[tag:p]></[tag:Slide]>;",
+			]
+		`);
+		expect(marked((await highlightCode('<p class="lead">Hi</p>', 'html'))!)).toMatchInlineSnapshot(`
+			[
+			  "<[tag:p] [constant:class]=[string:"lead"]>Hi</[tag:p]>",
+			]
+		`);
+	});
+
 	it('takes the language case-insensitively and by its aliases', async () => {
 		const tokens = [[{ kind: 'keyword', text: 'let' }]];
 		expect(await highlightCode('let', 'TS')).toEqual(tokens);

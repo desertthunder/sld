@@ -93,6 +93,10 @@
 	color: var(--code-escape);
 }
 
+.slide pre.code-block .code-tag {
+	color: var(--code-tag);
+}
+
 .slide pre.code-block .code-comment {
 	color: var(--code-comment);
 	font-style: italic;

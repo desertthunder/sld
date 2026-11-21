@@ -215,7 +215,7 @@ describe('roles', () => {
 });
 
 describe('tokenRoles', () => {
-	it('keeps the Base16 slots of Default Dark that reach 4.5:1, and mixes its comments toward base07', () => {
+	it('keeps the Base16 slots of Default Dark that reach 4.5:1, and mixes its comments and tags toward base07', () => {
 		expect(css(tokenRoles(defaultDark))).toMatchInlineSnapshot(`
 			{
 			  "comment": "color-mix(in oklab, var(--base03) 60%, var(--base07))",
@@ -225,6 +225,7 @@ describe('tokenRoles', () => {
 			  "keyword": "var(--base0E)",
 			  "plain": "var(--base05)",
 			  "string": "var(--base0B)",
+			  "tag": "color-mix(in oklab, var(--base08) 70%, var(--base07))",
 			  "type": "var(--base0A)",
 			}
 		`);
@@ -240,6 +241,7 @@ describe('tokenRoles', () => {
 			  "keyword": "color-mix(in oklab, var(--base0E) 65%, var(--base07))",
 			  "plain": "var(--base05)",
 			  "string": "color-mix(in oklab, var(--base0B) 55%, var(--base07))",
+			  "tag": "var(--base08)",
 			  "type": "color-mix(in oklab, var(--base0A) 45%, var(--base07))",
 			}
 		`);

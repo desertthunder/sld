@@ -44,6 +44,7 @@
 	--code-function: var(--base0D);
 	--code-type: var(--base0A);
 	--code-escape: var(--base0C);
+	--code-tag: var(--base08);
 	--code-comment: color-mix(in oklab, var(--base03) 60%, var(--base06));
 	--code-plain: var(--base05);
 
@@ -83,6 +84,7 @@
 		--code-constant: color-mix(in oklab, var(--base09) 60%, var(--base07));
 		--code-function: color-mix(in oklab, var(--base0D) 80%, var(--base07));
 		--code-type: color-mix(in oklab, var(--base0A) 50%, var(--base07));
+		--code-tag: color-mix(in oklab, var(--base08) 45%, var(--base07));
 		--code-comment: color-mix(in oklab, var(--base03) 45%, var(--base07));
 
 		color-scheme: light;

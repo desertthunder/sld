@@ -46,6 +46,7 @@ const scopes: Record<Exclude<TokenKind, 'plain'>, string[]> = {
 		'punctuation.definition.interpolation',
 		'markup.quote'
 	],
+	tag: ['entity.name.tag', 'support.class.component'],
 	comment: ['comment', 'punctuation.definition.comment']
 };
 
