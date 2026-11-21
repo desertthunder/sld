@@ -59,7 +59,11 @@ export async function openMigrated<T extends Client & Pick<PGliteInterface, 'clo
 		await migrate(client, migrations, onProgress);
 		return client;
 	} catch (error) {
-		await client.close();
+		try {
+			await client.close();
+		} catch {
+			// The migration's error says more than the close's.
+		}
 		throw error;
 	}
 }

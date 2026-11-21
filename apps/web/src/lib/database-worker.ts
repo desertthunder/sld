@@ -7,6 +7,7 @@ import { openInWorker } from '#lib/open-in-worker.ts';
 const progress = new BroadcastChannel(migrationChannelName);
 
 // PGlite calls `init` only in the elected worker, so one tab migrates and the others wait until it has.
+// TODO: fail the open in a tab whose migrations the elected worker lacks, as when an older tab holds the lock after a deploy.
 await worker({
 	init: () =>
 		openInWorker(

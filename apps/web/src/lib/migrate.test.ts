@@ -115,6 +115,15 @@ describe('openMigrated', () => {
 		await client.close();
 	});
 
+	it('reports the failed migration even when closing the client fails too', async () => {
+		const client = new PGlite();
+		vi.spyOn(client, 'close').mockRejectedValueOnce(new Error('close failed'));
+		await expect(
+			openMigrated(async () => client, [...migrations, { tag: '0001_broken', sql: 'select from missing;' }])
+		).rejects.toThrow('Migration 0001_broken failed');
+		await client.close();
+	});
+
 	it('closes the client when a migration fails, and the worker reports the error', async () => {
 		const client = new PGlite();
 		const scope = { postMessage: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() };
