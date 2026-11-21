@@ -65,7 +65,7 @@ function asWorker(fake: FakeWorker): Worker {
 describe('connect', () => {
 	it('fails with the error when the worker cannot open the database', async () => {
 		const worker = new FakeWorker();
-		const connecting = connect(asWorker(worker));
+		const connecting = connect(asWorker(worker), []);
 		worker.send({ type: 'here' });
 		worker.send({ type: 'open-failed', error: 'IndexedDB is unavailable' });
 		await expect(connecting).rejects.toThrow('IndexedDB is unavailable');
@@ -74,7 +74,7 @@ describe('connect', () => {
 
 	it('fails when the worker script does not load', async () => {
 		const worker = new FakeWorker();
-		const connecting = connect(asWorker(worker));
+		const connecting = connect(asWorker(worker), []);
 		worker.dispatchEvent(Object.assign(new Event('error'), { message: '' }));
 		await expect(connecting).rejects.toThrow('The database worker failed to load');
 		expect(worker.terminate).toHaveBeenCalledOnce();
@@ -100,10 +100,10 @@ function tabChannel(): FakeChannel | undefined {
 	return FakeChannel.open.values().find((channel) => channel.name.startsWith('pglite-tab:'));
 }
 
-async function readyWorker(onLost?: (error: unknown) => void, migrations?: readonly Migration[]) {
+async function readyWorker(onLost?: (error: unknown) => void, migrations: readonly Migration[] = []) {
 	const worker = new FakeWorker();
 	const outcome = { isSettled: false };
-	const connecting = connect(asWorker(worker), onLost, migrations);
+	const connecting = connect(asWorker(worker), migrations, onLost);
 	void connecting.then(() => (outcome.isSettled = true)).catch(() => (outcome.isSettled = true));
 	worker.send({ type: 'here' });
 	worker.send({ type: 'ready', id: 'sld' });

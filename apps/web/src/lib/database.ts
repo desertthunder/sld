@@ -42,11 +42,11 @@ export async function openDatabase(
 	progress.addEventListener('message', (event: MessageEvent<MigrationProgress>) => onProgress(event.data));
 	shared.opening ??= connect(
 		new Worker(new URL('database-worker.ts', import.meta.url), { type: 'module', name: 'sld-database' }),
+		migrations,
 		(error) => {
 			shared.opening = undefined;
 			onLost(error);
-		},
-		migrations
+		}
 	);
 	try {
 		return await shared.opening;
@@ -66,8 +66,8 @@ export async function openDatabase(
  */
 export async function connect(
 	worker: Worker,
-	onLost: (error: unknown) => void = () => {},
-	migrations: readonly Migration[] = []
+	migrations: readonly Migration[],
+	onLost: (error: unknown) => void = () => {}
 ): Promise<Database> {
 	const { promise: failed, reject: rejectOpening } = Promise.withResolvers<never>();
 	const state: { client?: PGliteWorker; isOpen: boolean; isStopped: boolean } = { isOpen: false, isStopped: false };
