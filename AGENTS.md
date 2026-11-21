@@ -13,7 +13,7 @@ Read this file before starting work. Read the Linear issue before starting it.
 | `docs/`                  | [repository setup](docs/setup.md). The design record, `docs/design.md`, arrives with the first design issue.                                                                                                                                                                                       |
 | `.github/workflows`      | `ci.yml` (checks), `branch-push.yml` and `branch-pr.yml` (a draft PR for each agent branch), `comment.yml` (posts as desertthunder-bot), `release.yml` (release-please), `deploy.yml` (publishes each version tag to Cloudflare Pages, and redeploys the newest by hand). No workflow runs Claude. |
 | `.claude/skills/writing` | Prose style for docs, PR text and Linear issues. Use it when writing any of those.                                                                                                                                                                                                                 |
-| `.claude/agents`         | Subagents for `/implement`: `implementer`, `reviewer`, `adversarial-reviewer`, `verifier`, and `reviser` for Owais's reviews. Skills in `.claude/skills`.                                                                                                                                          |
+| `.claude/agents`         | Subagents for `/implement`: `implementer`, `reviewer`, `adversarial-reviewer`, `verifier`, and `reviser` for Owais's reviews and a failed `ci`. Skills in `.claude/skills`.                                                                                                                        |
 
 ## The stack and its rules
 

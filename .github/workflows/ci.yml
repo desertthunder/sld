@@ -60,6 +60,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - if: steps.filter.outputs.web == 'true' || steps.filter.outputs.devtools == 'true'
+        id: install
         run: pnpm install --frozen-lockfile
 
       - name: Web lint
@@ -88,18 +89,19 @@ jobs:
             exit 1
           fi
 
+      # Run after a failed web step too, so one run reports both packages.
       - name: Devtools lint
-        if: steps.filter.outputs.devtools == 'true'
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
         run: pnpm exec prettier --check tools/devtools && pnpm exec eslint tools/devtools
       - name: Devtools check
-        if: steps.filter.outputs.devtools == 'true'
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
         run: pnpm --filter @sld/devtools check
       - name: Devtools test
-        if: steps.filter.outputs.devtools == 'true'
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
         run: pnpm --filter @sld/devtools test
       # comment.yml runs the tool with Node alone, so run it that way once.
       - name: Dry run as comment.yml does
-        if: steps.filter.outputs.devtools == 'true'
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
         run: |
           printf 'Review loop finished\n' > "$RUNNER_TEMP/body.md"
           node tools/devtools/src/devtools.ts pr ready --repo "$GITHUB_REPOSITORY" --pr 1 --dry-run --body-file "$RUNNER_TEMP/body.md"

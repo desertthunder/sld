@@ -22,7 +22,7 @@ This is Reseed's setup, copied with its poster in `tools/devtools`.
 
 ### When Branch PR fails
 
-Branch PR runs only after a branch's first push, so if that run failed (a missing secret, a GitHub outage), later pushes don't open the pull request. Fix the cause on `main`, then re-run the Branch push run for that first push: Actions → Branch push → the run for the branch → Re-run all jobs, or `gh run rerun <run id>` with the id from `gh run list --workflow branch-push.yml --branch <branch>`. Its completion starts Branch PR again from `main`, which opens the draft as `desertthunder-bot` with the branch's first commit as its title and description. Don't open it with `gh pr create` under your own account: you would be its author, and an author can't give the approval `main` requires.
+Branch PR runs only after a branch's first push, so if that run failed (a missing secret, a GitHub outage), later pushes don't open the pull request. Fix the cause on `main`, then re-run the Branch push run for that first push: Actions → Branch push → the run for the branch → Re-run all jobs, or `gh run rerun <run id>` with the id from `gh run list --workflow branch-push.yml --branch <branch>`. Its completion starts Branch PR again from `main`, which opens the draft as `desertthunder-bot` with the branch's first commit as its title and description. If the branch's first push had no commits ahead of `main`, a re-run finds none either: delete the remote branch (`git push origin --delete <branch>`) and push it again, and that push counts as its first. Don't open it with `gh pr create` under your own account: you would be its author, and an author can't give the approval `main` requires.
 
 ## 1. Install desertthunder-bot and keep its key on `main`
 
