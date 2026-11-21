@@ -4,7 +4,7 @@
 	"license": "UNLICENSED",
 	"version": "0.0.1",
 	"type": "module",
-	"description": "The sld web app: SvelteKit built as a static single-page app with no server.",
+	"description": "The sld web app: SvelteKit built as static files with no server.",
 	"imports": {
 		"#lib/*": "./src/lib/*"
 	},
