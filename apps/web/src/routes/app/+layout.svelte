@@ -1,44 +1,38 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { boot, outdatedCopy, startBoot } from '#lib/boot.svelte.ts';
+	import '@fontsource-variable/hubot-sans/wght.css';
+	import '@fontsource-variable/mona-sans/wght.css';
+	import '@fontsource/monaspace-neon/latin-400.css';
+	import '#lib/scheme.css';
+	import Splash from '#lib/Splash.svelte';
+	import { boot, startBoot } from '#lib/boot.svelte.ts';
 	import { isolate, type IsolationOutcome } from '#lib/cross-origin-isolation.ts';
+	import { shouldShowSplash, splashDelay, splashView } from '#lib/splash.ts';
 
 	let { children } = $props();
 
 	const isolation: { outcome: IsolationOutcome | 'checking' } = $state({ outcome: 'checking' });
+	const delay = $state({ hasPassed: false });
+	const view = $derived(splashView(isolation.outcome, boot.state));
 
 	onMount(() => {
+		const timer = setTimeout(() => (delay.hasPassed = true), splashDelay);
 		void (async () => {
 			isolation.outcome = await isolate();
-			if (isolation.outcome === 'reloading') return;
+			if (isolation.outcome !== 'isolated') return;
 			startBoot(async (lost, progress) => {
 				const { openDatabase } = await import('#lib/database.ts');
 				return openDatabase(lost, progress);
 			});
 		})();
+		return () => clearTimeout(timer);
 	});
 </script>
 
-{#if isolation.outcome === 'unavailable'}
-	<p role="alert">
-		This browser didn't make the page cross-origin isolated, so slides can't be read from markdown here. Reload the
-		page, or open it in a current version of Chrome, Firefox or Safari.
-	</p>
-{/if}
-
-{#if isolation.outcome === 'checking' || isolation.outcome === 'reloading'}
-	<p role="status">Getting this browser ready…</p>
-{:else if boot.state.status === 'ready'}
-	{@render children()}
-{:else if boot.state.status === 'opening'}
-	<p role="status">Opening your decks…</p>
-{:else if boot.state.status === 'outdated'}
-	<div role="alert">
-		<p>{outdatedCopy.label}</p>
-		<h1>{outdatedCopy.heading}</h1>
-		<p>{outdatedCopy.text}</p>
-		<button type="button" onclick={() => location.reload()}>{outdatedCopy.action}</button>
-	</div>
-{:else}
-	<p role="alert">Your decks could not be opened: {boot.state.error}</p>
-{/if}
+<div class="scheme">
+	{#if !view}
+		{@render children()}
+	{:else if shouldShowSplash(view, delay.hasPassed)}
+		<Splash {view} />
+	{/if}
+</div>

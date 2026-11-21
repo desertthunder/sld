@@ -1,0 +1,74 @@
+/*
+ * The default Base16 schemes, Oxocarbon Dark and Oxocarbon Light, and the color roles the app reads.
+ * They apply only while the `/app` layout's `.scheme` wrapper is on the page: SvelteKit adds this stylesheet to `/` too
+ * when it preloads `/app`, and keeps it after navigating back.
+ * TODO: let people pick a scheme, and load its colors in place of these defaults.
+ */
+.scheme {
+	display: contents;
+}
+
+:root:has(.scheme) {
+	--base00: #161616;
+	--base01: #262626;
+	--base02: #393939;
+	--base03: #525252;
+	--base04: #dde1e6;
+	--base05: #f2f4f8;
+	--base06: #ffffff;
+	--base07: #08bdba;
+	--base08: #ee5396;
+	--base09: #ff7eb6;
+	--base0A: #ff6f00;
+	--base0B: #42be65;
+	--base0C: #3ddbd9;
+	--base0D: #33b1ff;
+	--base0E: #be95ff;
+	--base0F: #82cfff;
+
+	--background: var(--base00);
+	--surface: var(--base01);
+	--border: var(--base02);
+	--text: var(--base05);
+	--muted: var(--base04);
+	--heading: var(--base06);
+	--link: var(--base0D);
+	--accent: var(--base0E);
+	--on-primary: var(--base00);
+	--rule: var(--base08);
+	--shadow: color-mix(in oklab, var(--base00) 60%, transparent);
+
+	color-scheme: dark;
+	background: var(--background);
+	color: var(--text);
+}
+
+@media (prefers-color-scheme: light) {
+	:root:has(.scheme) {
+		--base00: #f2f4f8;
+		--base01: #dde1e6;
+		--base02: #bec6cf;
+		--base03: #a1acba;
+		--base04: #68788d;
+		--base05: #525f70;
+		--base06: #3d4652;
+		--base07: #272d35;
+		--base08: #ff7eb6;
+		--base09: #ee5396;
+		--base0A: #ff6f00;
+		--base0B: #42be65;
+		--base0C: #673ab7;
+		--base0D: #0f62fe;
+		--base0E: #be95ff;
+		--base0F: #803800;
+
+		--muted: color-mix(in oklab, var(--base04) 25%, var(--base05));
+		--heading: var(--base07);
+		--link: color-mix(in oklab, var(--base0D) 80%, var(--base07));
+		--accent: color-mix(in oklab, var(--base0E) 65%, var(--base07));
+		--rule: var(--base09);
+		--shadow: color-mix(in oklab, var(--base07) 18%, transparent);
+
+		color-scheme: light;
+	}
+}
