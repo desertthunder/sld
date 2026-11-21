@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { sampleSlide } from '#lib/sample-slide.ts';
-import { cacheSize, renderSlide } from '#lib/slide-render.ts';
+import { renderSlide } from '#lib/slide-render.ts';
 
 const lines = (...rows: string[]) => rows.join('\n');
 
@@ -75,27 +75,32 @@ describe('renderSlide', () => {
 	});
 
 	it('forgets the least recently used slide once the cache is full', async () => {
-		const first = await renderSlide('# First');
-		const kept = await renderSlide('# Kept');
-		for (let index = 0; index < cacheSize - 1; index++) {
-			await renderSlide(`# Slide ${index}`);
-			if (index === 0) await renderSlide('# Kept');
-		}
-		expect(await renderSlide('# Kept')).toBe(kept);
-		expect(await renderSlide('# First')).not.toBe(first);
+		vi.resetModules();
+		const fresh = await import('#lib/slide-render.ts');
+		const oldest = await fresh.renderSlide('# Oldest');
+		const untouched = await fresh.renderSlide('# Untouched');
+		for (let index = 0; index < fresh.cacheSize - 2; index++) await fresh.renderSlide(`# Slide ${index}`);
+		expect(await fresh.renderSlide('# Oldest')).toBe(oldest);
+		await fresh.renderSlide('# One more');
+		expect(await fresh.renderSlide('# Oldest')).toBe(oldest);
+		expect(await fresh.renderSlide('# Untouched')).not.toBe(untouched);
 	});
 
-	it('loads Sätteri again after a failed load', async () => {
+	it('fails every slide with a load error after Sätteri fails to load, as the browser keeps the failed module', async () => {
 		vi.resetModules();
 		let loads = 0;
-		vi.doMock('satteri', async (importOriginal) => {
+		vi.doMock('satteri', () => {
 			loads++;
-			if (loads === 1) throw new Error('offline');
-			return importOriginal();
+			throw new Error('offline');
 		});
-		const fresh = await import('#lib/slide-render.ts');
-		await expect(fresh.renderSlide('# Retried')).rejects.toThrow();
-		expect(await fresh.renderSlide('# Retried')).toEqual({ html: '<h1>Retried</h1>\n', frontmatter: undefined });
-		vi.doUnmock('satteri');
+		try {
+			const fresh = await import('#lib/slide-render.ts');
+			for (const markdown of ['# One', '# Two']) {
+				await expect(fresh.renderSlide(markdown)).rejects.toBeInstanceOf(fresh.RendererLoadError);
+			}
+			expect(loads).toBe(1);
+		} finally {
+			vi.doUnmock('satteri');
+		}
 	});
 });

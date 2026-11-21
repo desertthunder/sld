@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { errorText } from '#lib/error-text.ts';
-	import { renderSlide } from '#lib/slide-render.ts';
+	import { RendererLoadError, renderSlide } from '#lib/slide-render.ts';
 
 	let { markdown }: { markdown: string } = $props();
 
@@ -14,5 +14,9 @@
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	<article class="slide">{@html html}</article>
 {:catch error}
-	<p role="alert">This slide couldn't be shown: {errorText(error)}</p>
+	{#if error instanceof RendererLoadError}
+		<p role="alert">Slides couldn't be loaded. Reload the page to try again: {error.message}</p>
+	{:else}
+		<p role="alert">This slide couldn't be shown: {errorText(error)}</p>
+	{/if}
 {/await}

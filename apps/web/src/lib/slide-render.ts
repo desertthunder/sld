@@ -1,4 +1,5 @@
 import { slideParts, type Frontmatter } from '#lib/deck-markdown.ts';
+import { errorText } from '#lib/error-text.ts';
 
 /** A slide's HTML and the frontmatter block its markdown opens with, if any. */
 export type RenderedSlide = { html: string; frontmatter: Frontmatter | undefined };
@@ -8,10 +9,21 @@ type Renderer = (markdown: string) => Promise<RenderedSlide>;
 /** How many slides `renderSlide` remembers. Each edit makes a new markdown string, so the cache must forget. */
 export const cacheSize = 256;
 
+/**
+ * Sätteri didn't load. Its browser build downloads its WebAssembly while the module loads, and a browser keeps a module
+ * that failed to load for the life of the page, so only a reload tries again.
+ */
+export class RendererLoadError extends Error {
+	constructor(cause: unknown) {
+		super(errorText(cause), { cause });
+		this.name = 'RendererLoadError';
+	}
+}
+
 const cache = new Map<string, RenderedSlide>();
 const renderer: { loading?: Promise<Renderer> } = {};
 
-/** Loads Sätteri on first use, since in the browser it downloads a 3 MB WebAssembly build. A failed load is retried. */
+/** Loads Sätteri on first use, since in the browser it downloads a 3 MB WebAssembly build. */
 function loadRenderer(): Promise<Renderer> {
 	renderer.loading ??= createRenderer();
 	return renderer.loading;
@@ -41,8 +53,7 @@ async function createRenderer(): Promise<Renderer> {
 	try {
 		modules = await Promise.all([import('satteri'), import('#lib/slide-plugins.ts')]);
 	} catch (error) {
-		renderer.loading = undefined;
-		throw error;
+		throw new RendererLoadError(error);
 	}
 	const [{ markdownToHtml }, { mdastPlugins, hastPlugins }] = modules;
 	return async (markdown) => {
