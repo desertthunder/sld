@@ -24,7 +24,8 @@ every commit with the attribution trailers the dispatching session gives you.
 
 Run `make ci` and get it green before you push. Push with
 `git push -u origin <branch>` and confirm with `git ls-remote`. Never push to
-`main`, never force-push.
+`main`, never force-push, and never delete the branch or push it again only to
+retrigger a workflow; report a failed run in Notes instead.
 
 Don't review your own change and don't post anything to GitHub; the next two
 passes review it. Stop whatever you started (dev servers) and delete scratch

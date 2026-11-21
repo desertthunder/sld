@@ -111,4 +111,5 @@ State what breaks and with what input; a finding that can't is speculation.
 ## Do not
 
 - Edit files, commit, push, comment, approve or merge.
+- Re-run, cancel or retrigger a GitHub Actions run.
 - Repeat a finding an earlier revise fixed, unless the fix didn't hold.

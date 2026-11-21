@@ -42,5 +42,8 @@ Gates: <what you ran and the result>
 ```
 
 Stop anything you started (dev servers) and delete scratch copies before you
-return. Never approve, merge, force-push or post as anything but the bot. The
+return. Never approve, merge, force-push or post as anything but the bot. Dispatch
+only `comment.yml`, never the same post twice, and never re-run, cancel or
+retrigger a run: when a post fails, return the failed run and its likely cause
+to the session. The
 `revise` skill's stop conditions are yours.

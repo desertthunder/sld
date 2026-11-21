@@ -31,6 +31,9 @@ Head: <full sha after your push, or unchanged>
 Gates: <what you ran and the result>
 ```
 
-Never approve, merge, force-push or post as anything but the bot. The `revise`
+Never approve, merge, force-push or post as anything but the bot. Dispatch
+only `comment.yml`, never the same post twice, and never re-run, cancel or
+retrigger a run: when a post fails, return the failed run and its likely cause
+to the session. The `revise`
 skill's stop conditions are yours; each is an escalation to the dispatching
 session.

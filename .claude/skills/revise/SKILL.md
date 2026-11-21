@@ -51,6 +51,11 @@ you touched). Commit with a Conventional Commits subject ending `(SLD-n)` and
 the session's attribution trailers, push to the same branch, and confirm with
 `git ls-remote origin <branch>` before naming a commit. Never force-push.
 
+A failed `ci` check whose log shows no fault in the code (billing, a GitHub
+outage, a runner that never started) gets no fix: return it to the session with
+the run and its likely cause, for Owais to re-run. Never re-run, cancel or
+retrigger a GitHub Actions run, or push again only to retrigger one.
+
 When a fix changes what the pull request does, or a finding is about the
 description, edit the description with the GitHub MCP tool
 `update_pull_request`: change only the description paragraph, which ends with
@@ -80,5 +85,6 @@ for Owais.
 
 - The same finding arrives twice without its cause having changed.
 - A fix needs a decision the issue doesn't record.
+- A failed `ci` check shows no fault in the code.
 
 Each stop is an escalation to the session, not a reason to force a change.
