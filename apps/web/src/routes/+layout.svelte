@@ -5,9 +5,9 @@
 	let { children } = $props();
 
 	onMount(() => {
-		startBoot(async (lost) => {
+		startBoot(async (lost, progress) => {
 			const { openDatabase } = await import('#lib/database.ts');
-			return openDatabase(lost);
+			return openDatabase(lost, progress);
 		});
 	});
 </script>

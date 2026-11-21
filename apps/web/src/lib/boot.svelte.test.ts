@@ -11,6 +11,18 @@ describe('startBoot', () => {
 		expect(boot.state).toEqual({ status: 'ready' });
 	});
 
+	it('records migration progress while opening', async () => {
+		let resolve!: (value: string) => void;
+		const started = startBoot((_lost, progress) => {
+			progress({ applied: 1, total: 2 });
+			return new Promise<string>((r) => (resolve = r));
+		});
+		expect(boot.state).toEqual({ status: 'opening', migrations: { applied: 1, total: 2 } });
+		resolve('database');
+		await started;
+		expect(boot.state).toEqual({ status: 'ready' });
+	});
+
 	it('records the error text when opening fails', async () => {
 		await expect(startBoot(() => Promise.reject(new Error('IndexedDB is unavailable')))).resolves.toBeUndefined();
 		expect(boot.state).toEqual({ status: 'failed', error: 'IndexedDB is unavailable' });

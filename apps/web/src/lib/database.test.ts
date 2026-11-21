@@ -2,6 +2,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { connect, createDatabase, openDatabase, type Database } from '#lib/database.ts';
+import { migrationChannelName } from '#lib/migrate.ts';
 
 describe('createDatabase', () => {
 	let client: PGlite;
@@ -175,7 +176,24 @@ describe('openDatabase', () => {
 		const first = openDatabase();
 		FakeWorker.created[0].dispatchEvent(new Event('error'));
 		await expect(first).rejects.toThrow('The database worker failed to load');
-		void openDatabase();
+		const second = openDatabase();
 		expect(FakeWorker.created).toHaveLength(2);
+		FakeWorker.created[1].dispatchEvent(new Event('error'));
+		await expect(second).rejects.toThrow();
+	});
+
+	it('passes on the migration progress the elected worker posts while opening', async () => {
+		vi.stubGlobal('Worker', FakeWorker);
+		const onProgress = vi.fn();
+		const opening = openDatabase(undefined, onProgress);
+		const worker = new BroadcastChannel(migrationChannelName);
+		worker.postMessage({ applied: 0, total: 1 });
+		await vi.waitFor(() => expect(onProgress).toHaveBeenCalledWith({ applied: 0, total: 1 }));
+		FakeWorker.created[0].dispatchEvent(new Event('error'));
+		await expect(opening).rejects.toThrow();
+		worker.postMessage({ applied: 1, total: 1 });
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(onProgress).toHaveBeenCalledOnce();
+		worker.close();
 	});
 });
