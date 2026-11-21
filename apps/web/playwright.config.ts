@@ -10,7 +10,10 @@ export default defineConfig({
 	reporter: 'list',
 	forbidOnly: Boolean(process.env.CI),
 	use: { baseURL: `http://localhost:${port}` },
-	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+	projects: [
+		{ name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+		{ name: 'webkit', use: { ...devices['Desktop Safari'] } }
+	],
 	webServer: {
 		command: `pnpm exec vite dev --port ${port} --strictPort`,
 		url: `http://localhost:${port}/app`,

@@ -33,20 +33,25 @@ export async function writeDurably<T>(database: Database, write: (database: Data
 }
 
 /**
- * Asks the database to sync to IndexedDB whenever the page is hidden or about to unload. Browsers may stop a hidden or
- * closing tab before the sync finishes, so this only narrows the window for a write still in flight; `writeDurably` is
- * what makes a saved write survive.
+ * Asks the database to sync to IndexedDB whenever the page is hidden or about to unload, until the returned function
+ * stops it. Browsers may stop a hidden or closing tab before the sync finishes, so this only narrows the window for a
+ * write still in flight; `writeDurably` is what makes a saved write survive.
  */
 export function syncWhenHidden(
 	client: Pick<Client, 'syncToFs'>,
-	page: Pick<Window, 'addEventListener'>,
-	document: Pick<Document, 'addEventListener' | 'visibilityState'>
-): void {
+	page: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+	document: Pick<Document, 'addEventListener' | 'removeEventListener' | 'visibilityState'>
+): () => void {
 	const sync = () => void client.syncToFs().catch(() => {});
-	page.addEventListener('pagehide', sync);
-	document.addEventListener('visibilitychange', () => {
+	const onVisibilityChange = () => {
 		if (document.visibilityState === 'hidden') sync();
-	});
+	};
+	page.addEventListener('pagehide', sync);
+	document.addEventListener('visibilitychange', onVisibilityChange);
+	return () => {
+		page.removeEventListener('pagehide', sync);
+		document.removeEventListener('visibilitychange', onVisibilityChange);
+	};
 }
 
 /** What the database worker posts, with the error as plain text, when this tab's worker cannot open the database. */
@@ -86,12 +91,16 @@ export async function openDatabase(
 }
 
 async function openShared(onLost: (error: unknown) => void): Promise<Database> {
+	const listening: { stop?: () => void } = {};
 	const database = await connect(
 		new Worker(new URL('database-worker.ts', import.meta.url), { type: 'module', name: 'sld-database' }),
 		migrations,
-		onLost
+		(error) => {
+			listening.stop?.();
+			onLost(error);
+		}
 	);
-	syncWhenHidden(database.$client, globalThis, document);
+	listening.stop = syncWhenHidden(database.$client, globalThis, document);
 	return database;
 }
 

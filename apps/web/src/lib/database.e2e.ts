@@ -32,15 +32,21 @@ async function waitForApp(page: Page) {
 	await expect(page.getByRole('heading', { level: 1, name: 'sld' })).toBeVisible({ timeout: 30_000 });
 }
 
-/** Opens the database the way the app does, and writes the note to a table of its own through `writeDurably`. */
+/**
+ * Opens the database the way the app does, and writes the note to a table of its own through `writeDurably`, while
+ * other syncs are in flight, as when another tab writes or this one is hidden.
+ */
 async function saveNote(page: Page) {
 	await page.evaluate(
 		async ({ url, body }) => {
 			const { openDatabase, writeDurably } = (await import(url)) as typeof DatabaseModule;
-			await writeDurably(await openDatabase(), async ({ $client }) => {
+			const database = await openDatabase();
+			const others = Array.from({ length: 4 }, () => database.$client.syncToFs());
+			await writeDurably(database, async ({ $client }) => {
 				await $client.exec('create table if not exists notes (body text not null)');
 				await $client.query('insert into notes (body) values ($1)', [body]);
 			});
+			void Promise.allSettled(others);
 		},
 		{ url: databaseModule, body: note }
 	);
@@ -84,4 +90,18 @@ test('a saved row survives closing the tab', async ({ context }) => {
 	await second.goto('/app');
 	await waitForApp(second);
 	expect(await readNotes(second)).toEqual([note]);
+});
+
+test("a row saved in a tab that another tab's worker serves survives that tab reloading", async ({ context }) => {
+	const leader = await context.newPage();
+	await leader.goto('/app');
+	await waitForApp(leader);
+	const follower = await context.newPage();
+	await follower.goto('/app');
+	await waitForApp(follower);
+	await saveNote(follower);
+	await follower.close();
+	await leader.reload();
+	await waitForApp(leader);
+	expect(await readNotes(leader)).toEqual([note]);
 });

@@ -78,8 +78,8 @@ function hiddenPage() {
 	const page = new EventTarget();
 	const document = Object.assign(new EventTarget(), { visibilityState: 'visible' as DocumentVisibilityState });
 	const client = { syncToFs: vi.fn(async () => {}) };
-	syncWhenHidden(client, page as Window, document as unknown as Document);
-	return { page, document, client };
+	const stop = syncWhenHidden(client, page as Window, document as unknown as Document);
+	return { page, document, client, stop };
 }
 
 describe('syncWhenHidden', () => {
@@ -96,6 +96,15 @@ describe('syncWhenHidden', () => {
 		document.visibilityState = 'visible';
 		document.dispatchEvent(new Event('visibilitychange'));
 		expect(client.syncToFs).toHaveBeenCalledOnce();
+	});
+
+	it('stops syncing once stopped', () => {
+		const { page, document, client, stop } = hiddenPage();
+		stop();
+		page.dispatchEvent(new Event('pagehide'));
+		document.visibilityState = 'hidden';
+		document.dispatchEvent(new Event('visibilitychange'));
+		expect(client.syncToFs).not.toHaveBeenCalled();
 	});
 
 	it('ignores a sync that fails while the page goes away', async () => {
