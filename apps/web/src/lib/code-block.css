@@ -7,8 +7,10 @@
 .slide pre.code-block {
 	--code-inline: 44px;
 	--band-inset: 23px;
-	--number-indent: 10px;
+	--number-gutter: 2.6em;
 	--number-gap: 30px;
+	--label-right: 24px;
+	--label-gap: 24px;
 	position: relative;
 	overflow: hidden;
 	margin: 46px 0;
@@ -32,7 +34,7 @@
 	content: attr(data-label);
 	position: absolute;
 	top: 19px;
-	right: 24px;
+	right: var(--label-right);
 	color: var(--muted);
 	font-family: 'Mona Sans Variable', system-ui, sans-serif;
 	font-size: 20px;
@@ -75,22 +77,44 @@
 	border-end-end-radius: 0;
 }
 
-/* The number sits outside the line's text, so tabs still stop where they would without it. */
+/* The number sits outside the line's text, so tabs still stop where they would without it. Every block has the same
+ * gutter, so code starts at one place whatever the line count; a number too wide for it grows into the inline padding. */
 .slide pre.code-block.line-numbers .line {
 	position: relative;
-	padding-left: calc(
-		var(--code-inline) - var(--band-inset) + var(--number-indent) + var(--line-digits, 1) * 1ch + var(--number-gap)
-	);
+	padding-left: calc(var(--code-inline) - var(--band-inset) + var(--number-gutter));
 }
 
 .slide pre.code-block.line-numbers .line::before {
 	content: counter(line);
 	counter-increment: line;
 	position: absolute;
-	left: calc(var(--code-inline) - var(--band-inset) + var(--number-indent));
-	width: calc(var(--line-digits, 1) * 1ch);
+	right: calc(100% - (var(--code-inline) - var(--band-inset) + var(--number-gutter) - var(--number-gap)));
 	color: var(--code-comment);
 	text-align: right;
+	user-select: none;
+}
+
+/* The label sits beside the first line, so that line keeps a hidden copy of the label at its end and clips its code
+ * short of it. */
+.slide pre.code-block .line[data-label] {
+	display: inline-grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.slide pre.code-block .line[data-label] > .line-code {
+	overflow: hidden;
+}
+
+.slide pre.code-block .line[data-label]::after {
+	content: attr(data-label);
+	visibility: hidden;
+	margin-inline: var(--label-gap) calc(var(--label-right) - var(--code-inline));
+	font-family: 'Mona Sans Variable', system-ui, sans-serif;
+	font-size: 20px;
+	font-style: normal;
+	font-weight: 500;
+	letter-spacing: 0.02em;
+	line-height: 1.5;
 	user-select: none;
 }
 

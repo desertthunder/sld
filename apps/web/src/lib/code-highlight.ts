@@ -7,7 +7,8 @@ import { knownLanguage } from '#lib/code-languages.ts';
 /** A run of code and the kind of token it is. Each kind's color is the CSS variable `--code-<kind>`. */
 export type Token = { kind: TokenKind; text: string };
 
-// TextMate scopes for each kind, after the Base16 styling guide. A more specific scope wins over a shorter one.
+// TextMate scopes for each kind, after the Base16 styling guide. A more specific scope wins over a shorter one. Format
+// placeholders take the escape color; only Rust's `meta.interpolation` is one, as other grammars' holds code.
 const scopes: Record<Exclude<TokenKind, 'plain'>, string[]> = {
 	keyword: [
 		'keyword',
@@ -45,6 +46,10 @@ const scopes: Record<Exclude<TokenKind, 'plain'>, string[]> = {
 		'punctuation.definition.template-expression',
 		'punctuation.section.embedded',
 		'punctuation.definition.interpolation',
+		'constant.other.placeholder',
+		'constant.character.format.placeholder',
+		'storage.type.format',
+		'meta.interpolation.rust',
 		'markup.quote'
 	],
 	tag: ['entity.name.tag', 'support.class.component'],

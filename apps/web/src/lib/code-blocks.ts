@@ -43,7 +43,8 @@ function plainLines(code: string): Token[][] {
  * A fenced code block as the stage shows it: one `span.line` per line, each token a `span.code-<kind>` whose color
  * comes from the scheme, so a new scheme recolors it without highlighting again. Shiki and a language's grammar are
  * downloaded only when a block names a language it knows; any other block, or one whose grammar fails to download,
- * shows as plain text. Lines are dimmed only when the fence highlights a line the block has.
+ * shows as plain text. Lines are dimmed only when the fence highlights a line the block has. A labeled block's first line
+ * carries the label too, so its code stops short of the label.
  */
 export async function codeBlockTree(
 	code: string,
@@ -76,14 +77,14 @@ export async function codeBlockTree(
 		const highlighted = isHighlighted(ranges, index + 1);
 		hasHighlights ||= highlighted;
 		const className = highlighted ? ['line', 'highlighted'] : ['line'];
-		children.push(
-			span(
-				className,
-				tokens.map(({ kind, text: value }) =>
-					kind === 'plain' ? text(value) : span([`code-${kind}`], [text(value)])
-				)
-			)
+		const content = tokens.map(({ kind, text: value }) =>
+			kind === 'plain' ? text(value) : span([`code-${kind}`], [text(value)])
 		);
+		if (index === 0 && label) {
+			const line = span(className, [span(['line-code'], content)]);
+			line.properties.dataLabel = label;
+			children.push(line);
+		} else children.push(span(className, content));
 	}
 	const className = ['code-block'];
 	if (lineNumbers) className.push('line-numbers');
@@ -93,7 +94,6 @@ export async function codeBlockTree(
 		properties.dataLanguage = language;
 		properties.dataLabel = label;
 	}
-	if (lineNumbers) properties.style = `--line-digits: ${String(lines.length).length}`;
 	return {
 		type: 'element',
 		tagName: 'pre',

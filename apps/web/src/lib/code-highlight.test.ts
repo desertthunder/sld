@@ -47,6 +47,33 @@ describe('highlightCode', () => {
 		`);
 	});
 
+	it('gives format placeholders the escape kind, never the constant kind', async () => {
+		const go = 'return fmt.Errorf("load %d slides: %w", n, err)';
+		expect(marked((await highlightCode(go, 'go'))!)).toMatchInlineSnapshot(`
+			[
+			  "[keyword:return] fmt.[function:Errorf]([string:"load ][escape:%d][string: slides: ][escape:%w][string:"], n, err)",
+			]
+		`);
+		const c = String.raw`printf("%-5.2f %s\n", x, s);`;
+		expect(marked((await highlightCode(c, 'c'))!)).toMatchInlineSnapshot(`
+			[
+			  "[function:printf]([string:"][escape:%-5.2f][string: ][escape:%s\\n][string:"], x, s);",
+			]
+		`);
+		const python = 'print("{} {name:>10}".format(a), f"{x:.2f}", "%d" % n)';
+		expect(marked((await highlightCode(python, 'python'))!)).toMatchInlineSnapshot(`
+			[
+			  "[function:print]([string:"][escape:{}][string: ][escape:{name:>10}][string:"].[function:format](a), [keyword:f][string:"][escape:{]x[escape::.2f}][string:"], [string:"][escape:%d][string:"] % n)",
+			]
+		`);
+		const rust = 'println!("{} {:?} {0:>5}", a, b);';
+		expect(marked((await highlightCode(rust, 'rust'))!)).toMatchInlineSnapshot(`
+			[
+			  "[function:println!]([string:"][escape:{}][string: ][escape:{:?}][string: ][escape:{0:>5}][string:"], a, b);",
+			]
+		`);
+	});
+
 	it('takes the language case-insensitively and by its aliases', async () => {
 		const tokens = [[{ kind: 'keyword', text: 'let' }]];
 		expect(await highlightCode('let', 'TS')).toEqual(tokens);
