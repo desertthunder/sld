@@ -12,6 +12,9 @@ coverage
 apps/web/static/
 .claude/
 
+# Written by drizzle-kit, in its own format
+apps/web/drizzle/
+
 # Written by release-please, in its own format
 CHANGELOG.md
 .release-please-manifest.json

@@ -20,10 +20,10 @@
 # whose commit isn't on main. Only desertthunder-bot may create `v*` tags (the
 # `release tags` ruleset), so a tag can't carry an edited copy of this file.
 #
-# The adapter writes the app shell as index.html and no 404.html, so Pages
-# serves the shell for every path it has no file for and a deck URL opens the
-# app. _headers makes every response cross-origin isolated, which the markdown
-# parser's shared WebAssembly memory needs.
+# The build prerenders the landing page as index.html and writes the app shell
+# as app.html, which _redirects serves for every path under /app, so a deck URL
+# opens the app. _headers makes every response cross-origin isolated, which the
+# markdown parser's shared WebAssembly memory needs.
 name: Deploy
 
 on:
@@ -195,20 +195,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @sld/web build
 
-      # With a 404.html in the build, Pages would stop serving the shell for
-      # deck URLs. Without both headers the page is not cross-origin isolated
-      # and the markdown parser can't start.
+      # Without app.html and its _redirects line, a deck URL wouldn't open the
+      # app. The build has no 404.html. Without both headers the page is not
+      # cross-origin isolated and the markdown parser can't start.
       - name: Check the app shell and the isolation headers
         run: |
           build=apps/web/build
-          for file in index.html _headers; do
+          for file in index.html app.html _redirects _headers; do
             if [[ ! -f $build/$file ]]; then
               echo "::error title=Deploy::$build/$file is missing."
               exit 1
             fi
           done
+          if ! grep -Eq '^/app/\* +/app +200$' "$build/_redirects"; then
+            echo "::error title=Deploy::$build/_redirects doesn't serve app.html under /app."
+            exit 1
+          fi
           if [[ -f $build/404.html ]]; then
-            echo "::error title=Deploy::$build/404.html exists, so Pages won't serve the app shell for deck URLs."
+            echo "::error title=Deploy::$build/404.html exists, so Pages would answer unknown paths with it."
             exit 1
           fi
           for header in Cross-Origin-Opener-Policy Cross-Origin-Embedder-Policy; do

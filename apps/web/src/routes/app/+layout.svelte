@@ -11,9 +11,9 @@
 		void (async () => {
 			isolation.outcome = await isolate();
 			if (isolation.outcome === 'reloading') return;
-			startBoot(async (lost) => {
+			startBoot(async (lost, progress) => {
 				const { openDatabase } = await import('#lib/database.ts');
-				return openDatabase(lost);
+				return openDatabase(lost, progress);
 			});
 		})();
 	});

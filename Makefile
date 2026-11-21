@@ -29,11 +29,16 @@ build: ## Build every package
 	pnpm build
 
 # Deploy refuses a build like this, but only once a release is tagged.
-app-shell: ## Check the web build serves the app shell and isolation headers for every path
-	@if [ ! -f apps/web/build/index.html ]; then echo "::error title=web::apps/web/build/index.html is missing."; exit 1; fi
-	@if [ -f apps/web/build/404.html ]; then echo "::error title=web::apps/web/build/404.html exists, so Pages won't serve the app shell for deck URLs."; exit 1; fi
+app-shell: ## Check the web build serves the landing page at /, the app shell under /app, and isolation headers
+	@for file in index.html app.html _redirects _headers; do \
+		if [ ! -f apps/web/build/$$file ]; then echo "::error title=web::apps/web/build/$$file is missing."; exit 1; fi; \
+	done
+	@if ! grep -q '<h1' apps/web/build/index.html; then echo "::error title=web::apps/web/build/index.html isn't the prerendered landing page."; exit 1; fi
+	@if grep -q '"\./' apps/web/build/index.html; then echo "::error title=web::apps/web/build/index.html uses relative links, which break where Pages serves it below /."; exit 1; fi
+	@if ! grep -Eq '^/app/\* +/app +200$$' apps/web/build/_redirects; then echo "::error title=web::apps/web/build/_redirects doesn't serve app.html under /app."; exit 1; fi
+	@if [ -f apps/web/build/404.html ]; then echo "::error title=web::apps/web/build/404.html exists, so Pages would answer unknown paths with it."; exit 1; fi
 	@for header in Cross-Origin-Opener-Policy Cross-Origin-Embedder-Policy; do \
-		if ! grep -qi "^[[:space:]]*$$header:" apps/web/build/_headers 2>/dev/null; then echo "::error title=web::apps/web/build/_headers doesn't set $$header."; exit 1; fi; \
+		if ! grep -qi "^[[:space:]]*$$header:" apps/web/build/_headers; then echo "::error title=web::apps/web/build/_headers doesn't set $$header."; exit 1; fi; \
 	done
 
 # comment.yml runs the poster with Node alone, so run it that way once.
