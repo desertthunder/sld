@@ -44,6 +44,26 @@ describe('the isolation worker', () => {
 		await expect(response?.text()).resolves.toBe('<!doctype html>');
 	});
 
+	it.each([204, 205, 304])(
+		're-serves a %i response without a body, keeping the isolation headers',
+		async (status) => {
+			// WebKit hands the worker a body stream even for a null-body status such as a revalidated 304, and copying that
+			// stream into a new response throws, so the page's request fails.
+			const response = {
+				status,
+				statusText: '',
+				headers: new Headers({ ETag: '"1"', 'Cross-Origin-Embedder-Policy': 'credentialless' }),
+				body: new ReadableStream()
+			} as unknown as Response;
+			const handle = loadWorker(async () => response);
+			const served = await handle(new Request(`${origin}/_app/immutable/workers/database-worker.js`));
+			expect(served?.status).toBe(status);
+			expect(served?.body).toBeNull();
+			expect(served?.headers.get('ETag')).toBe('"1"');
+			expect(served?.headers.get('Cross-Origin-Embedder-Policy')).toBe('require-corp');
+		}
+	);
+
 	it('passes an opaque redirect through, since a response with status 0 cannot be copied', async () => {
 		// `Response.error()` stands in for the opaque redirect a navigation gets: both have status 0.
 		const redirect = Response.error();

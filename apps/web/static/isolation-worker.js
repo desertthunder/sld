@@ -3,6 +3,10 @@
 // isolated. Cross-origin responses pass through unchanged, so a cross-origin image without CORS headers stays blocked.
 // TODO: unregister the worker where `credentialless` works, so a browser that gains it stops getting `require-corp`.
 
+// Statuses whose responses can't have a body. WebKit still gives the worker a body stream for them, such as for a
+// revalidated script answered 304, and a new response with that stream throws.
+const nullBodyStatuses = new Set([204, 205, 304]);
+
 async function isolated(request) {
 	const response = await fetch(request);
 	// Opaque redirects (status 0) can't be copied, and the browser follows them through this worker again.
@@ -13,7 +17,8 @@ async function isolated(request) {
 	const headers = new Headers(response.headers);
 	headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
 	headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-	return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+	const body = nullBodyStatuses.has(response.status) ? undefined : response.body;
+	return new Response(body, { status: response.status, statusText: response.statusText, headers });
 }
 
 addEventListener('install', () => skipWaiting());
