@@ -39,13 +39,34 @@ export async function migrate(
 	}
 }
 
-async function appliedTags(client: Client): Promise<Set<string>> {
+async function appliedTags(client: Pick<PGliteInterface, 'query'>): Promise<Set<string>> {
 	const table = await client.query<{ exists: boolean }>(
 		`select to_regclass('public.migrations') is not null as exists`
 	);
 	if (!table.rows[0]?.exists) return new Set();
 	const rows = await client.query<{ tag: string }>('select tag from migrations');
 	return new Set(rows.rows.map(({ tag }) => tag));
+}
+
+/**
+ * The tags of `migrations` that the database behind `client` has not applied, in order. It only reads, so a tab can
+ * check a database that another tab's worker opened and migrated with different code.
+ */
+export async function missingMigrations(
+	client: Pick<PGliteInterface, 'query'>,
+	migrations: readonly Migration[]
+): Promise<string[]> {
+	if (migrations.length === 0) return [];
+	const applied = await appliedTags(client);
+	return migrations.filter(({ tag }) => !applied.has(tag)).map(({ tag }) => tag);
+}
+
+/** The database lacks migrations this tab's code carries, because a tab with older code opened it. */
+export class OutdatedDatabaseError extends Error {
+	constructor(readonly missing: readonly string[]) {
+		super(`The database lacks migrations this tab needs: ${missing.join(', ')}`);
+		this.name = 'OutdatedDatabaseError';
+	}
 }
 
 /** Opens a client with `open` and migrates it, closing it again if a migration fails. */

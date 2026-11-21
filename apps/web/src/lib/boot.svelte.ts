@@ -1,8 +1,20 @@
 import { errorText } from '#lib/error-text.ts';
-import type { MigrationProgress } from '#lib/migrate.ts';
+import { OutdatedDatabaseError, type MigrationProgress } from '#lib/migrate.ts';
 
+/** `outdated` means another tab with older code holds the database, so this tab must not use it. */
 export type BootState =
-	{ status: 'opening'; migrations?: MigrationProgress } | { status: 'ready' } | { status: 'failed'; error: string };
+	| { status: 'opening'; migrations?: MigrationProgress }
+	| { status: 'ready' }
+	| { status: 'outdated' }
+	| { status: 'failed'; error: string };
+
+/** What the `outdated` state tells the person. */
+export const outdatedCopy = {
+	label: "can't open",
+	heading: 'sld was updated in another tab',
+	text: 'Close your other sld tabs and reload.',
+	action: 'Reload'
+} as const;
 
 export const boot: { state: BootState } = $state({ state: { status: 'opening' } });
 
@@ -25,7 +37,8 @@ export async function startBoot<T>(
 		boot.state = { status: 'ready' };
 		return database;
 	} catch (error) {
-		lost(error);
+		if (error instanceof OutdatedDatabaseError) boot.state = { status: 'outdated' };
+		else lost(error);
 		return undefined;
 	}
 }

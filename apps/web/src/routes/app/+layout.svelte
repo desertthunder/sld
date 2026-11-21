@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { boot, startBoot } from '#lib/boot.svelte.ts';
+	import { boot, outdatedCopy, startBoot } from '#lib/boot.svelte.ts';
 	import { isolate, type IsolationOutcome } from '#lib/cross-origin-isolation.ts';
 
 	let { children } = $props();
@@ -32,6 +32,13 @@
 	{@render children()}
 {:else if boot.state.status === 'opening'}
 	<p role="status">Opening your decks…</p>
+{:else if boot.state.status === 'outdated'}
+	<div role="alert">
+		<p>{outdatedCopy.label}</p>
+		<h1>{outdatedCopy.heading}</h1>
+		<p>{outdatedCopy.text}</p>
+		<button type="button" onclick={() => location.reload()}>{outdatedCopy.action}</button>
+	</div>
 {:else}
 	<p role="alert">Your decks could not be opened: {boot.state.error}</p>
 {/if}

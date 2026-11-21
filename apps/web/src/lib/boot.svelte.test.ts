@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { boot, startBoot } from '#lib/boot.svelte.ts';
+import { OutdatedDatabaseError } from '#lib/migrate.ts';
 
 describe('startBoot', () => {
 	it('is opening until the database opens, then ready', async () => {
@@ -26,6 +27,13 @@ describe('startBoot', () => {
 	it('records the error text when opening fails', async () => {
 		await expect(startBoot(() => Promise.reject(new Error('IndexedDB is unavailable')))).resolves.toBeUndefined();
 		expect(boot.state).toEqual({ status: 'failed', error: 'IndexedDB is unavailable' });
+	});
+
+	it('is outdated, not failed, when the database lacks a migration this tab carries', async () => {
+		await expect(
+			startBoot(() => Promise.reject(new OutdatedDatabaseError(['0001_notes'])))
+		).resolves.toBeUndefined();
+		expect(boot.state).toEqual({ status: 'outdated' });
 	});
 
 	it('records a failure reported after the database opened', async () => {

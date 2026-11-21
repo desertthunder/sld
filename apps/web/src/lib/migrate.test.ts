@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { migrations } from 'virtual:migrations';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { migrate, openMigrated, type Migration } from '#lib/migrate.ts';
+import { migrate, missingMigrations, openMigrated, type Migration } from '#lib/migrate.ts';
 import { openInWorker, type WorkerScope } from '#lib/open-in-worker.ts';
 import * as schema from '#lib/schema.ts';
 
@@ -113,6 +113,48 @@ describe('migrate', () => {
 		await expect(migrate(client, [create, notes, reused])).rejects.toThrow(`Migration ${notes.tag} failed`);
 		expect(await tableNames(client)).toEqual(['migrations', 'notes']);
 		expect(await appliedTags(client)).toEqual([create.tag, notes.tag]);
+	});
+});
+
+describe('missingMigrations', () => {
+	let client: PGlite;
+
+	beforeEach(() => {
+		client = new PGlite();
+	});
+
+	afterEach(async () => {
+		await client.close();
+	});
+
+	it('lists the migration a database one behind lacks, and changes nothing', async () => {
+		await migrate(client, [create, notes]);
+		await client.query(`insert into notes (body) values ('first slide')`);
+		const exec = vi.spyOn(client, 'exec');
+		const transaction = vi.spyOn(client, 'transaction');
+		expect(await missingMigrations(client, [create, notes, titles])).toEqual([titles.tag]);
+		expect(exec).not.toHaveBeenCalled();
+		expect(transaction).not.toHaveBeenCalled();
+		expect(await appliedTags(client)).toEqual([create.tag, notes.tag]);
+		const decks = await client.query('select * from notes');
+		expect(decks.rows).toEqual([{ id: 1, body: 'first slide' }]);
+	});
+
+	it('lists every migration for a database without the migrations table', async () => {
+		expect(await missingMigrations(client, [create, notes])).toEqual([create.tag, notes.tag]);
+		expect(await tableNames(client)).toEqual([]);
+	});
+
+	it('lists none for a database that has applied every migration, or more', async () => {
+		await migrate(client, [create, notes, titles]);
+		expect(await missingMigrations(client, [create, notes, titles])).toEqual([]);
+		expect(await missingMigrations(client, [create, notes])).toEqual([]);
+	});
+
+	it('does not query when there are no migrations to look for', async () => {
+		const query = vi.spyOn(client, 'query');
+		expect(await missingMigrations(client, [])).toEqual([]);
+		expect(query).not.toHaveBeenCalled();
 	});
 });
 
