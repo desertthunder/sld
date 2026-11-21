@@ -11,5 +11,14 @@
 <main>
 	<h1>{appName}</h1>
 	<p>{appSummary}</p>
-	<Slide markdown={sampleSlide} />
+	<div class="preview">
+		<Slide markdown={sampleSlide} />
+	</div>
 </main>
+
+<style>
+	.preview {
+		aspect-ratio: 16 / 9;
+		max-width: 960px;
+	}
+</style>

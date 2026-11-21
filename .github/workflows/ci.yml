@@ -73,6 +73,12 @@ jobs:
       - name: Web test
         if: steps.filter.outputs.web == 'true'
         run: pnpm --filter @sld/web test
+      - name: Install Chromium and WebKit for the web browser tests
+        if: steps.filter.outputs.web == 'true'
+        run: pnpm --filter @sld/web exec playwright install --with-deps chromium webkit
+      - name: Web browser test
+        if: steps.filter.outputs.web == 'true'
+        run: pnpm --filter @sld/web e2e
       - name: Web build
         if: steps.filter.outputs.web == 'true'
         run: pnpm --filter @sld/web build
