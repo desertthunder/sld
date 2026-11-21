@@ -19,3 +19,6 @@ apps/web/drizzle/
 # Written by release-please, in its own format
 CHANGELOG.md
 .release-please-manifest.json
+
+# Written by `pnpm --filter @sld/web schemes`, and checked by its `--check`
+apps/web/src/lib/schemes/

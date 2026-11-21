@@ -16,7 +16,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest --run",
 		"e2e": "playwright test",
-		"db:generate": "drizzle-kit generate"
+		"db:generate": "drizzle-kit generate",
+		"schemes": "node src/compile-schemes.ts"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.63.0",
