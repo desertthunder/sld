@@ -22,6 +22,7 @@ These choices are made. Changing one is a decision for Owais, recorded in Linear
 - SvelteKit with `adapter-static`. The app under `/app` renders on the client only, and `/` is prerendered at build time. There is no server, so nothing may need one.
 - PGlite holds the data. It runs in a Web Worker, stores to IndexedDB, and is shared between tabs through PGlite's multi-tab worker.
 - Drizzle defines the schema. Its own migrator needs Node, so migrations are bundled at build time and applied in the browser at startup. Never change a migration that has shipped: add a new one.
+- Migrations only add tables, or columns with defaults, because a tab running an older build can keep using a newer database. A rename, a drop or a required column needs a plan across two releases.
 - Sätteri parses markdown through its WebAssembly build, which uses shared memory. The site must stay cross-origin isolated: `apps/web/static/_headers` sends `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`, and Deploy refuses a build without them.
 - One row per slide. A slide's markdown is the only source for its content. A deck's full markdown exists only as import and export.
 - Colors come from Base16 schemes (tinted-theming) as the CSS variables `--base00` to `--base0F`. Slide and editor styles read those variables and hard-code no color.

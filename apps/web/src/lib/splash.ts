@@ -1,11 +1,11 @@
-import type { BootState } from '#lib/boot.svelte.ts';
+import { outdatedCopy, type BootState } from '#lib/boot.svelte.ts';
 import type { IsolationOutcome } from '#lib/cross-origin-isolation.ts';
 
 export type SplashAction = 'reload' | 'copy-error' | 'open-in-new-tab';
 
 /** What the splash shows for one state of startup. */
 export type SplashView = {
-	state: 'starting' | 'opening' | 'updating' | 'failed' | 'blocked';
+	state: 'starting' | 'opening' | 'updating' | 'failed' | 'blocked' | 'outdated';
 	label: string;
 	heading: string;
 	text: string;
@@ -55,9 +55,11 @@ const blocked: SplashView = {
 	actions: ['open-in-new-tab', 'reload']
 };
 
+const failureStates: ReadonlySet<SplashView['state']> = new Set(['failed', 'blocked', 'outdated']);
+
 /** Whether `view` is a failure, which shows at once and is announced as an alert. */
 export function isFailure(view: SplashView): boolean {
-	return view.state === 'failed' || view.state === 'blocked';
+	return failureStates.has(view.state);
 }
 
 /** Whether the splash shows `view` now, given whether `splashDelay` has passed since `/app` mounted. */
@@ -72,6 +74,15 @@ export function splashView(isolation: IsolationOutcome | 'checking', boot: BootS
 	switch (boot.status) {
 		case 'ready': {
 			return undefined;
+		}
+		case 'outdated': {
+			return {
+				state: 'outdated',
+				label: outdatedCopy.label,
+				heading: outdatedCopy.heading,
+				text: outdatedCopy.text,
+				actions: ['reload']
+			};
 		}
 		case 'failed': {
 			return {

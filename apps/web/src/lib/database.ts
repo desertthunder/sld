@@ -1,7 +1,14 @@
 import type { PGlite, PGliteInterface } from '@electric-sql/pglite';
 import { PGliteWorker } from '@electric-sql/pglite/worker';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
-import { migrationChannelName, type MigrationProgress } from '#lib/migrate.ts';
+import { migrations } from 'virtual:migrations';
+import {
+	migrationChannelName,
+	missingMigrations,
+	OutdatedDatabaseError,
+	type Migration,
+	type MigrationProgress
+} from '#lib/migrate.ts';
 
 export type Database = PgliteDatabase;
 
@@ -23,7 +30,9 @@ const shared: { opening?: Promise<Database> } = {};
 /**
  * Opens the deck database in a shared worker client. Every tab starts its own worker, and PGlite elects one tab's
  * worker to hold the database and serves the other tabs through it. That worker migrates the database before any tab
- * can use it, and `onProgress` hears how far it has got. `onLost` hears of a failure after it opened.
+ * can use it, and `onProgress` hears how far it has got. `onLost` hears of a failure after it opened. When the elected
+ * worker runs older code, so the database lacks one of this build's migrations, it rejects with an
+ * `OutdatedDatabaseError` without having written to it.
  */
 export async function openDatabase(
 	onLost: (error: unknown) => void = () => {},
@@ -33,6 +42,7 @@ export async function openDatabase(
 	progress.addEventListener('message', (event: MessageEvent<MigrationProgress>) => onProgress(event.data));
 	shared.opening ??= connect(
 		new Worker(new URL('database-worker.ts', import.meta.url), { type: 'module', name: 'sld-database' }),
+		migrations,
 		(error) => {
 			shared.opening = undefined;
 			onLost(error);
@@ -51,9 +61,14 @@ export async function openDatabase(
 /**
  * Connects through `worker` once the database is open, and rejects if the worker fails to load or to open it. A later
  * failure, such as this tab's worker taking over from a closed tab and failing to open the database, goes to `onLost`.
- * Either way the worker stops, so another tab's worker can take over.
+ * Either way the worker stops, so another tab's worker can take over. It also rejects, with an `OutdatedDatabaseError`,
+ * when the database lacks any of `migrations`.
  */
-export async function connect(worker: Worker, onLost: (error: unknown) => void = () => {}): Promise<Database> {
+export async function connect(
+	worker: Worker,
+	migrations: readonly Migration[],
+	onLost: (error: unknown) => void = () => {}
+): Promise<Database> {
 	const { promise: failed, reject: rejectOpening } = Promise.withResolvers<never>();
 	const state: { client?: PGliteWorker; isOpen: boolean; isStopped: boolean } = { isOpen: false, isStopped: false };
 	const fail = (error: unknown) => {
@@ -76,6 +91,18 @@ export async function connect(worker: Worker, onLost: (error: unknown) => void =
 	});
 	state.client = await Promise.race([PGliteWorker.create(worker, { id: electionId }), failed]);
 	await Promise.race([state.client.waitReady, failed]);
+	// The elected worker migrates with its own code, which may be older than this tab's after a deploy.
+	let missing: string[];
+	try {
+		missing = await Promise.race([missingMigrations(state.client, migrations), failed]);
+	} catch (error) {
+		fail(error);
+		return failed;
+	}
+	if (missing.length > 0) {
+		fail(new OutdatedDatabaseError(missing));
+		return failed;
+	}
 	state.isOpen = true;
 	return createDatabase(state.client);
 }

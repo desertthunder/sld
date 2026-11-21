@@ -87,23 +87,34 @@ describe('splashView', () => {
 	it('leaves once the database is ready', () => {
 		expect(splashView('isolated', { status: 'ready' })).toBeUndefined();
 	});
+
+	it('shows the outdated tab state with its approved copy and Reload', () => {
+		expect(splashView('isolated', { status: 'outdated' })).toEqual({
+			state: 'outdated',
+			label: "can't open",
+			heading: 'sld was updated in another tab',
+			text: 'Close your other sld tabs and reload.',
+			actions: ['reload']
+		});
+	});
 });
 
 describe('isFailure', () => {
-	it("is true for Failed and Can't run only", () => {
+	it("is true for Failed, Can't run and the outdated tab only", () => {
 		const failures = (
 			[
 				['checking', opening],
 				['unavailable', opening],
 				['isolated', opening],
 				['isolated', { status: 'opening', migrations: { applied: 1, total: 2 } }],
-				['isolated', { status: 'failed', error: 'x' }]
+				['isolated', { status: 'failed', error: 'x' }],
+				['isolated', { status: 'outdated' }]
 			] as const
 		).map(([isolation, boot]) => {
 			const view = splashView(isolation, boot);
 			return view && isFailure(view);
 		});
-		expect(failures).toEqual([false, true, false, false, true]);
+		expect(failures).toEqual([false, true, false, false, true, true]);
 	});
 });
 
