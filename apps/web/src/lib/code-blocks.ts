@@ -53,9 +53,11 @@ export async function codeBlockTree(
 ): Promise<Element> {
 	const source = code.endsWith('\n') ? code.slice(0, -1) : code;
 	let lines: Token[][] | undefined;
+	let label = language;
 	if (language) {
 		try {
-			const { knownLanguage } = await import('#lib/code-languages.ts');
+			const { knownLanguage, languageLabel } = await import('#lib/code-languages.ts');
+			label = languageLabel(language);
 			const id = knownLanguage(language);
 			if (id) {
 				const { highlightCode } = await import('#lib/code-highlight.ts');
@@ -87,7 +89,10 @@ export async function codeBlockTree(
 	if (lineNumbers) className.push('line-numbers');
 	if (hasHighlights) className.push('has-highlights');
 	const properties: Element['properties'] = { className };
-	if (language) properties.dataLanguage = language;
+	if (language) {
+		properties.dataLanguage = language;
+		properties.dataLabel = label;
+	}
 	if (lineNumbers) properties.style = `--line-digits: ${String(lines.length).length}`;
 	return {
 		type: 'element',

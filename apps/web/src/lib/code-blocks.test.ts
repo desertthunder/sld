@@ -9,7 +9,7 @@ describe('code blocks', () => {
 		const { html } = await renderSlide(lines('```ts {2}', 'let a = 1;', 'a += "b";', '```'));
 		expect(html).toBe(
 			lines(
-				'<pre class="code-block has-highlights" data-language="ts"><code><span class="line"><span class="code-keyword">let</span> a = <span class="code-constant">1</span>;</span>',
+				'<pre class="code-block has-highlights" data-language="ts" data-label="TypeScript"><code><span class="line"><span class="code-keyword">let</span> a = <span class="code-constant">1</span>;</span>',
 				'<span class="line highlighted">a += <span class="code-string">"b"</span>;</span></code></pre>',
 				''
 			)
@@ -29,23 +29,34 @@ describe('code blocks', () => {
 		const { html } = await renderSlide(lines('```klingon {1}', "Qapla'! <b>", '', '```'));
 		expect(html).toBe(
 			lines(
-				'<pre class="code-block has-highlights" data-language="klingon"><code><span class="line highlighted">Qapla\'! &lt;b&gt;</span>',
+				'<pre class="code-block has-highlights" data-language="klingon" data-label="klingon"><code><span class="line highlighted">Qapla\'! &lt;b&gt;</span>',
 				'<span class="line"></span></code></pre>',
 				''
 			)
 		);
 	});
 
+	it('label a block with its language as escaped text, never markup', async () => {
+		const { html } = await renderSlide(lines('```<b>"x"', 'a', '```'));
+		expect(html).toBe(
+			'<pre class="code-block" data-language="<b>&quot;x&quot;" data-label="<b>&quot;x&quot;"><code><span class="line">a</span></code></pre>\n'
+		);
+		const css = readFileSync(new URL('code-block.css', import.meta.url), 'utf8');
+		expect(css).toMatch(
+			/\[data-label\]::before \{[^}]*\tcontent: attr\(data-label\);[^}]*\tcolor: var\(--muted\);[^}]*\tfont-family: 'Mona Sans Variable'/
+		);
+	});
+
 	it('dim no line when the fence highlights only lines past the end', async () => {
 		const { html } = await renderSlide(lines('```ts {9}', 'let a;', 'let b;', '```'));
-		expect(html).toMatch(/^<pre class="code-block" data-language="ts">/);
+		expect(html).toMatch(/^<pre class="code-block" data-language="ts" data-label="TypeScript">/);
 		expect(html).not.toContain('highlighted');
 	});
 
 	it('read line ranges written against the language', async () => {
 		const { html } = await renderSlide(lines('```ts{2} title="a.ts"', 'let a;', 'let b;', '```'));
 		expect(html).toMatch(
-			/^<pre class="code-block has-highlights" data-language="ts"><code><span class="line"><span class="code-keyword">let<\/span>/
+			/^<pre class="code-block has-highlights" data-language="ts" data-label="TypeScript"><code><span class="line"><span class="code-keyword">let<\/span>/
 		);
 		expect(html).toContain('<span class="line highlighted"><span class="code-keyword">let</span> b;</span>');
 		const bare = await renderSlide(lines('```{1}', 'plain', '```'));
@@ -57,6 +68,17 @@ describe('code blocks', () => {
 	it('give an empty line the height of a line, so a blank line in code never collapses', () => {
 		const css = readFileSync(new URL('code-block.css', import.meta.url), 'utf8');
 		expect(css).toMatch(/\.line \{[^}]*\tdisplay: inline-block;[^}]*\tmin-height: 1lh;[^}]*\tvertical-align: top;/);
+	});
+
+	it('keep a gap above and below a block, band highlighted lines inset with rounded ends, and number lines apart from comments', () => {
+		const css = readFileSync(new URL('code-block.css', import.meta.url), 'utf8');
+		expect(css).toMatch(/pre\.code-block \{[^}]*\tmargin: 32px 0;/);
+		expect(css).toMatch(/\.line \{[^}]*\tborder-radius: 8px;/);
+		expect(css).toMatch(/pre\.code-block \{[^}]*\t--band-inset: 16px;/);
+		expect(css).toMatch(
+			/\.line\.highlighted \{\n\tbackground: color-mix\(in oklab, var\(--base02\) 70%, var\(--base01\)\);/
+		);
+		expect(css).toMatch(/\.line::before \{[^}]*\tcolor: var\(--code-line-number\);/);
 	});
 
 	it('show an indented block as plain text', async () => {
@@ -111,7 +133,7 @@ describe('code blocks', () => {
 			const fresh = await import('#lib/slide-render.ts');
 			const { html } = await fresh.renderSlide(lines('```ts {1}', 'let a;', '```'));
 			expect(html).toBe(
-				'<pre class="code-block has-highlights" data-language="ts"><code><span class="line highlighted">let a;</span></code></pre>\n'
+				'<pre class="code-block has-highlights" data-language="ts" data-label="TypeScript"><code><span class="line highlighted">let a;</span></code></pre>\n'
 			);
 		} finally {
 			vi.doUnmock('#lib/code-highlight.ts');

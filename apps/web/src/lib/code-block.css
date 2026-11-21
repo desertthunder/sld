@@ -5,10 +5,12 @@
  * overflow.
  */
 .slide pre.code-block {
+	--code-inline: 44px;
+	--band-inset: 16px;
 	position: relative;
 	overflow: hidden;
-	margin: 0;
-	padding: 36px 44px;
+	margin: 32px 0;
+	padding: 36px var(--code-inline);
 	border-radius: 16px;
 	background: var(--base01);
 	color: var(--code-plain);
@@ -23,13 +25,16 @@
 	font: inherit;
 }
 
-.slide pre.code-block[data-language]::before {
-	content: attr(data-language);
+/* The label is an attribute, never markup, so a fence's info string can't inject HTML. */
+.slide pre.code-block[data-label]::before {
+	content: attr(data-label);
 	position: absolute;
 	top: 10px;
 	right: 20px;
 	color: var(--muted);
+	font-family: 'Mona Sans Variable', system-ui, sans-serif;
 	font-size: 20px;
+	font-style: normal;
 	line-height: 1.5;
 }
 
@@ -38,9 +43,10 @@
 .slide pre.code-block .line {
 	display: inline-block;
 	box-sizing: border-box;
-	width: calc(100% + 88px);
-	margin-inline: -44px;
-	padding-inline: 44px;
+	width: calc(100% + 2 * (var(--code-inline) - var(--band-inset)));
+	margin-inline: calc(var(--band-inset) - var(--code-inline));
+	padding-inline: calc(var(--code-inline) - var(--band-inset));
+	border-radius: 8px;
 	min-height: 1.5em;
 	min-height: 1lh;
 	vertical-align: top;
@@ -51,22 +57,33 @@
 }
 
 .slide pre.code-block .line.highlighted {
-	background: var(--base02);
+	background: color-mix(in oklab, var(--base02) 70%, var(--base01));
+}
+
+/* A run of highlighted lines reads as one band, rounded only at its ends. */
+.slide pre.code-block .line.highlighted + .line.highlighted {
+	border-start-start-radius: 0;
+	border-start-end-radius: 0;
+}
+
+.slide pre.code-block .line.highlighted:has(+ .line.highlighted) {
+	border-end-start-radius: 0;
+	border-end-end-radius: 0;
 }
 
 /* The number sits outside the line's text, so tabs still stop where they would without it. */
 .slide pre.code-block.line-numbers .line {
 	position: relative;
-	padding-left: calc(44px + (var(--line-digits, 1) + 2) * 1ch);
+	padding-left: calc(var(--code-inline) - var(--band-inset) + (var(--line-digits, 1) + 2) * 1ch);
 }
 
 .slide pre.code-block.line-numbers .line::before {
 	content: counter(line);
 	counter-increment: line;
 	position: absolute;
-	left: 44px;
+	left: calc(var(--code-inline) - var(--band-inset));
 	width: calc(var(--line-digits, 1) * 1ch);
-	color: var(--code-comment);
+	color: var(--code-line-number);
 	text-align: right;
 	user-select: none;
 }

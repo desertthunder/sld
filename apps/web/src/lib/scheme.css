@@ -47,6 +47,7 @@
 	--code-tag: var(--base08);
 	--code-comment: color-mix(in oklab, var(--base03) 60%, var(--base06));
 	--code-plain: var(--base05);
+	--code-line-number: color-mix(in oklab, var(--base03) 60%, var(--base06));
 
 	color-scheme: dark;
 	background: var(--background);
@@ -86,6 +87,7 @@
 		--code-type: color-mix(in oklab, var(--base0A) 50%, var(--base07));
 		--code-tag: color-mix(in oklab, var(--base08) 45%, var(--base07));
 		--code-comment: color-mix(in oklab, var(--base03) 45%, var(--base07));
+		--code-line-number: color-mix(in oklab, var(--base03) 55%, var(--base07));
 
 		color-scheme: light;
 	}
