@@ -140,7 +140,16 @@ export function joinDeck({
 
 /** The frontmatter block a slide's markdown opens with, YAML or TOML, or undefined when it has none. */
 export function slideFrontmatter(slide: string): Frontmatter | undefined {
-	return blockAt(slide.split('\n'), 0)?.frontmatter;
+	return slideParts(slide).frontmatter;
+}
+
+/** A slide's frontmatter block, as `slideFrontmatter` reads it, and the markdown after the block. */
+export function slideParts(slide: string): { frontmatter: Frontmatter | undefined; body: string } {
+	const lines = slide.split('\n');
+	const block = blockAt(lines, 0);
+	return block
+		? { frontmatter: block.frontmatter, body: lines.slice(block.end + 1).join('\n') }
+		: { frontmatter: undefined, body: slide };
 }
 
 /**

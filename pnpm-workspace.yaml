@@ -1,3 +1,9 @@
 packages:
   - apps/*
   - tools/*
+
+# Sätteri's browser build is an optional dependency for the `wasm32` CPU, which pnpm skips by default.
+supportedArchitectures:
+  os: [current]
+  cpu: [current, wasm32]
+  libc: [current]
