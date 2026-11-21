@@ -60,6 +60,17 @@ describe('splitDeck', () => {
 		expect(splitDeck(lines('Heading', '---', '', 'Text.')).slides).toEqual(['Heading\n---\n\nText.']);
 	});
 
+	it('splits on --- right after a closing fence or an ATX heading, which take no setext underline', () => {
+		const code = lines('```js', 'x', '```');
+		expect(splitDeck(lines(code, '---', '# Two')).slides).toEqual([code, '# Two']);
+		expect(splitDeck(lines('# One', '---', '# Two')).slides).toEqual(['# One', '# Two']);
+		expect(splitDeck(lines('## One ##', '---', 'layout: center', '---', 'Two')).slides).toEqual([
+			'## One ##',
+			'---\nlayout: center\n---\nTwo'
+		]);
+		expect(splitDeck(lines('#hashtag', '---', 'Text.')).slides).toEqual(['#hashtag\n---\nText.']);
+	});
+
 	it('leaves a table separator row alone', () => {
 		const table = lines('| a | b |', '| --- | --- |', '| 1 | 2 |', '', 'a | b', '--- | ---', '1 | 2');
 		expect(splitDeck(table).slides).toEqual([table]);
@@ -172,6 +183,19 @@ describe('splitDeck', () => {
 		expect(splitDeck(yaml)).toEqual({ frontmatter: undefined, slides: ['Note: a: b\n---\n\n# One'] });
 		const slide = lines('+++', 'layout = center', '+++', '', '# Two');
 		expect(splitDeck(lines('# One', '', '---', slide)).slides).toEqual(['# One', slide]);
+	});
+
+	it('keeps a YAML block that parses but cannot be resolved as slide text', () => {
+		const alias = lines('---', 'key: *missing', '---', '', '# One');
+		expect(splitDeck(alias)).toEqual({ frontmatter: undefined, slides: ['key: *missing\n---\n\n# One'] });
+		expect(slideFrontmatter(alias)).toBeUndefined();
+		const anchors = ['a: &a [x, x, x, x, x, x, x, x, x, x]'];
+		for (const name of 'bcdefghi') {
+			const previous = String.fromCodePoint(name.codePointAt(0)! - 1);
+			anchors.push(`${name}: &${name} [${Array.from({ length: 10 }, () => `*${previous}`).join(', ')}]`);
+		}
+		const bomb = lines('# One', '', '---', ...anchors, '---', '', '# Two');
+		expect(splitDeck(bomb).slides).toEqual(['# One', lines(...anchors, '---', '', '# Two')]);
 	});
 
 	it('reads a YAML block that opens with a comment or heading as slide text', () => {
@@ -326,6 +350,20 @@ describe('joinDeck', () => {
 		),
 		'fenced ---': lines('```md', '---', '```', '', '---', '', '~~~', '', '---', '~~~', ''),
 		'setext heading and table': lines('Heading', '---', '', '| a |', '| --- |', '', '---', '', 'Two', ''),
+		'heading and fence before a separator': lines(
+			'# One',
+			'',
+			'---',
+			'',
+			'```',
+			'x',
+			'```',
+			'',
+			'---',
+			'',
+			'# Three',
+			''
+		),
 		'TOML deck frontmatter': lines('+++', 'title = "Talk"', 'aspect = "16:9"', '+++', '', '# One', ''),
 		'TOML deck frontmatter only': lines('+++', 'title = "Talk"', '+++', ''),
 		'TOML slide frontmatter': lines('# One', '', '---', '+++', 'layout = "center"', '+++', '', '# Two', ''),
@@ -391,6 +429,7 @@ describe('splitDeck and joinDeck on generated documents', () => {
 			'',
 			'  ',
 			'# Title',
+			'#tag',
 			'Some text.',
 			'key: value',
 			'Note: text',
@@ -419,6 +458,7 @@ describe('splitDeck and joinDeck on generated documents', () => {
 		['', '---', 'layout: center', '---', ''],
 		['---', 'title: Talk', '---'],
 		['```', '---', '```'],
+		['```', 'x', '```', '---', 'layout: center', '---'],
 		['+++', 'title = "Talk"', '+++'],
 		['', '---', '+++', 'layout = "center"', '+++', ''],
 		['+++', 'notes = """', '', '---', '', '"""', '+++'],

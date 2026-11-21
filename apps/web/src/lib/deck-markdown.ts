@@ -20,11 +20,12 @@ const delimiters: Record<FrontmatterFormat, string> = { yaml: '---', toml: '+++'
 // A YAML block opens with a key, so a heading or a comment above `key: value` prose keeps it slide text.
 const firstLines: Record<FrontmatterFormat, RegExp> = { yaml: /^[A-Za-z_][\w-]*\s*:(?:\s|$)/, toml: /^[^\s#]/ };
 const fenceOpener = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const atxHeading = /^ {0,3}#{1,6}(?:\s|$)/;
 
 /**
  * Splits a deck's markdown into slides. A separator is a line that is exactly `---`, outside fenced code, after a
- * blank line, another separator, a frontmatter block or the start of the document; a `---` right under text is a
- * setext heading.
+ * blank line, an ATX heading, a closing fence, another separator, a frontmatter block or the start of the document; a
+ * `---` right under paragraph text is a setext heading.
  *
  * A frontmatter block is YAML between `---` lines or TOML between `+++` lines that opens with a key and parses as a
  * mapping; a block that doesn't parse is slide text. A block on the first line is the deck's frontmatter. A YAML
@@ -51,7 +52,7 @@ export function splitDeck(markdown: string): SplitDeck {
 		if (fence) {
 			current.push(line);
 			if (isFenceClose(fence, line)) fence = undefined;
-			canSeparate = false;
+			canSeparate = fence === undefined;
 			continue;
 		}
 		const block = blockAt(lines, index);
@@ -70,7 +71,7 @@ export function splitDeck(markdown: string): SplitDeck {
 		} else {
 			fence = openFence(line);
 			current.push(line);
-			canSeparate = line.trim() === '';
+			canSeparate = fence === undefined && (line.trim() === '' || atxHeading.test(line));
 		}
 	}
 	slides.push(trimBlankLines(current));
@@ -151,16 +152,17 @@ function blockAt(lines: string[], start: number): { frontmatter: Frontmatter; en
 
 function parseMapping(format: FrontmatterFormat, raw: string): Record<string, unknown> | undefined {
 	let data: unknown;
-	if (format === 'yaml') {
-		const document = parseDocument(raw);
-		if (document.errors.length > 0) return undefined;
-		data = document.toJS();
-	} else {
-		try {
+	try {
+		if (format === 'yaml') {
+			const document = parseDocument(raw);
+			if (document.errors.length > 0) return undefined;
+			// Throws on an unresolved alias or too many alias expansions, which parsing alone doesn't report.
+			data = document.toJS();
+		} else {
 			data = parseToml(raw);
-		} catch {
-			return undefined;
 		}
+	} catch {
+		return undefined;
 	}
 	return typeof data === 'object' && data !== null && !Array.isArray(data)
 		? { ...(data as Record<string, unknown>) }
