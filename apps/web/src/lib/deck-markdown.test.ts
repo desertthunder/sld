@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joinDeck, splitDeck } from '#lib/deck-markdown.ts';
+import { deckFrontmatter, joinDeck, slideFrontmatter, splitDeck } from '#lib/deck-markdown.ts';
 
 const lines = (...rows: string[]) => rows.join('\n');
 
@@ -72,19 +72,31 @@ describe('splitDeck', () => {
 
 	it('reads CRLF and CR line endings as LF', () => {
 		expect(splitDeck('---\r\ntitle: Talk\r\n---\r\n\r\n# One\r\n\r\n---\r\n\r\n# Two\r\n')).toEqual({
-			frontmatter: 'title: Talk',
+			frontmatter: { format: 'yaml', raw: 'title: Talk', data: { title: 'Talk' }, title: 'Talk' },
 			slides: ['# One', '# Two']
 		});
+		expect(splitDeck('+++\r\ntitle = "Talk"\r\n+++\r\n\r\n# One\r\n').frontmatter?.raw).toBe('title = "Talk"');
 		expect(splitDeck('# One\r\r---\r\r# Two\r').slides).toEqual(['# One', '# Two']);
 	});
 
 	it('takes a YAML block at the top as the deck frontmatter', () => {
 		const yaml = lines('title: My talk', 'scheme: gruvbox-dark-medium', 'aspect: 16:9');
-		expect(splitDeck(lines('---', yaml, '---', '', '# One', ''))).toEqual({ frontmatter: yaml, slides: ['# One'] });
+		expect(splitDeck(lines('---', yaml, '---', '', '# One', ''))).toEqual({
+			frontmatter: {
+				format: 'yaml',
+				raw: yaml,
+				data: { title: 'My talk', scheme: 'gruvbox-dark-medium', aspect: '16:9' },
+				title: 'My talk',
+				scheme: 'gruvbox-dark-medium',
+				aspect: '16:9'
+			},
+			slides: ['# One']
+		});
 	});
 
 	it('reads a deck with only frontmatter as no slides', () => {
-		expect(splitDeck(lines('---', 'title: Empty', '---', ''))).toEqual({ frontmatter: 'title: Empty', slides: [] });
+		expect(splitDeck(lines('---', 'title: Empty', '---', '')).slides).toEqual([]);
+		expect(splitDeck(lines('+++', 'title = "Empty"', '+++', '')).slides).toEqual([]);
 	});
 
 	it('reads a --- at the top that opens no YAML block as a separator', () => {
@@ -105,10 +117,7 @@ describe('splitDeck', () => {
 
 	it('gives the first slide frontmatter only after a separator, since the top block is the deck', () => {
 		const first = lines('---', 'layout: cover', '---', '', '# One');
-		expect(splitDeck(lines('---', 'title: Talk', '---', '', first))).toEqual({
-			frontmatter: 'title: Talk',
-			slides: [first]
-		});
+		expect(splitDeck(lines('---', 'title: Talk', '---', '', first)).slides).toEqual([first]);
 		expect(splitDeck(lines('---', '', first))).toEqual({ frontmatter: undefined, slides: [first] });
 	});
 
@@ -128,6 +137,150 @@ describe('splitDeck', () => {
 	it('reads --- right after a separator as another separator', () => {
 		expect(splitDeck(lines('# One', '', '---', '---', '', '# Two')).slides).toEqual(['# One', '', '# Two']);
 	});
+
+	it('takes a TOML block at the top as the deck frontmatter, keeping unknown keys', () => {
+		const toml = lines('title = "My talk"', 'scheme = "ocean"', 'aspect = "16:9"', '', '[speaker]', 'name = "Ada"');
+		expect(splitDeck(lines('+++', toml, '+++', '', '# One', ''))).toEqual({
+			frontmatter: {
+				format: 'toml',
+				raw: toml,
+				data: { title: 'My talk', scheme: 'ocean', aspect: '16:9', speaker: { name: 'Ada' } },
+				title: 'My talk',
+				scheme: 'ocean',
+				aspect: '16:9'
+			},
+			slides: ['# One']
+		});
+	});
+
+	it('types a deck field only when it holds a string, and keeps every value in data', () => {
+		const { frontmatter } = splitDeck(lines('---', 'title: 2024', 'scheme: ocean', 'extra: [1, 2]', '---', ''));
+		expect(frontmatter).toEqual({
+			format: 'yaml',
+			raw: 'title: 2024\nscheme: ocean\nextra: [1, 2]',
+			data: { title: 2024, scheme: 'ocean', extra: [1, 2] },
+			scheme: 'ocean'
+		});
+	});
+
+	it('keeps a malformed block as slide text, line for line', () => {
+		const toml = lines('+++', 'title = "unclosed', '+++', '', '# One');
+		expect(splitDeck(toml)).toEqual({ frontmatter: undefined, slides: [toml] });
+		const prose = lines('+++', 'Just a line.', '+++', '', '# One');
+		expect(splitDeck(prose)).toEqual({ frontmatter: undefined, slides: [prose] });
+		const yaml = lines('---', 'Note: a: b', '---', '', '# One');
+		expect(splitDeck(yaml)).toEqual({ frontmatter: undefined, slides: ['Note: a: b\n---\n\n# One'] });
+		const slide = lines('+++', 'layout = center', '+++', '', '# Two');
+		expect(splitDeck(lines('# One', '', '---', slide)).slides).toEqual(['# One', slide]);
+	});
+
+	it('reads a YAML block that opens with a comment or heading as slide text', () => {
+		expect(splitDeck(lines('# One', '', '---', '# Two', 'Note: text', '---', '', 'More.')).slides).toEqual([
+			'# One',
+			'# Two\nNote: text\n---\n\nMore.'
+		]);
+	});
+
+	it('keeps a TOML block on the first line of a slide in that slide', () => {
+		const second = lines('+++', 'layout = "center"', 'class = ["big"]', '+++', '', '# Two');
+		expect(splitDeck(lines('# One', '', '---', second, '', '---', '', '# Three')).slides).toEqual([
+			'# One',
+			second,
+			'# Three'
+		]);
+		expect(splitDeck(lines('# One', '', '---', '', '', second)).slides).toEqual(['# One', second]);
+	});
+
+	it('reads a --- inside a slide TOML block as part of the block, not a separator', () => {
+		const second = lines('+++', 'notes = """', '', '---', '', '"""', '+++', '', '# Two');
+		expect(splitDeck(lines('# One', '', '---', second)).slides).toEqual(['# One', second]);
+	});
+
+	it('reads a --- right after a TOML block as a separator', () => {
+		expect(
+			splitDeck(lines('# One', '', '---', '+++', 'layout = "blank"', '+++', '---', '', '# Three')).slides
+		).toEqual(['# One', '+++\nlayout = "blank"\n+++', '# Three']);
+	});
+
+	it('mixes YAML and TOML frontmatter across the deck and its slides', () => {
+		const yamlSlide = lines('---', 'layout: center', '---', '', '# Two');
+		const tomlSlide = lines('+++', 'layout = "cover"', '+++', '', '# Three');
+		const deck = splitDeck(lines('+++', 'title = "Talk"', '+++', '', '# One', '', yamlSlide, '', '---', tomlSlide));
+		expect(deck.frontmatter?.format).toBe('toml');
+		expect(deck.slides).toEqual(['# One', yamlSlide, tomlSlide]);
+	});
+
+	it('ignores +++ inside fenced code', () => {
+		const slide = lines('```toml', '+++', 'title = "x"', '+++', '```');
+		expect(splitDeck(lines('# One', '', '---', slide)).slides).toEqual(['# One', slide]);
+		const top = lines('~~~', '+++', 'a = 1', '+++', '~~~');
+		expect(splitDeck(top)).toEqual({ frontmatter: undefined, slides: [top] });
+	});
+
+	it('reads a +++ block in the middle of a slide as slide text', () => {
+		const slide = lines('# One', '', '+++', 'a = 1', '+++', '', 'Text.');
+		expect(splitDeck(slide).slides).toEqual([slide]);
+		expect(slideFrontmatter(slide)).toBeUndefined();
+	});
+
+	it('reads +++ lines that hold no TOML block as slide text', () => {
+		const slide = lines('+++', '', 'a = 1', '+++', '', '+++', '# heading', '+++', '', '++++', 'a = 1', '++++');
+		expect(splitDeck(slide)).toEqual({ frontmatter: undefined, slides: [slide] });
+	});
+});
+
+describe('slideFrontmatter', () => {
+	it('parses the YAML or TOML block a slide opens with', () => {
+		expect(slideFrontmatter(lines('---', 'layout: center', '---', '', '# Two'))).toEqual({
+			format: 'yaml',
+			raw: 'layout: center',
+			data: { layout: 'center' }
+		});
+		expect(slideFrontmatter(lines('+++', 'layout = "center"', 'step = 2', '+++', '', '# Two'))).toEqual({
+			format: 'toml',
+			raw: 'layout = "center"\nstep = 2',
+			data: { layout: 'center', step: 2 }
+		});
+	});
+
+	it('finds nothing in a slide with no frontmatter or a malformed block', () => {
+		expect(slideFrontmatter('# Two')).toBeUndefined();
+		expect(slideFrontmatter('')).toBeUndefined();
+		expect(slideFrontmatter(lines('+++', 'layout =', '+++'))).toBeUndefined();
+	});
+});
+
+describe('deckFrontmatter', () => {
+	it('writes fields as TOML between +++ lines', () => {
+		const frontmatter = deckFrontmatter({
+			title: 'Talk',
+			scheme: 'ocean',
+			aspect: '16:9',
+			speaker: { name: 'Ada' }
+		});
+		const raw = lines('title = "Talk"', 'scheme = "ocean"', 'aspect = "16:9"', '', '[speaker]', 'name = "Ada"');
+		expect(frontmatter).toEqual({
+			format: 'toml',
+			raw,
+			data: { title: 'Talk', scheme: 'ocean', aspect: '16:9', speaker: { name: 'Ada' } },
+			title: 'Talk',
+			scheme: 'ocean',
+			aspect: '16:9'
+		});
+		expect(joinDeck({ frontmatter, slides: ['# One'] })).toBe(lines('+++', raw, '+++', '', '# One', ''));
+	});
+
+	it('gives no frontmatter for no fields, leaving out undefined and null', () => {
+		expect(deckFrontmatter({})).toBeUndefined();
+		// eslint-disable-next-line unicorn/no-null -- fields copied from parsed YAML can hold null, which TOML can't write
+		expect(deckFrontmatter({ title: undefined, scheme: null })).toBeUndefined();
+	});
+
+	it('writes frontmatter that splitDeck reads back, even when a value holds delimiter lines', () => {
+		const frontmatter = deckFrontmatter({ title: 'a\n+++\n---\nb', 'odd "key"': 1 });
+		const deck = { frontmatter, slides: ['# One'] };
+		expect(splitDeck(joinDeck(deck))).toEqual(deck);
+	});
 });
 
 describe('joinDeck', () => {
@@ -138,6 +291,15 @@ describe('joinDeck', () => {
 	it('puts a separator before the first slide when its frontmatter would read as the deck', () => {
 		const first = lines('---', 'layout: cover', '---', '', '# One');
 		expect(joinDeck({ frontmatter: undefined, slides: [first] })).toBe(lines('---', '', first, ''));
+		const toml = lines('+++', 'layout = "cover"', '+++', '', '# One');
+		expect(joinDeck({ frontmatter: undefined, slides: [toml] })).toBe(lines('---', toml, ''));
+	});
+
+	it('writes each frontmatter block in the format it came in', () => {
+		const markdown = lines('---', 'title: Talk', '---', '', '# One', '', '---', '+++', 'step = 1', '+++', '');
+		expect(joinDeck(splitDeck(markdown))).toBe(markdown);
+		const toml = { format: 'toml', raw: 'title = "Talk"' } as const;
+		expect(joinDeck({ frontmatter: toml, slides: [] })).toBe(lines('+++', 'title = "Talk"', '+++', ''));
 	});
 
 	const normalized: Record<string, string> = {
@@ -163,7 +325,56 @@ describe('joinDeck', () => {
 			''
 		),
 		'fenced ---': lines('```md', '---', '```', '', '---', '', '~~~', '', '---', '~~~', ''),
-		'setext heading and table': lines('Heading', '---', '', '| a |', '| --- |', '', '---', '', 'Two', '')
+		'setext heading and table': lines('Heading', '---', '', '| a |', '| --- |', '', '---', '', 'Two', ''),
+		'TOML deck frontmatter': lines('+++', 'title = "Talk"', 'aspect = "16:9"', '+++', '', '# One', ''),
+		'TOML deck frontmatter only': lines('+++', 'title = "Talk"', '+++', ''),
+		'TOML slide frontmatter': lines('# One', '', '---', '+++', 'layout = "center"', '+++', '', '# Two', ''),
+		'TOML frontmatter on the first slide': lines('---', '+++', 'layout = "cover"', '+++', '', '# One', ''),
+		'TOML deck and first slide frontmatter': lines(
+			'+++',
+			'title = "Talk"',
+			'+++',
+			'',
+			'+++',
+			'layout = "cover"',
+			'+++',
+			'',
+			'# One',
+			''
+		),
+		'mixed YAML and TOML': lines(
+			'+++',
+			'title = "Talk"',
+			'+++',
+			'',
+			'---',
+			'layout: cover',
+			'---',
+			'',
+			'# One',
+			'',
+			'---',
+			'+++',
+			'layout = "center"',
+			'+++',
+			'',
+			'# Two',
+			''
+		),
+		'fenced +++ and stray +++': lines(
+			'```toml',
+			'+++',
+			'a = 1',
+			'+++',
+			'```',
+			'',
+			'---',
+			'',
+			'+++',
+			'Text.',
+			'+++',
+			''
+		)
 	};
 
 	for (const [name, markdown] of Object.entries(normalized)) {
@@ -195,13 +406,24 @@ describe('splitDeck and joinDeck on generated documents', () => {
 			'----',
 			'***',
 			'| a | b |',
-			'| --- | --- |'
+			'| --- | --- |',
+			'+++',
+			'key = "value"',
+			'[table]',
+			'"""',
+			'++++',
+			'title = "unclosed'
 		].map((line) => [line]),
 		['', '---', ''],
 		['', '---', ''],
 		['', '---', 'layout: center', '---', ''],
 		['---', 'title: Talk', '---'],
-		['```', '---', '```']
+		['```', '---', '```'],
+		['+++', 'title = "Talk"', '+++'],
+		['', '---', '+++', 'layout = "center"', '+++', ''],
+		['+++', 'notes = """', '', '---', '', '"""', '+++'],
+		['```toml', '+++', 'a = 1', '+++', '```'],
+		['+++', 'Note: not TOML', '+++']
 	];
 	let seed = 9;
 	const random = () => {
