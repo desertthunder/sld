@@ -43,8 +43,7 @@ describe('renderSlide', () => {
 			</tr>
 			</tbody>
 			</table>
-			<pre><code class="language-ts">const deck = splitDeck(markdown);
-			</code></pre>
+			<pre class="code-block" data-language="ts"><code><span class="line"><span class="code-keyword">const</span> deck = <span class="code-function">splitDeck</span>(markdown);</span></code></pre>
 			<p><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22160%22%20height%3D%2290%22%3E%3Crect%20width%3D%22160%22%20height%3D%2290%22%20rx%3D%228%22%20fill-opacity%3D%22.25%22%2F%3E%3C%2Fsvg%3E" alt="A 16:9 frame"></p>
 			"
 		`);

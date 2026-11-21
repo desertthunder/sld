@@ -1,0 +1,96 @@
+/*
+ * Code blocks on a slide, in the stage's pixels. Token colors are the scheme's `--code-<kind>` variables, so a new
+ * scheme recolors code without highlighting it again.
+ * TODO: shrink code that overflows its block down to 20px, then clip it and flag the slide, once the stage measures
+ * overflow.
+ */
+.slide pre.code-block {
+	position: relative;
+	overflow: hidden;
+	margin: 0;
+	padding: 36px 44px;
+	border-radius: 16px;
+	background: var(--base01);
+	color: var(--code-plain);
+	font-family: 'Monaspace Neon', ui-monospace, monospace;
+	font-size: 30px;
+	line-height: 1.5;
+	tab-size: 4;
+	counter-reset: line;
+}
+
+.slide pre.code-block code {
+	font: inherit;
+}
+
+.slide pre.code-block[data-language]::before {
+	content: attr(data-language);
+	position: absolute;
+	top: 10px;
+	right: 20px;
+	color: var(--muted);
+	font-size: 20px;
+	line-height: 1.5;
+}
+
+.slide pre.code-block .line {
+	display: inline-block;
+	box-sizing: border-box;
+	width: calc(100% + 88px);
+	margin-inline: -44px;
+	padding-inline: 44px;
+}
+
+.slide pre.code-block.has-highlights .line:not(.highlighted) {
+	opacity: 0.42;
+}
+
+.slide pre.code-block .line.highlighted {
+	background: var(--base02);
+}
+
+/* The number sits outside the line's text, so tabs still stop where they would without it. */
+.slide pre.code-block.line-numbers .line {
+	position: relative;
+	padding-left: calc(44px + (var(--line-digits, 1) + 2) * 1ch);
+}
+
+.slide pre.code-block.line-numbers .line::before {
+	content: counter(line);
+	counter-increment: line;
+	position: absolute;
+	left: 44px;
+	width: calc(var(--line-digits, 1) * 1ch);
+	color: var(--code-comment);
+	text-align: right;
+	user-select: none;
+}
+
+.slide pre.code-block .code-keyword {
+	color: var(--code-keyword);
+}
+
+.slide pre.code-block .code-string {
+	color: var(--code-string);
+}
+
+.slide pre.code-block .code-constant {
+	color: var(--code-constant);
+}
+
+.slide pre.code-block .code-function {
+	color: var(--code-function);
+}
+
+.slide pre.code-block .code-type {
+	color: var(--code-type);
+}
+
+.slide pre.code-block .code-escape {
+	color: var(--code-escape);
+}
+
+.slide pre.code-block .code-comment {
+	color: var(--code-comment);
+	font-style: italic;
+}

@@ -8,6 +8,8 @@ import {
 	slideRoles,
 	slots,
 	strongestForeground,
+	tokenRoles,
+	tokenSlots,
 	type Palette
 } from '#lib/color-roles.ts';
 
@@ -209,5 +211,50 @@ describe('roles', () => {
 		const whiteTop = { ...defaultLight, base07: '#ffffff', base0D: '#3465a4' };
 		expect(roleCss(appRoles(whiteTop).primary)).toBe('var(--base0D)');
 		expect(roleCss(appRoles(whiteTop).onPrimary)).toBe('var(--base07)');
+	});
+});
+
+describe('tokenRoles', () => {
+	it('keeps the Base16 slots of Default Dark that reach 4.5:1, and mixes its comments toward base07', () => {
+		expect(css(tokenRoles(defaultDark))).toMatchInlineSnapshot(`
+			{
+			  "comment": "color-mix(in oklab, var(--base03) 60%, var(--base07))",
+			  "constant": "var(--base09)",
+			  "escape": "var(--base0C)",
+			  "function": "var(--base0D)",
+			  "keyword": "var(--base0E)",
+			  "plain": "var(--base05)",
+			  "string": "var(--base0B)",
+			  "type": "var(--base0A)",
+			}
+		`);
+	});
+
+	it('darkens the token colors of Default Light toward base07 until each reaches 4.5:1', () => {
+		expect(css(tokenRoles(defaultLight))).toMatchInlineSnapshot(`
+			{
+			  "comment": "color-mix(in oklab, var(--base03) 50%, var(--base07))",
+			  "constant": "color-mix(in oklab, var(--base09) 60%, var(--base07))",
+			  "escape": "color-mix(in oklab, var(--base0C) 50%, var(--base07))",
+			  "function": "color-mix(in oklab, var(--base0D) 55%, var(--base07))",
+			  "keyword": "color-mix(in oklab, var(--base0E) 65%, var(--base07))",
+			  "plain": "var(--base05)",
+			  "string": "color-mix(in oklab, var(--base0B) 55%, var(--base07))",
+			  "type": "color-mix(in oklab, var(--base0A) 45%, var(--base07))",
+			}
+		`);
+	});
+
+	it('gives every kind a color that reaches 4.5:1 against base00 and base01, or the strongest foreground', () => {
+		for (const colors of [defaultDark, defaultLight, tango]) {
+			const top = strongestForeground(colors);
+			const roles = Object.entries(tokenRoles(colors));
+			for (const [kind, role] of roles) {
+				const worst = Math.min(contrast(role.hex, colors.base00), contrast(role.hex, colors.base01));
+				if (role.short) expect(role.slot, kind).toBe(top);
+				else expect(worst, kind).toBeGreaterThanOrEqual(4.5);
+				expect([tokenSlots[kind as keyof typeof tokenSlots], top], kind).toContain(role.slot);
+			}
+		}
 	});
 });

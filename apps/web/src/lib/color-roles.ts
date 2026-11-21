@@ -48,6 +48,22 @@ export type AppRoles = Record<
 	Role
 >;
 
+/** The Base16 slot each kind of code token takes, after the Base16 styling guide. base08 stays unused until diffs. */
+export const tokenSlots = {
+	keyword: '0E',
+	string: '0B',
+	constant: '09',
+	function: '0D',
+	type: '0A',
+	escape: '0C',
+	comment: '03',
+	plain: '05'
+} as const satisfies Record<string, Slot>;
+
+export type TokenKind = keyof typeof tokenSlots;
+
+export type TokenRoles = Record<TokenKind, Role>;
+
 /** WCAG contrast for body text. */
 export const textFloor = 4.5;
 /** WCAG contrast for large text and interface parts, which the accent is held to. */
@@ -189,6 +205,14 @@ export function appRoles(palette: Palette, slide: SlideRoles = slideRoles(palett
 		onPrimary: plain(palette, onPrimary),
 		danger: guard(palette, ['08'], textFloor, strongestForeground(palette))
 	};
+}
+
+/** The colors code tokens take: each token's slot, mixed toward the strongest foreground until it reaches 4.5:1. */
+export function tokenRoles(palette: Palette): TokenRoles {
+	const top = strongestForeground(palette);
+	return Object.fromEntries(
+		Object.entries(tokenSlots).map(([kind, slot]) => [kind, guard(palette, [slot], textFloor, top)])
+	) as TokenRoles;
 }
 
 /** A role as CSS: `var(--baseNN)`, or `color-mix(in oklab, ...)` of two of them. */

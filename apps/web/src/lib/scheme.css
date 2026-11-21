@@ -38,6 +38,15 @@
 	--rule: var(--base08);
 	--shadow: color-mix(in oklab, var(--base00) 60%, transparent);
 
+	--code-keyword: var(--base0E);
+	--code-string: var(--base0B);
+	--code-constant: var(--base09);
+	--code-function: var(--base0D);
+	--code-type: var(--base0A);
+	--code-escape: var(--base0C);
+	--code-comment: color-mix(in oklab, var(--base03) 60%, var(--base06));
+	--code-plain: var(--base05);
+
 	color-scheme: dark;
 	background: var(--background);
 	color: var(--text);
@@ -68,6 +77,13 @@
 		--accent: color-mix(in oklab, var(--base0E) 65%, var(--base07));
 		--rule: var(--base09);
 		--shadow: color-mix(in oklab, var(--base07) 18%, transparent);
+
+		--code-keyword: color-mix(in oklab, var(--base0E) 45%, var(--base07));
+		--code-string: color-mix(in oklab, var(--base0B) 45%, var(--base07));
+		--code-constant: color-mix(in oklab, var(--base09) 60%, var(--base07));
+		--code-function: color-mix(in oklab, var(--base0D) 80%, var(--base07));
+		--code-type: color-mix(in oklab, var(--base0A) 50%, var(--base07));
+		--code-comment: color-mix(in oklab, var(--base03) 45%, var(--base07));
 
 		color-scheme: light;
 	}

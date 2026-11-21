@@ -1,10 +1,12 @@
 <script lang="ts">
+	import '#lib/code-block.css';
 	import { errorText } from '#lib/error-text.ts';
+	import type { SlideOptions } from '#lib/slide-plugins.ts';
 	import { RendererLoadError, renderSlide } from '#lib/slide-render.ts';
 
-	let { markdown }: { markdown: string } = $props();
+	let { markdown, lineNumbers = false }: { markdown: string } & Partial<SlideOptions> = $props();
 
-	const slide = $derived(renderSlide(markdown));
+	const slide = $derived(renderSlide(markdown, { lineNumbers }));
 </script>
 
 {#await slide}

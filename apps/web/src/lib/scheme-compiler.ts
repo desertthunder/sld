@@ -4,9 +4,11 @@ import {
 	roleCss,
 	slideRoles,
 	slots,
+	tokenRoles,
 	type AppRoles,
 	type Palette,
-	type SlideRoles
+	type SlideRoles,
+	type TokenRoles
 } from '#lib/color-roles.ts';
 
 export type Variant = 'dark' | 'light';
@@ -23,6 +25,8 @@ export type Scheme = {
 	lowContrast: boolean;
 	roles: Record<keyof SlideRoles, string>;
 	appRoles: Record<keyof AppRoles, string>;
+	/** The colors of code tokens, which `code-highlight.ts` names in its classes. */
+	tokens: Record<keyof TokenRoles, string>;
 };
 
 export type SchemeFile = { source: string; commit: string; schemes: Scheme[] };
@@ -78,7 +82,8 @@ export function compileScheme(slug: string, yamlText: string): Scheme {
 		colors,
 		lowContrast: slide.body.short === true,
 		roles: cssRoles(slide),
-		appRoles: cssRoles(appRoles(colors, slide))
+		appRoles: cssRoles(appRoles(colors, slide)),
+		tokens: cssRoles(tokenRoles(colors))
 	};
 }
 
