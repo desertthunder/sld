@@ -181,6 +181,8 @@
 		color: var(--heading);
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
+		max-height: 220px;
+		overflow: auto;
 	}
 
 	.bar {

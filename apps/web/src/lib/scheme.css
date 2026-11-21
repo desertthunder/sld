@@ -1,8 +1,14 @@
 /*
  * The default Base16 schemes, Oxocarbon Dark and Oxocarbon Light, and the color roles the app reads.
+ * They apply only while the `/app` layout's `.scheme` wrapper is on the page: SvelteKit adds this stylesheet to `/` too
+ * when it preloads `/app`, and keeps it after navigating back.
  * TODO: let people pick a scheme, and load its colors in place of these defaults.
  */
-:root {
+.scheme {
+	display: contents;
+}
+
+:root:has(.scheme) {
 	--base00: #161616;
 	--base01: #262626;
 	--base02: #393939;
@@ -38,7 +44,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-	:root {
+	:root:has(.scheme) {
 		--base00: #f2f4f8;
 		--base01: #dde1e6;
 		--base02: #bec6cf;

@@ -29,8 +29,10 @@
 	});
 </script>
 
-{#if !view}
-	{@render children()}
-{:else if shouldShowSplash(view, delay.hasPassed)}
-	<Splash {view} />
-{/if}
+<div class="scheme">
+	{#if !view}
+		{@render children()}
+	{:else if shouldShowSplash(view, delay.hasPassed)}
+		<Splash {view} />
+	{/if}
+</div>
