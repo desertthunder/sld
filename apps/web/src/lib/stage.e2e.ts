@@ -192,11 +192,11 @@ test('a slide taller than the stage is clipped and flagged as overflowing', asyn
 	browserName,
 	playwright
 }) => {
+	// A frame taller than the stage leaves a bar under it, so only the stage itself can clip the slide there.
 	const { page, close } = await showSlide(
 		{ browser, browserName, firefox: playwright.firefox },
-		{ width: 640, height: 360, deviceScaleFactor: 1 }
+		{ width: 640, height: 720, deviceScaleFactor: 1 }
 	);
-	await page.setViewportSize({ width: 640, height: 720 });
 	const frame = page.locator('.frame');
 	const article = page.locator('article.slide');
 	const isTallAt = (y: number) => page.evaluate((y) => document.elementFromPoint(320, y)?.id === 'tall', y);
@@ -206,10 +206,23 @@ test('a slide taller than the stage is clipped and flagged as overflowing', asyn
 
 	await article.evaluate((slide) => slide.insertAdjacentHTML('beforeend', '<div id="tall" style="height: 1200px">'));
 	await expect(frame).toHaveAttribute('data-overflowing', 'true');
-	expect(await isTallAt(300)).toBe(true);
-	expect(await isTallAt(370)).toBe(false);
+	expect(await isTallAt(530)).toBe(true);
+	expect(await isTallAt(550)).toBe(false);
 
 	await page.locator('#tall').evaluate((tall) => tall.remove());
 	await expect(frame).toHaveAttribute('data-overflowing', 'false');
 	await close();
+});
+
+test('a slide that fits is not flagged for the margin under its last block', async ({ page }) => {
+	await page.goto('/app');
+	const article = page.locator('article.slide');
+	await expect(article).toBeVisible({ timeout: 30_000 });
+
+	// 952 px fills the stage between the slide's padding, and the list's own bottom margin would push it 32 px past.
+	await article.evaluate(
+		(slide) => (slide.innerHTML = '<ul style="margin-top: 0"><li style="height: 952px"></li></ul>')
+	);
+	await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
+	expect(await page.locator('.content').evaluate((content) => content.clientHeight)).toBe(1080);
 });

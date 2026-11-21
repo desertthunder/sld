@@ -36,4 +36,9 @@
 		padding: 64px 96px;
 		font-size: 32px;
 	}
+
+	/* A trailing margin would make a slide that fits measure taller than the stage. */
+	.slide :global(:last-child) {
+		margin-bottom: 0;
+	}
 </style>
