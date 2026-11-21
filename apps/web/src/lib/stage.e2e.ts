@@ -227,6 +227,54 @@ test('a slide that fits is not flagged for the margin under its last block', asy
 	expect(await page.locator('.content').evaluate((content) => content.clientHeight)).toBe(1080);
 });
 
+test('a slide is flagged only when its content runs past the stage, not into its bottom padding', async ({
+	browser,
+	browserName,
+	playwright
+}) => {
+	// A frame taller than the stage leaves a bar under it, so only the stage itself can clip the slide there.
+	const { page, close } = await showSlide(
+		{ browser, browserName, firefox: playwright.firefox },
+		{ width: 640, height: 720, deviceScaleFactor: 1 }
+	);
+	const frame = page.locator('.frame');
+	const article = page.locator('article.slide');
+	const isBlockAt = (y: number) => page.evaluate((y) => document.elementFromPoint(320, y)?.id === 'block', y);
+
+	await article.evaluate((slide) => (slide.innerHTML = '<div id="block" style="height: 1017px">'));
+	await expect(frame).toHaveAttribute('data-overflowing', 'true');
+
+	// The slide's top padding is 64 px, so a block 1016 px tall ends at the stage's edge, inside the bottom padding.
+	await page.locator('#block').evaluate((block) => (block.style.height = '1016px'));
+	await expect(frame).toHaveAttribute('data-overflowing', 'false');
+
+	await page.locator('#block').evaluate((block) => (block.style.height = '1000px'));
+	await expect(frame).toHaveAttribute('data-overflowing', 'false');
+	expect(await isBlockAt(354)).toBe(true);
+	await close();
+});
+
+test('the sample slide is not flagged at the sizes people use', async ({ browser, browserName, playwright }) => {
+	for (const [width, height] of [
+		[1280, 800],
+		[390, 844]
+	]) {
+		const { page, close } = await openScreen(
+			{ browser, browserName, firefox: playwright.firefox },
+			{ width, height, deviceScaleFactor: 1 }
+		);
+		await page.goto('/app');
+		await expect(page.locator('article.slide')).toBeVisible({ timeout: 30_000 });
+		await expect
+			.poll(() => page.locator('.slide img').evaluate((image: HTMLImageElement) => image.complete))
+			.toBe(true);
+		await page.evaluate(() => document.fonts.ready);
+		await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+		await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
+		await close();
+	}
+});
+
 test('a slide wider than the stage wraps what it can and is flagged for what it cannot', async ({ page }) => {
 	await page.goto('/app');
 	const article = page.locator('article.slide');

@@ -15,16 +15,30 @@
 	let stage: HTMLElement | undefined = $state();
 
 	// A line too long for the stage, such as in a code block, widens neither the stage nor the content, so no resize
-	// reports it: measure the stage's scroll width whenever the slide's DOM, its height or its fonts change.
+	// reports it: measure the stage's scroll width whenever the slide's DOM, its height or its fonts change. The slide's
+	// bottom padding is room its content may run into, and only content past the stage's edge is clipped, so the height
+	// that counts ends at the slide's content box: line heights differ between browsers, and a slide that fits in one
+	// would otherwise be flagged in another.
 	$effect(() => {
 		if (!stage) return;
 		const element = stage;
-		const slide = element.firstElementChild as Element;
-		const measure = () => (content.width = element.scrollWidth);
+		const wrapper = element.firstElementChild as HTMLElement;
+		const measure = () => {
+			content.width = element.scrollWidth;
+			const slide = wrapper.firstElementChild;
+			if (slide instanceof HTMLElement) {
+				// eslint-disable-next-line unicorn/prefer-number-coercion -- The computed padding ends in px, which Number() rejects.
+				const padding = Number.parseFloat(getComputedStyle(slide).paddingBottom);
+				content.height = slide.offsetTop + slide.offsetHeight - padding;
+			} else {
+				content.height = 0;
+			}
+		};
 		const resizes = new ResizeObserver(measure);
 		const mutations = new MutationObserver(measure);
-		resizes.observe(slide);
-		mutations.observe(slide, { subtree: true, childList: true, characterData: true, attributes: true });
+		resizes.observe(wrapper);
+		if (wrapper.firstElementChild) resizes.observe(wrapper.firstElementChild);
+		mutations.observe(wrapper, { subtree: true, childList: true, characterData: true, attributes: true });
 		document.fonts.addEventListener('loadingdone', measure);
 		measure();
 		return () => {
@@ -57,7 +71,7 @@
 		style:height="{size.height}px"
 		style:transform="translate({fit.x}px, {fit.y}px) scale({fit.scale})"
 		style:visibility={fit.scale > 0 ? 'visible' : 'hidden'}>
-		<div class="content" bind:offsetHeight={content.height}>{@render children()}</div>
+		<div class="content">{@render children()}</div>
 	</div>
 </div>
 
@@ -78,7 +92,6 @@
 		transform-origin: 0 0;
 	}
 
-	/* Grows with the slide, so its height says when the slide is taller than the stage. */
 	.content {
 		display: flow-root;
 		min-height: 100%;
