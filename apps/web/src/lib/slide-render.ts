@@ -11,7 +11,7 @@ export const cacheSize = 256;
 const cache = new Map<string, RenderedSlide>();
 const renderer: { loading?: Promise<Renderer> } = {};
 
-/** Loads Sätteri on first use, since in the browser it downloads a 3 MB WebAssembly build. */
+/** Loads Sätteri on first use, since in the browser it downloads a 3 MB WebAssembly build. A failed load is retried. */
 function loadRenderer(): Promise<Renderer> {
 	renderer.loading ??= createRenderer();
 	return renderer.loading;
@@ -37,10 +37,14 @@ export async function renderSlide(markdown: string): Promise<RenderedSlide> {
 }
 
 async function createRenderer(): Promise<Renderer> {
-	const [{ markdownToHtml }, { mdastPlugins, hastPlugins }] = await Promise.all([
-		import('satteri'),
-		import('#lib/slide-plugins.ts')
-	]);
+	let modules;
+	try {
+		modules = await Promise.all([import('satteri'), import('#lib/slide-plugins.ts')]);
+	} catch (error) {
+		renderer.loading = undefined;
+		throw error;
+	}
+	const [{ markdownToHtml }, { mdastPlugins, hastPlugins }] = modules;
 	return async (markdown) => {
 		const { frontmatter, body } = slideParts(markdown);
 		const { html } = await markdownToHtml(body, {

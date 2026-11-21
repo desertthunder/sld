@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { sampleSlide } from '#lib/sample-slide.ts';
 import { cacheSize, renderSlide } from '#lib/slide-render.ts';
 
@@ -83,5 +83,19 @@ describe('renderSlide', () => {
 		}
 		expect(await renderSlide('# Kept')).toBe(kept);
 		expect(await renderSlide('# First')).not.toBe(first);
+	});
+
+	it('loads Sätteri again after a failed load', async () => {
+		vi.resetModules();
+		let loads = 0;
+		vi.doMock('satteri', async (importOriginal) => {
+			loads++;
+			if (loads === 1) throw new Error('offline');
+			return importOriginal();
+		});
+		const fresh = await import('#lib/slide-render.ts');
+		await expect(fresh.renderSlide('# Retried')).rejects.toThrow();
+		expect(await fresh.renderSlide('# Retried')).toEqual({ html: '<h1>Retried</h1>\n', frontmatter: undefined });
+		vi.doUnmock('satteri');
 	});
 });
