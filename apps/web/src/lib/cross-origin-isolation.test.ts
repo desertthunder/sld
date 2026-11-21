@@ -14,7 +14,7 @@ function fakeContext(overrides: Partial<IsolationContext> = {}) {
 	const listeners: (() => void)[] = [];
 	const serviceWorker = {
 		controller: undefined as unknown,
-		register: vi.fn(async (): Promise<unknown> => ({})),
+		register: vi.fn(async (): Promise<{ active: unknown }> => ({ active: undefined })),
 		addEventListener: vi.fn((_type: string, listener: () => void) => {
 			listeners.push(listener);
 		})
@@ -36,6 +36,16 @@ function fakeContext(overrides: Partial<IsolationContext> = {}) {
 		...overrides
 	};
 	return { context, serviceWorker, stored, takeControl };
+}
+
+function storageBlocked(overrides: Partial<IsolationContext>) {
+	const { context } = fakeContext(overrides);
+	Object.defineProperty(context, 'sessionStorage', {
+		get: () => {
+			throw new DOMException('Access is denied for this document.', 'SecurityError');
+		}
+	});
+	return context;
 }
 
 describe('isolate', () => {
@@ -64,6 +74,15 @@ describe('isolate', () => {
 		const { context, serviceWorker } = fakeContext();
 		serviceWorker.controller = {};
 		await expect(isolate(context)).resolves.toBe('reloading');
+		expect(context.reload).toHaveBeenCalledOnce();
+	});
+
+	it('reloads straight away when a hard reload bypassed the active worker', async () => {
+		const { context, serviceWorker } = fakeContext();
+		serviceWorker.register.mockResolvedValue({ active: {} });
+		const outcome = isolate(context);
+		await vi.advanceTimersByTimeAsync(takeControlTimeout);
+		await expect(outcome).resolves.toBe('reloading');
 		expect(context.reload).toHaveBeenCalledOnce();
 	});
 
@@ -104,6 +123,11 @@ describe('isolate', () => {
 		serviceWorker.register.mockRejectedValue(new Error('The script failed to load'));
 		await expect(isolate(context)).resolves.toBe('unavailable');
 		expect(context.reload).not.toHaveBeenCalled();
+	});
+
+	it('still reports the outcome when the browser blocks site storage', async () => {
+		await expect(isolate(storageBlocked({ crossOriginIsolated: true }))).resolves.toBe('isolated');
+		await expect(isolate(storageBlocked({ crossOriginIsolated: false }))).resolves.toBe('unavailable');
 	});
 
 	it('gives up without service workers or a secure context', async () => {

@@ -20,7 +20,7 @@ export type IsolationContext = {
 	serviceWorker:
 		| {
 				controller: unknown;
-				register(url: string, options: RegistrationOptions): Promise<unknown>;
+				register(url: string, options: RegistrationOptions): Promise<{ active: unknown }>;
 				addEventListener(
 					type: 'controllerchange',
 					listener: () => void,
@@ -43,6 +43,15 @@ export type IsolationContext = {
  * page. It reloads at most once per tab session, so a browser the worker can't isolate doesn't reload forever.
  */
 export async function isolate(context: IsolationContext = browserContext()): Promise<IsolationOutcome> {
+	try {
+		return await isolateWithWorker(context);
+	} catch {
+		// Reading `sessionStorage` throws where the browser blocks site storage.
+		return context.crossOriginIsolated ? 'isolated' : 'unavailable';
+	}
+}
+
+async function isolateWithWorker(context: IsolationContext): Promise<IsolationOutcome> {
 	if (context.crossOriginIsolated) {
 		context.sessionStorage.removeItem(reloadedKey);
 		return 'isolated';
@@ -56,15 +65,16 @@ export async function isolate(context: IsolationContext = browserContext()): Pro
 	});
 	const registered = (async () => {
 		try {
-			await serviceWorker.register(isolationWorkerUrl, { scope: '/' });
-			return true;
+			return await serviceWorker.register(isolationWorkerUrl, { scope: '/' });
 		} catch {
 			return false;
 		}
 	})();
-	if (!(await Promise.race([registered, timedOut]))) return 'unavailable';
-	// A page already under the worker's control but not isolated was loaded past it, as a hard reload does.
-	if (!serviceWorker.controller && !(await Promise.race([tookControl, timedOut]))) return 'unavailable';
+	const registration = await Promise.race([registered, timedOut]);
+	if (!registration) return 'unavailable';
+	// A hard reload bypasses an active worker, so the page loads without a controller and no `controllerchange` follows.
+	const active = serviceWorker.controller || registration.active;
+	if (!active && !(await Promise.race([tookControl, timedOut]))) return 'unavailable';
 	context.sessionStorage.setItem(reloadedKey, 'true');
 	context.reload();
 	return 'reloading';
@@ -75,7 +85,9 @@ function browserContext(): IsolationContext {
 		crossOriginIsolated,
 		isSecureContext,
 		serviceWorker: 'serviceWorker' in navigator ? navigator.serviceWorker : undefined,
-		sessionStorage,
+		get sessionStorage() {
+			return sessionStorage;
+		},
 		reload: () => location.reload()
 	};
 }
