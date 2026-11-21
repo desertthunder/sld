@@ -35,8 +35,9 @@ When it returns, confirm the branch head with `git ls-remote` and find the
 draft (`list_pull_requests` with `head`), polling, since Branch PR opens it in
 a run that starts after the push. If the implementer stopped without pushing,
 report why and stop. If no draft appears within ten minutes, read the newest
-Branch push and Branch PR runs for the branch, report the failed one to Owais
-and stop; `docs/setup.md` has his recovery steps.
+Branch push and Branch PR runs for the branch, tell Owais what they show (a run
+that failed, is still queued or never started) and stop; `docs/setup.md` has
+his recovery steps.
 
 ## II. Standard review and revise
 
@@ -130,8 +131,10 @@ Every draft push already left a `ci` check run on the head that completed as
 method `get_check_runs`, compare each `ci` run's `started_at` with the time of
 the mark, and poll until that run completes (foreground `sleep` is blocked).
 Only its `success` is green. If no such run starts within ten minutes, stop and
-report it. If it fails, read the failing step's log. A failure outside the
-code (billing, a GitHub outage, a runner that never started or a job cancelled
+report it. A run that hasn't completed thirty minutes after its `started_at`,
+such as a job still queued for a runner, counts as a failure outside the code.
+If it fails, read the failing step's log. A failure outside the code
+(billing, a GitHub outage, a runner that never started or a job cancelled
 before its steps ran) is not the reviser's: stop and tell Owais which run
 failed, the likely cause and what to re-run, and leave the re-run to him. For
 a failure the code causes, dispatch the `reviser` agent with it as a finding
@@ -152,9 +155,11 @@ and say so. Never approve, merge or turn on auto-merge.
 When Owais requests changes, this session revises; no workflow does. Read his
 review comments and their ids (as the `revise` skill says), dispatch the `reviser`
 agent with them, the checkout on the branch and the issue text, confirm its
-push, and post its answers with `answers` set to `true`. A plain comment gets a
-reply through the bot only when it asks something. Don't run II or III again
-unless he asks; the pull request stays ready.
+push, and post its answers with `answers` set to `true`. Then wait for `ci` on
+the new head as **Finish** says, including its rule for a failure outside the
+code; a `ci` event from the subscription never licenses a re-run. A plain
+comment gets a reply through the bot only when it asks something. Don't run II
+or III again unless he asks; the pull request stays ready.
 
 When no session is subscribed (the one that opened the pull request has ended),
 nothing revises on its own. Owais asks a session to pick it up; it subscribes
@@ -198,6 +203,7 @@ why.
 - The verifier returns `blocked`.
 - `ci` on the ready pull request fails twice for the same cause, its fix is
   outside the issue, or no `ci` run starts within ten minutes of the ready mark.
+- A bot post fails. Report the run, its likely cause and the post's text.
 - A GitHub Actions run fails for a reason outside the code. Report which run,
   the likely cause and what to re-run; Owais re-runs it. Never re-run, cancel or
   retrigger a run, or delete or push a branch again only to retrigger one.
