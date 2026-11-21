@@ -3,6 +3,9 @@
 # workflow runs whatever YAML the pushed branch holds, so anything this
 # workflow could reach, any branch could too. Branch PR runs from `main` on
 # this workflow's completion, in the `bot` environment, and opens the draft.
+#
+# Only the push that creates the branch runs `signal`. A later push skips it,
+# so the run concludes `skipped`, Branch PR skips too, and neither is billed.
 name: Branch push
 
 on:
@@ -13,6 +16,7 @@ permissions: {}
 
 jobs:
   signal:
+    if: github.event.created
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:

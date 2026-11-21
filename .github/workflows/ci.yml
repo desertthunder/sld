@@ -1,12 +1,14 @@
-# Checks every pull request and every push to main. Agent branches get theirs
-# from the pull request desertthunder-bot opens for them. Each package's job
-# runs only when its files (or shared config) change. The `ci` job always runs
-# and fails if any job that ran failed, so it is the only required status
-# check.
+# Checks pull requests once they are ready for review, and every push to main.
+# Agents run `make ci` before each push, so a draft starts no job: a skipped
+# required check counts as passing, which is safe only because a draft cannot
+# merge. One job, `ci`, the only required status check: it filters paths, then
+# runs the web steps, the devtools steps or both, and fails if any step fails.
+# One job is billed once, where a job per package was billed per job.
 name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -18,16 +20,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  changes:
+  ci:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
-    outputs:
-      web: ${{ steps.filter.outputs.web }}
-      devtools: ${{ steps.filter.outputs.devtools }}
     steps:
       - uses: actions/checkout@v5
+      # On a pull request this reads the pull request's files; on a push to
+      # main it compares against the commit before the push.
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -49,26 +52,31 @@ jobs:
               - .github/workflows/comment.yml
               - *shared_ts
 
-  web:
-    needs: changes
-    if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - if: steps.filter.outputs.web == 'true' || steps.filter.outputs.devtools == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.filter.outputs.web == 'true' || steps.filter.outputs.devtools == 'true'
+        uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Lint
+      - if: steps.filter.outputs.web == 'true' || steps.filter.outputs.devtools == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Web lint
+        if: steps.filter.outputs.web == 'true'
         run: pnpm exec prettier --check apps/web && pnpm exec eslint apps/web
-      - run: pnpm --filter @sld/web check
-      - run: pnpm --filter @sld/web test
-      - run: pnpm --filter @sld/web build
+      - name: Web check
+        if: steps.filter.outputs.web == 'true'
+        run: pnpm --filter @sld/web check
+      - name: Web test
+        if: steps.filter.outputs.web == 'true'
+        run: pnpm --filter @sld/web test
+      - name: Web build
+        if: steps.filter.outputs.web == 'true'
+        run: pnpm --filter @sld/web build
       # Deploy refuses a build like this, but only once a release is tagged.
       - name: Check the build serves the app shell for every path
+        if: steps.filter.outputs.web == 'true'
         run: |
           build=apps/web/build
           if [[ ! -f $build/index.html ]]; then
@@ -80,42 +88,18 @@ jobs:
             exit 1
           fi
 
-  devtools:
-    needs: changes
-    if: needs.changes.outputs.devtools == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Lint
+      - name: Devtools lint
+        if: steps.filter.outputs.devtools == 'true'
         run: pnpm exec prettier --check tools/devtools && pnpm exec eslint tools/devtools
-      - run: pnpm --filter @sld/devtools check
-      - run: pnpm --filter @sld/devtools test
+      - name: Devtools check
+        if: steps.filter.outputs.devtools == 'true'
+        run: pnpm --filter @sld/devtools check
+      - name: Devtools test
+        if: steps.filter.outputs.devtools == 'true'
+        run: pnpm --filter @sld/devtools test
       # comment.yml runs the tool with Node alone, so run it that way once.
       - name: Dry run as comment.yml does
+        if: steps.filter.outputs.devtools == 'true'
         run: |
           printf 'Review loop finished\n' > "$RUNNER_TEMP/body.md"
           node tools/devtools/src/devtools.ts pr ready --repo "$GITHUB_REPOSITORY" --pr 1 --dry-run --body-file "$RUNNER_TEMP/body.md"
-
-  ci:
-    needs: [changes, web, devtools]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fail if any job failed or was canceled
-        env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
-        run: |
-          echo "Job results: $RESULTS"
-          # GitHub spells the result value "cancelled"; keep it as GitHub writes it.
-          for r in $RESULTS; do
-            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
-              exit 1
-            fi
-          done
