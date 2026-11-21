@@ -25,7 +25,7 @@ export type Scheme = {
 	lowContrast: boolean;
 	roles: Record<keyof SlideRoles, string>;
 	appRoles: Record<keyof AppRoles, string>;
-	/** The colors of code tokens, which `code-highlight.ts` names in its classes. */
+	/** The colors of code tokens, which code blocks read through their `code-<kind>` classes. */
 	tokens: Record<keyof TokenRoles, string>;
 };
 
