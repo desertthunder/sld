@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { describe, expect, it } from 'vitest';
-import { assetFile, parseRewrites, rewriteTarget } from './pages-redirects.ts';
+import { parseRewrites, rewriteRequests, rewriteTarget } from './pages-redirects.ts';
+
+const rewrites = parseRewrites(readFileSync(new URL('../static/_redirects', import.meta.url), 'utf8'));
 
 describe('parseRewrites', () => {
 	it('keeps only rules with status 200', () => {
@@ -10,14 +13,8 @@ describe('parseRewrites', () => {
 });
 
 describe('rewriteTarget', () => {
-	const rewrites = parseRewrites(readFileSync(new URL('../static/_redirects', import.meta.url), 'utf8'));
-
-	it('serves the app shell for every path under /app', () => {
-		expect(assetFile(rewriteTarget(rewrites, '/app/') ?? '')).toBe('/app.html');
-		expect(assetFile(rewriteTarget(rewrites, '/app/deck/x') ?? '')).toBe('/app.html');
-	});
-
-	it('rewrites to the pretty URL, since Pages redirects a .html target and drops the path', () => {
+	it('rewrites every path under /app to the pretty URL, since Pages redirects a .html target and drops the path', () => {
+		expect(rewriteTarget(rewrites, '/app/')).toBe('/app');
 		expect(rewriteTarget(rewrites, '/app/deck/x')).toBe('/app');
 	});
 
@@ -29,10 +26,24 @@ describe('rewriteTarget', () => {
 	});
 });
 
-describe('assetFile', () => {
-	it('adds .html to a pretty URL and leaves a file name alone', () => {
-		expect(assetFile('/app')).toBe('/app.html');
-		expect(assetFile('/app.html')).toBe('/app.html');
-		expect(assetFile('/_app/version.json')).toBe('/_app/version.json');
+function handle(method: string, url: string): string | undefined {
+	const request = { method, url } as IncomingMessage;
+	let wasPassedOn = false;
+	rewriteRequests(rewrites)(request, {} as ServerResponse, () => {
+		wasPassedOn = true;
+	});
+	return wasPassedOn ? request.url : undefined;
+}
+
+describe('rewriteRequests', () => {
+	it('hands a deck path on as /app, so it gets the same response as /app', () => {
+		expect(handle('GET', '/app/deck/x?slide=2')).toBe('/app?slide=2');
+		expect(handle('HEAD', '/app/')).toBe('/app');
+	});
+
+	it('hands every other request on unchanged', () => {
+		expect(handle('GET', '/')).toBe('/');
+		expect(handle('GET', '/_app/version.json')).toBe('/_app/version.json');
+		expect(handle('POST', '/app/deck/x')).toBe('/app/deck/x');
 	});
 });

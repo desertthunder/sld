@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Plugin } from 'vite';
+import type { Connect, Plugin } from 'vite';
 
 export type Rewrite = { from: string; to: string };
 
@@ -20,28 +20,29 @@ export function rewriteTarget(rewrites: Rewrite[], pathname: string): string | u
 	)?.to;
 }
 
-/** Returns the build file Pages serves for an asset path, which it may name without its `.html` extension. */
-export function assetFile(assetPath: string): string {
-	return path.extname(assetPath) ? assetPath : `${assetPath}.html`;
+/**
+ * Answers a request a rewrite matches with the rewrite target's response, as Pages does, by handing the request on
+ * with the target as its URL.
+ */
+export function rewriteRequests(rewrites: Rewrite[]): Connect.NextHandleFunction {
+	return (request, _response, next) => {
+		const url = new URL(request.url ?? '/', 'http://localhost');
+		const target = rewriteTarget(rewrites, url.pathname);
+		if (target && (request.method === 'GET' || request.method === 'HEAD')) request.url = target + url.search;
+		next();
+	};
 }
 
 /**
  * Applies `static/_redirects` rewrites in `vite preview`, which otherwise answers a path with no route with HTTP 404
- * where Pages serves the rewrite's file with 200.
+ * where Pages serves the rewrite target with 200.
  */
 export function pagesRedirects(): Plugin {
 	return {
 		name: 'sld-pages-redirects',
 		configurePreviewServer(server) {
-			const root = server.config.root;
-			const rewrites = parseRewrites(readFileSync(path.join(root, 'static/_redirects'), 'utf8'));
-			server.middlewares.use((request, response, next) => {
-				const target = rewriteTarget(rewrites, new URL(request.url ?? '/', 'http://localhost').pathname);
-				if (!target || (request.method !== 'GET' && request.method !== 'HEAD')) return next();
-				const file = path.join(root, 'build', assetFile(target));
-				response.setHeader('content-type', 'text/html; charset=utf-8');
-				response.end(readFileSync(file));
-			});
+			const text = readFileSync(path.join(server.config.root, 'static/_redirects'), 'utf8');
+			server.middlewares.use(rewriteRequests(parseRewrites(text)));
 		}
 	};
 }

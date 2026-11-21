@@ -5,7 +5,9 @@ const config = {
 	kit: {
 		// `index.html` is the prerendered landing page, so the app shell gets its own file, which
 		// `static/_redirects` serves for every path under `/app`.
-		adapter: adapter({ fallback: 'app.html' })
+		adapter: adapter({ fallback: 'app.html' }),
+		// Pages answers unknown paths at any depth with the landing page, so its links cannot be relative.
+		paths: { relative: false }
 	}
 };
 
