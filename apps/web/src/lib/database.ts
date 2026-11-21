@@ -1,6 +1,7 @@
 import type { PGlite, PGliteInterface } from '@electric-sql/pglite';
 import { PGliteWorker } from '@electric-sql/pglite/worker';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
+import { migrationChannelName, type MigrationProgress } from '#lib/migrate.ts';
 
 export type Database = PgliteDatabase;
 
@@ -21,9 +22,15 @@ const shared: { opening?: Promise<Database> } = {};
 
 /**
  * Opens the deck database in a shared worker client. Every tab starts its own worker, and PGlite elects one tab's
- * worker to hold the database and serves the other tabs through it. `onLost` hears of a failure after it opened.
+ * worker to hold the database and serves the other tabs through it. That worker migrates the database before any tab
+ * can use it, and `onProgress` hears how far it has got. `onLost` hears of a failure after it opened.
  */
-export async function openDatabase(onLost: (error: unknown) => void = () => {}): Promise<Database> {
+export async function openDatabase(
+	onLost: (error: unknown) => void = () => {},
+	onProgress: (progress: MigrationProgress) => void = () => {}
+): Promise<Database> {
+	const progress = new BroadcastChannel(migrationChannelName);
+	progress.addEventListener('message', (event: MessageEvent<MigrationProgress>) => onProgress(event.data));
 	shared.opening ??= connect(
 		new Worker(new URL('database-worker.ts', import.meta.url), { type: 'module', name: 'sld-database' }),
 		(error) => {
@@ -36,6 +43,8 @@ export async function openDatabase(onLost: (error: unknown) => void = () => {}):
 	} catch (error) {
 		shared.opening = undefined;
 		throw error;
+	} finally {
+		progress.close();
 	}
 }
 
