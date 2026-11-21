@@ -10,11 +10,21 @@ export type CodeBlockOptions = { lineNumbers: boolean };
 
 const languagePrefix = 'language-';
 
-function languageOf(code: Element): string | undefined {
+/**
+ * A fence's language and the rest of its info string. A brace group written against the language, as in `ts{2}`,
+ * belongs to the rest.
+ */
+function fenceOf(code: Element): { language: string | undefined; meta: string | undefined } {
 	const classes = code.properties.className;
-	if (!Array.isArray(classes)) return undefined;
-	const name = classes.find((value) => typeof value === 'string' && value.startsWith(languagePrefix));
-	return typeof name === 'string' ? name.slice(languagePrefix.length) : undefined;
+	const name = Array.isArray(classes)
+		? classes.find((value) => typeof value === 'string' && value.startsWith(languagePrefix))
+		: undefined;
+	const data = (code.data as { meta?: unknown } | undefined)?.meta;
+	const meta = typeof data === 'string' ? data : undefined;
+	if (typeof name !== 'string') return { language: undefined, meta };
+	const [, language, braces] = /^([^{]*)(\{.*)?$/.exec(name.slice(languagePrefix.length))!;
+	if (braces === undefined) return { language, meta };
+	return { language: language || undefined, meta: meta === undefined ? braces : `${braces} ${meta}` };
 }
 
 function text(value: string): Text {
@@ -32,7 +42,8 @@ function plainLines(code: string): Token[][] {
 /**
  * A fenced code block as the stage shows it: one `span.line` per line, each token a `span.code-<kind>` whose color
  * comes from the scheme, so a new scheme recolors it without highlighting again. Shiki and a language's grammar are
- * downloaded only when a block names a language it knows; any other block shows as plain text.
+ * downloaded only when a block names a language it knows; any other block, or one whose grammar fails to download,
+ * shows as plain text.
  */
 export async function codeBlockTree(
 	code: string,
@@ -43,8 +54,12 @@ export async function codeBlockTree(
 	const source = code.endsWith('\n') ? code.slice(0, -1) : code;
 	let lines: Token[][] | undefined;
 	if (language) {
-		const { highlightCode } = await import('#lib/code-highlight.ts');
-		lines = await highlightCode(source, language);
+		try {
+			const { highlightCode } = await import('#lib/code-highlight.ts');
+			lines = await highlightCode(source, language);
+		} catch {
+			// Shiki or the grammar didn't download, so the code shows as it would with no grammar.
+		}
 	}
 	lines ??= plainLines(source);
 	const ranges = lineHighlights(meta);
@@ -84,13 +99,8 @@ export function codeBlocks(options: CodeBlockOptions): HastPluginDefinition {
 			async visit(pre, context) {
 				const [code, ...rest] = pre.children;
 				if (rest.length > 0 || code?.type !== 'element' || code.tagName !== 'code') return;
-				const meta = (code.data as { meta?: unknown } | undefined)?.meta;
-				const tree = await codeBlockTree(
-					context.textContent(code),
-					languageOf(code),
-					typeof meta === 'string' ? meta : undefined,
-					options
-				);
+				const { language, meta } = fenceOf(code);
+				const tree = await codeBlockTree(context.textContent(code), language, meta, options);
 				context.replaceNode(pre, tree);
 			}
 		}

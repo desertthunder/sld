@@ -33,12 +33,15 @@
 	line-height: 1.5;
 }
 
+/* An empty inline block has no height, so without `min-height` a blank line would collapse. */
 .slide pre.code-block .line {
 	display: inline-block;
 	box-sizing: border-box;
 	width: calc(100% + 88px);
 	margin-inline: -44px;
 	padding-inline: 44px;
+	min-height: 1lh;
+	vertical-align: top;
 }
 
 .slide pre.code-block.has-highlights .line:not(.highlighted) {

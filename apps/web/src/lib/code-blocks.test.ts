@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { renderSlide } from '#lib/slide-render.ts';
 
@@ -35,6 +36,23 @@ describe('code blocks', () => {
 		);
 	});
 
+	it('read line ranges written against the language', async () => {
+		const { html } = await renderSlide(lines('```ts{2} title="a.ts"', 'let a;', 'let b;', '```'));
+		expect(html).toMatch(
+			/^<pre class="code-block has-highlights" data-language="ts"><code><span class="line"><span class="code-keyword">let<\/span>/
+		);
+		expect(html).toContain('<span class="line highlighted"><span class="code-keyword">let</span> b;</span>');
+		const bare = await renderSlide(lines('```{1}', 'plain', '```'));
+		expect(bare.html).toBe(
+			'<pre class="code-block has-highlights"><code><span class="line highlighted">plain</span></code></pre>\n'
+		);
+	});
+
+	it('give an empty line the height of a line, so a blank line in code never collapses', () => {
+		const css = readFileSync(new URL('code-block.css', import.meta.url), 'utf8');
+		expect(css).toMatch(/\.line \{[^}]*\tdisplay: inline-block;[^}]*\tmin-height: 1lh;[^}]*\tvertical-align: top;/);
+	});
+
 	it('show an indented block as plain text', async () => {
 		const { html } = await renderSlide('    indented');
 		expect(html).toBe('<pre class="code-block"><code><span class="line">indented</span></code></pre>\n');
@@ -55,6 +73,22 @@ describe('code blocks', () => {
 			expect(loads).not.toHaveBeenCalled();
 			await fresh.renderSlide(lines('```ts', 'let a;', '```'));
 			expect(loads).toHaveBeenCalledOnce();
+		} finally {
+			vi.doUnmock('#lib/code-highlight.ts');
+		}
+	});
+
+	it('show code as plain text when its grammar fails to download', async () => {
+		vi.resetModules();
+		vi.doMock('#lib/code-highlight.ts', () => ({
+			highlightCode: () => Promise.reject(new TypeError('Failed to fetch dynamically imported module'))
+		}));
+		try {
+			const fresh = await import('#lib/slide-render.ts');
+			const { html } = await fresh.renderSlide(lines('```ts {1}', 'let a;', '```'));
+			expect(html).toBe(
+				'<pre class="code-block has-highlights" data-language="ts"><code><span class="line highlighted">let a;</span></code></pre>\n'
+			);
 		} finally {
 			vi.doUnmock('#lib/code-highlight.ts');
 		}
