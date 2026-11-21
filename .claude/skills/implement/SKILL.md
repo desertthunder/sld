@@ -31,10 +31,12 @@ Dispatch the `implementer` agent with the issue text, the branch name
 runs `make ci`, commits with the first commit written as the pull request, and
 pushes. The Branch PR workflow opens the pull request as a draft.
 
-When it returns, confirm the branch head with `git ls-remote`, find the draft
-(`list_pull_requests` with `head`). If the implementer stopped without
-pushing, report why and stop. If no draft opens, report the failed Branch push
-or Branch PR run to Owais and stop; `docs/setup.md` has his recovery steps.
+When it returns, confirm the branch head with `git ls-remote` and find the
+draft (`list_pull_requests` with `head`), polling, since Branch PR opens it in
+a run that starts after the push. If the implementer stopped without pushing,
+report why and stop. If no draft appears within ten minutes, read the newest
+Branch push and Branch PR runs for the branch, report the failed one to Owais
+and stop; `docs/setup.md` has his recovery steps.
 
 ## II. Standard review and revise
 
@@ -86,7 +88,8 @@ checked and the artifact link, files learnings for later issues as Linear
 comments, and returns a Verdict, the artifact URL, the comment id, the criteria
 table, what it couldn't check and the learnings filed. A `not applicable` or
 `blocked` verdict posts no comment, except that a `blocked` verdict on a
-second verifier pass updates the earlier one. Remove the worktree when it returns.
+second verifier pass updates the earlier one. Remove the worktree when it
+returns.
 
 A failed criterion is a finding with no review comment id. Dispatch the
 `reviser` agent with it, the checkout on the branch and the issue text, confirm
@@ -127,15 +130,15 @@ Every draft push already left a `ci` check run on the head that completed as
 method `get_check_runs`, compare each `ci` run's `started_at` with the time of
 the mark, and poll until that run completes (foreground `sleep` is blocked).
 Only its `success` is green. If no such run starts within ten minutes, stop and
-report it. If it fails, read the failing step's log. A failure outside the code
-(billing, a GitHub outage, a runner that never started or a job cancelled
+report it. If it fails, read the failing step's log. A failure outside the
+code (billing, a GitHub outage, a runner that never started or a job cancelled
 before its steps ran) is not the reviser's: stop and tell Owais which run
-failed, the likely cause and what to re-run, and leave the re-run to him. For a
-failure the code causes, dispatch the `reviser` agent with it as a finding with no
-review comment id, the checkout on the branch and the issue text, confirm its
-push, and wait for `ci` on the new head; every push to a ready pull request
-starts one. If the fix is outside the issue, or `ci` fails twice for the same
-cause, stop and report it. Report to Owais only once `ci` is green.
+failed, the likely cause and what to re-run, and leave the re-run to him. For
+a failure the code causes, dispatch the `reviser` agent with it as a finding
+with no review comment id, the checkout on the branch and the issue text,
+confirm its push, and wait for `ci` on the new head; every push to a ready pull
+request starts one. If the fix is outside the issue, or `ci` fails twice for
+the same cause, stop and report it. Report to Owais only once `ci` is green.
 
 Report the pull request link, the head, the check state, what each pass found,
 any commit pushed after the loop-finished comment's head (no review pass read
@@ -178,9 +181,9 @@ The call returns once the run is queued, and the post usually lands within a
 minute or two. Foreground `sleep` is blocked, so poll: read `pull_request_read`
 (`get_reviews`, `get_review_comments` or `get_comments`) until it shows a bot
 post created after the dispatch. If none appears after a few reads, look at the
-newest `comment.yml` runs and report the failure to Owais: the run, the likely
-cause, and the post's text. Never dispatch the same post twice, and never re-run
-the failed run.
+newest `comment.yml` runs and report the failure: the run, the likely cause
+and the post's text. A subagent returns it to the session, which reports it to
+Owais. Never dispatch the same post twice, and never re-run the failed run.
 
 ## Stop conditions
 

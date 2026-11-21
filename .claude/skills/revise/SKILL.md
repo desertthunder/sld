@@ -85,5 +85,6 @@ for Owais.
 
 - The same finding arrives twice without its cause having changed.
 - A fix needs a decision the issue doesn't record.
+- A failed `ci` check shows no fault in the code.
 
 Each stop is an escalation to the session, not a reason to force a change.
