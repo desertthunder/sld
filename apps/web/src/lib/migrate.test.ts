@@ -106,6 +106,14 @@ describe('migrate', () => {
 		expect(await tableNames(client)).toEqual(['migrations']);
 		expect(await appliedTags(client)).toEqual([create.tag]);
 	});
+
+	it('rolls back a migration whose SQL ran when recording it fails', async () => {
+		await migrate(client, [create]);
+		const reused: Migration = { tag: notes.tag, sql: 'create table others (id serial primary key);' };
+		await expect(migrate(client, [create, notes, reused])).rejects.toThrow(`Migration ${notes.tag} failed`);
+		expect(await tableNames(client)).toEqual(['migrations', 'notes']);
+		expect(await appliedTags(client)).toEqual([create.tag, notes.tag]);
+	});
 });
 
 describe('openMigrated', () => {
