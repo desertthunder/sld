@@ -1,2 +1,3 @@
-# Pages serves app.html at /app itself. Every path below it gets the app shell too.
-/app/* /app.html 200
+# Pages serves app.html at /app itself. Every path below it gets the app shell too, through the pretty URL: Pages
+# answers a rewrite to /app.html with a redirect to /app, which drops the deck path.
+/app/* /app 200

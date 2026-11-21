@@ -20,6 +20,11 @@ export function rewriteTarget(rewrites: Rewrite[], pathname: string): string | u
 	)?.to;
 }
 
+/** Returns the build file Pages serves for an asset path, which it may name without its `.html` extension. */
+export function assetFile(assetPath: string): string {
+	return path.extname(assetPath) ? assetPath : `${assetPath}.html`;
+}
+
 /**
  * Applies `static/_redirects` rewrites in `vite preview`, which otherwise answers a path with no route with HTTP 404
  * where Pages serves the rewrite's file with 200.
@@ -33,8 +38,9 @@ export function pagesRedirects(): Plugin {
 			server.middlewares.use((request, response, next) => {
 				const target = rewriteTarget(rewrites, new URL(request.url ?? '/', 'http://localhost').pathname);
 				if (!target || (request.method !== 'GET' && request.method !== 'HEAD')) return next();
+				const file = path.join(root, 'build', assetFile(target));
 				response.setHeader('content-type', 'text/html; charset=utf-8');
-				response.end(readFileSync(path.join(root, 'build', target)));
+				response.end(readFileSync(file));
 			});
 		}
 	};

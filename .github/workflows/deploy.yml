@@ -207,7 +207,7 @@ jobs:
               exit 1
             fi
           done
-          if ! grep -Eq '^/app/\* +/app\.html +200$' "$build/_redirects"; then
+          if ! grep -Eq '^/app/\* +/app +200$' "$build/_redirects"; then
             echo "::error title=Deploy::$build/_redirects doesn't serve app.html under /app."
             exit 1
           fi

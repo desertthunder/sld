@@ -8,7 +8,7 @@ Read this file before starting work. Read the Linear issue before starting it.
 
 | Path                     | What                                                                                                                                                                                                                                                                                               |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web`               | SvelteKit web app (TypeScript), built as a static single-page app with no server.                                                                                                                                                                                                                  |
+| `apps/web`               | SvelteKit web app (TypeScript), built as static files with no server.                                                                                                                                                                                                                              |
 | `tools/devtools`         | Repository tools in TypeScript that Node runs with no build step, such as the poster behind `comment.yml` (`node tools/devtools/src/devtools.ts pr`).                                                                                                                                              |
 | `docs/`                  | [repository setup](docs/setup.md). The design record, `docs/design.md`, arrives with the first design issue.                                                                                                                                                                                       |
 | `.github/workflows`      | `ci.yml` (checks), `branch-push.yml` and `branch-pr.yml` (a draft PR for each agent branch), `comment.yml` (posts as desertthunder-bot), `release.yml` (release-please), `deploy.yml` (publishes each version tag to Cloudflare Pages, and redeploys the newest by hand). No workflow runs Claude. |
@@ -19,7 +19,7 @@ Read this file before starting work. Read the Linear issue before starting it.
 
 These choices are made. Changing one is a decision for Owais, recorded in Linear.
 
-- SvelteKit with `adapter-static` and client rendering only. There is no server, so nothing may need one.
+- SvelteKit with `adapter-static`. The app under `/app` renders on the client only, and `/` is prerendered at build time. There is no server, so nothing may need one.
 - PGlite holds the data. It runs in a Web Worker, stores to IndexedDB, and is shared between tabs through PGlite's multi-tab worker.
 - Drizzle defines the schema. Its own migrator needs Node, so migrations are bundled at build time and applied in the browser at startup. Never change a migration that has shipped: add a new one.
 - Sätteri parses markdown through its WebAssembly build, which uses shared memory. The site must stay cross-origin isolated: `apps/web/static/_headers` sends `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`, and Deploy refuses a build without them.
