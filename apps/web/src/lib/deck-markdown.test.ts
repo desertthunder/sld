@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deckFrontmatter, joinDeck, slideFrontmatter, splitDeck } from '#lib/deck-markdown.ts';
+import { deckFrontmatter, joinDeck, slideFrontmatter, slideParts, splitDeck } from '#lib/deck-markdown.ts';
 
 const lines = (...rows: string[]) => rows.join('\n');
 
@@ -323,6 +323,25 @@ describe('slideFrontmatter', () => {
 		expect(slideFrontmatter('# Two')).toBeUndefined();
 		expect(slideFrontmatter('')).toBeUndefined();
 		expect(slideFrontmatter(lines('+++', 'layout =', '+++'))).toBeUndefined();
+	});
+});
+
+describe('slideParts', () => {
+	it('splits the frontmatter block from the markdown after it', () => {
+		expect(slideParts(lines('+++', 'layout = "center"', '+++', '', '# Two'))).toEqual({
+			frontmatter: { format: 'toml', raw: 'layout = "center"', data: { layout: 'center' } },
+			body: lines('', '# Two')
+		});
+		expect(slideParts(lines('---', 'layout: center', '---', '# Two'))).toEqual({
+			frontmatter: { format: 'yaml', raw: 'layout: center', data: { layout: 'center' } },
+			body: '# Two'
+		});
+	});
+
+	it('keeps a slide with no frontmatter or a malformed block whole', () => {
+		const malformed = lines('---', 'layout: [', '---', '# Two');
+		expect(slideParts(malformed)).toEqual({ frontmatter: undefined, body: malformed });
+		expect(slideParts('# Two')).toEqual({ frontmatter: undefined, body: '# Two' });
 	});
 });
 
