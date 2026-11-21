@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { compileSchemes, serializeSchemes } from '#lib/scheme-compiler.ts';
+import { compileSchemes, serializeSchemes, staleOutputs } from '#lib/scheme-compiler.ts';
 
 const schemesRepository = 'https://github.com/tinted-theming/schemes';
 const schemesCommit = '1bd5ad4c2c554c9c8e288b56deab2364ac8dada0';
@@ -17,8 +17,13 @@ const outputFolder = path.join(import.meta.dirname, 'lib', 'schemes');
 function readUpstream(): { json: string; license: string } {
 	const folder = mkdtempSync(path.join(tmpdir(), 'sld-schemes-'));
 	try {
-		const git = (...arguments_: string[]) => execFileSync('git', arguments_, { cwd: folder, stdio: 'inherit' });
-		git('init', '--quiet');
+		// The user's git config must not change what is read: no hook templates, line ending conversion or symlinks.
+		const git = (...arguments_: string[]) =>
+			execFileSync('git', ['-c', 'core.autocrlf=false', '-c', 'core.symlinks=false', ...arguments_], {
+				cwd: folder,
+				stdio: 'inherit'
+			});
+		git('init', '--quiet', '--template=');
 		git('fetch', '--quiet', '--depth', '1', `${schemesRepository}.git`, schemesCommit);
 		git('checkout', '--quiet', 'FETCH_HEAD');
 		const base16 = path.join(folder, 'base16');
@@ -50,7 +55,7 @@ const outputs = [
 ];
 
 if (process.argv.includes('--check')) {
-	const stale = outputs.filter(({ file, text }) => readCommitted(file) !== text);
+	const stale = staleOutputs(outputs, readCommitted);
 	for (const { file } of stale) {
 		console.error(`${path.relative(process.cwd(), file)} is stale. Run \`pnpm --filter @sld/web schemes\`.`);
 	}

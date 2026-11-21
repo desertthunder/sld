@@ -28,12 +28,21 @@ export type Scheme = {
 export type SchemeFile = { source: string; commit: string; schemes: Scheme[] };
 
 const hexColor = /^#[\da-f]{6}$/i;
+const slugPattern = /^[\da-z-]+$/;
 
 function text(value: unknown, field: string, slug: string, { optional = false } = {}): string {
-	if (typeof value !== 'string' || (!optional && value.trim() === '')) {
-		throw new Error(`${slug}: \`${field}\` is missing.`);
-	}
+	if (optional && (value === undefined || value === null)) return '';
+	if (typeof value !== 'string') throw new TypeError(`${slug}: \`${field}\` is not a string.`);
+	if (!optional && value.trim() === '') throw new Error(`${slug}: \`${field}\` is missing.`);
 	return value.trim();
+}
+
+function parseYaml(slug: string, yamlText: string): unknown {
+	try {
+		return parse(yamlText);
+	} catch (error) {
+		throw new Error(`${slug}: ${(error as Error).message}`, { cause: error });
+	}
 }
 
 function cssRoles<T extends Record<string, Parameters<typeof roleCss>[0]>>(roles: T): Record<keyof T, string> {
@@ -45,7 +54,7 @@ function cssRoles<T extends Record<string, Parameters<typeof roleCss>[0]>>(roles
 
 /** Reads one scheme file from tinted-theming's `base16/` folder. */
 export function compileScheme(slug: string, yamlText: string): Scheme {
-	const data = parse(yamlText) as Record<string, unknown> | null;
+	const data = parseYaml(slug, yamlText) as Record<string, unknown> | null;
 	if (!data || typeof data !== 'object') throw new Error(`${slug}: not a YAML mapping.`);
 	if (data.system !== 'base16') throw new Error(`${slug}: \`system\` is not base16.`);
 	const variant = data.variant;
@@ -76,8 +85,12 @@ export function compileScheme(slug: string, yamlText: string): Scheme {
 /** Compiles every `.yaml` and `.yml` file in tinted-theming's `base16/` folder, sorted by slug. */
 export function compileSchemes(files: { name: string; text: string }[], source: string, commit: string): SchemeFile {
 	const schemes = files
-		.map(({ name, text }) => ({ slug: name.replace(/\.ya?ml$/, ''), name, text }))
+		.map(({ name, text }) => ({ slug: name.replace(/\.ya?ml$/i, ''), name, text }))
 		.filter(({ slug, name }) => slug !== name)
+		.map((file) => {
+			if (!slugPattern.test(file.slug)) throw new Error(`${file.name}: a slug takes only a-z, 0-9 and -.`);
+			return file;
+		})
 		.toSorted((a, b) => a.slug.localeCompare(b.slug, 'en'))
 		.map(({ slug, text }) => compileScheme(slug, text));
 	const seen = new Set<string>();
@@ -86,6 +99,14 @@ export function compileSchemes(files: { name: string; text: string }[], source: 
 		seen.add(slug);
 	}
 	return { source, commit, schemes };
+}
+
+/** The outputs whose committed text, as `read` returns it, differs from what the compiler wrote. */
+export function staleOutputs<T extends { file: string; text: string }>(
+	outputs: T[],
+	read: (file: string) => string | undefined
+): T[] {
+	return outputs.filter(({ file, text }) => read(file) !== text);
 }
 
 export function serializeSchemes(file: SchemeFile): string {
