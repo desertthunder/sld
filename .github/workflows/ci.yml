@@ -44,6 +44,7 @@ jobs:
               - prettier.config.js
               - .prettierignore
               - .github/workflows/ci.yml
+              - Makefile
             web:
               - apps/web/**
               - *shared_ts
@@ -75,19 +76,9 @@ jobs:
       - name: Web build
         if: steps.filter.outputs.web == 'true'
         run: pnpm --filter @sld/web build
-      # Deploy refuses a build like this, but only once a release is tagged.
       - name: Check the build serves the app shell for every path
         if: steps.filter.outputs.web == 'true'
-        run: |
-          build=apps/web/build
-          if [[ ! -f $build/index.html ]]; then
-            echo "::error title=web::$build/index.html is missing."
-            exit 1
-          fi
-          if [[ -f $build/404.html ]]; then
-            echo "::error title=web::$build/404.html exists, so Pages won't serve the app shell for deck URLs."
-            exit 1
-          fi
+        run: make app-shell
 
       # Run after a failed web step too, so one run reports both packages.
       - name: Devtools lint
@@ -99,9 +90,6 @@ jobs:
       - name: Devtools test
         if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
         run: pnpm --filter @sld/devtools test
-      # comment.yml runs the tool with Node alone, so run it that way once.
       - name: Dry run as comment.yml does
         if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
-        run: |
-          printf 'Review loop finished\n' > "$RUNNER_TEMP/body.md"
-          node tools/devtools/src/devtools.ts pr ready --repo "$GITHUB_REPOSITORY" --pr 1 --dry-run --body-file "$RUNNER_TEMP/body.md"
+        run: make dry-run

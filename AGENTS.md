@@ -37,7 +37,7 @@ Decisions live in Linear. State a decision in the issue it belongs to, as a date
 
 Requirements: Node 22.18+ (see `.nvmrc`) and pnpm 10 (`corepack enable`).
 
-Run `make help` for every target. The ones you will use most: `make dev` (the web app on :5173) and `make ci` (lint, check, test and build: run it before pushing).
+Run `make help` for every target. The ones you will use most: `make dev` (the web app on :5173) and `make ci` (everything CI runs: run it before pushing).
 
 Checks for what you touched, if you don't run `make ci`:
 

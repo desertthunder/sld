@@ -2,7 +2,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install dev fmt lint check test build ci
+.PHONY: help install dev fmt lint check test build app-shell dry-run lockfile ci
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-10s %s\n", $$1, $$2}'
@@ -28,4 +28,16 @@ test: ## Run every test suite
 build: ## Build every package
 	pnpm build
 
-ci: lint check test build ## Everything CI runs
+# Deploy refuses a build like this, but only once a release is tagged.
+app-shell: ## Check the web build serves the app shell for every path
+	@if [ ! -f apps/web/build/index.html ]; then echo "::error title=web::apps/web/build/index.html is missing."; exit 1; fi
+	@if [ -f apps/web/build/404.html ]; then echo "::error title=web::apps/web/build/404.html exists, so Pages won't serve the app shell for deck URLs."; exit 1; fi
+
+# comment.yml runs the poster with Node alone, so run it that way once.
+dry-run: ## Run the Bot comment poster as comment.yml does, posting nothing
+	printf 'Review loop finished\n' | node tools/devtools/src/devtools.ts pr ready --repo desertthunder/sld --pr 1 --dry-run --body-file /dev/stdin
+
+lockfile: ## Check pnpm-lock.yaml matches every package.json
+	pnpm install --frozen-lockfile
+
+ci: lockfile lint check test build app-shell dry-run ## Everything CI runs
