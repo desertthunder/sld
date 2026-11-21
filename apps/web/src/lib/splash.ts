@@ -60,6 +60,11 @@ export function isFailure(view: SplashView): boolean {
 	return view.state === 'failed' || view.state === 'blocked';
 }
 
+/** Whether the splash shows `view` now, given whether `splashDelay` has passed since `/app` mounted. */
+export function shouldShowSplash(view: SplashView, hasDelayPassed: boolean): boolean {
+	return hasDelayPassed || isFailure(view);
+}
+
 /** The splash for the isolation outcome and the boot state, or `undefined` once the database is ready. */
 export function splashView(isolation: IsolationOutcome | 'checking', boot: BootState): SplashView | undefined {
 	if (isolation === 'checking' || isolation === 'reloading') return starting;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionLabels, isFailure, splashView, type SplashView } from '#lib/splash.ts';
+import { actionLabels, isFailure, shouldShowSplash, splashView, type SplashView } from '#lib/splash.ts';
 
 const opening = { status: 'opening' } as const;
 
@@ -104,5 +104,29 @@ describe('isFailure', () => {
 			return view && isFailure(view);
 		});
 		expect(failures).toEqual([false, true, false, false, true]);
+	});
+});
+
+describe('shouldShowSplash', () => {
+	const views = (
+		[
+			['checking', opening],
+			['isolated', opening],
+			['isolated', { status: 'opening', migrations: { applied: 1, total: 2 } }],
+			['unavailable', opening],
+			['isolated', { status: 'failed', error: 'x' }]
+		] as const
+	).map(([isolation, boot]) => {
+		const view = splashView(isolation, boot);
+		if (!view) throw new Error('No splash');
+		return view;
+	});
+
+	it('waits for the delay before it shows a state in progress, so a warm database shows no splash', () => {
+		expect(views.map((view) => shouldShowSplash(view, false))).toEqual([false, false, false, true, true]);
+	});
+
+	it('shows every state once the delay has passed', () => {
+		expect(views.map((view) => shouldShowSplash(view, true))).toEqual([true, true, true, true, true]);
 	});
 });

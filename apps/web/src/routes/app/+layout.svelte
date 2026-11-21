@@ -7,7 +7,7 @@
 	import Splash from '#lib/Splash.svelte';
 	import { boot, startBoot } from '#lib/boot.svelte.ts';
 	import { isolate, type IsolationOutcome } from '#lib/cross-origin-isolation.ts';
-	import { isFailure, splashDelay, splashView } from '#lib/splash.ts';
+	import { shouldShowSplash, splashDelay, splashView } from '#lib/splash.ts';
 
 	let { children } = $props();
 
@@ -31,6 +31,6 @@
 
 {#if !view}
 	{@render children()}
-{:else if delay.hasPassed || isFailure(view)}
+{:else if shouldShowSplash(view, delay.hasPassed)}
 	<Splash {view} />
 {/if}
