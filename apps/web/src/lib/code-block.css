@@ -6,10 +6,12 @@
  */
 .slide pre.code-block {
 	--code-inline: 44px;
-	--band-inset: 16px;
+	--band-inset: 23px;
+	--number-indent: 10px;
+	--number-gap: 30px;
 	position: relative;
 	overflow: hidden;
-	margin: 32px 0;
+	margin: 46px 0;
 	padding: 36px var(--code-inline);
 	border-radius: 16px;
 	background: var(--base01);
@@ -29,12 +31,14 @@
 .slide pre.code-block[data-label]::before {
 	content: attr(data-label);
 	position: absolute;
-	top: 10px;
-	right: 20px;
+	top: 19px;
+	right: 24px;
 	color: var(--muted);
 	font-family: 'Mona Sans Variable', system-ui, sans-serif;
 	font-size: 20px;
 	font-style: normal;
+	font-weight: 500;
+	letter-spacing: 0.02em;
 	line-height: 1.5;
 }
 
@@ -46,7 +50,7 @@
 	width: calc(100% + 2 * (var(--code-inline) - var(--band-inset)));
 	margin-inline: calc(var(--band-inset) - var(--code-inline));
 	padding-inline: calc(var(--code-inline) - var(--band-inset));
-	border-radius: 8px;
+	border-radius: 6px;
 	min-height: 1.5em;
 	min-height: 1lh;
 	vertical-align: top;
@@ -74,16 +78,18 @@
 /* The number sits outside the line's text, so tabs still stop where they would without it. */
 .slide pre.code-block.line-numbers .line {
 	position: relative;
-	padding-left: calc(var(--code-inline) - var(--band-inset) + (var(--line-digits, 1) + 2) * 1ch);
+	padding-left: calc(
+		var(--code-inline) - var(--band-inset) + var(--number-indent) + var(--line-digits, 1) * 1ch + var(--number-gap)
+	);
 }
 
 .slide pre.code-block.line-numbers .line::before {
 	content: counter(line);
 	counter-increment: line;
 	position: absolute;
-	left: calc(var(--code-inline) - var(--band-inset));
+	left: calc(var(--code-inline) - var(--band-inset) + var(--number-indent));
 	width: calc(var(--line-digits, 1) * 1ch);
-	color: var(--code-line-number);
+	color: var(--code-comment);
 	text-align: right;
 	user-select: none;
 }
