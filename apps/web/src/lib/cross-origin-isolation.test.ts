@@ -50,7 +50,10 @@ function storageBlocked(overrides: Partial<IsolationContext>) {
 
 describe('isolate', () => {
 	beforeEach(() => vi.useFakeTimers());
-	afterEach(() => vi.useRealTimers());
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	});
 
 	it('does nothing when the headers already isolate the page', async () => {
 		const { context, serviceWorker } = fakeContext({ crossOriginIsolated: true });
@@ -128,6 +131,12 @@ describe('isolate', () => {
 	it('still reports the outcome when the browser blocks site storage', async () => {
 		await expect(isolate(storageBlocked({ crossOriginIsolated: true }))).resolves.toBe('isolated');
 		await expect(isolate(storageBlocked({ crossOriginIsolated: false }))).resolves.toBe('unavailable');
+	});
+
+	it('reads a browser without the crossOriginIsolated global as not isolated', async () => {
+		vi.stubGlobal('isSecureContext', true);
+		expect('crossOriginIsolated' in globalThis).toBe(false);
+		await expect(isolate()).resolves.toBe('unavailable');
 	});
 
 	it('gives up without service workers or a secure context', async () => {

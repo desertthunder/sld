@@ -82,7 +82,8 @@ async function isolateWithWorker(context: IsolationContext): Promise<IsolationOu
 
 function browserContext(): IsolationContext {
 	return {
-		crossOriginIsolated,
+		// Safari before 15.2 has no `crossOriginIsolated` global.
+		crossOriginIsolated: typeof crossOriginIsolated === 'boolean' && crossOriginIsolated,
 		isSecureContext,
 		serviceWorker: 'serviceWorker' in navigator ? navigator.serviceWorker : undefined,
 		get sessionStorage() {

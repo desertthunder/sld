@@ -44,6 +44,21 @@ describe('the isolation worker', () => {
 		await expect(response?.text()).resolves.toBe('<!doctype html>');
 	});
 
+	it('passes an opaque redirect through, since a response with status 0 cannot be copied', async () => {
+		// `Response.error()` stands in for the opaque redirect a navigation gets: both have status 0.
+		const redirect = Response.error();
+		const handle = loadWorker(async () => redirect);
+		await expect(handle(new Request(`${origin}/old-path`))).resolves.toBe(redirect);
+	});
+
+	it('leaves responses that do not ask for credentialless unchanged', async () => {
+		const other = new Response('<!doctype html>', { headers: { 'Content-Type': 'text/html' } });
+		const handle = loadWorker(async () => other);
+		const response = await handle(new Request(`${origin}/`));
+		expect(response).toBe(other);
+		expect(response?.headers.get('Cross-Origin-Embedder-Policy')).toBeNull();
+	});
+
 	it('leaves cross-origin and non-GET requests to the browser', () => {
 		const fetch = vi.fn(shell);
 		const handle = loadWorker(fetch);
