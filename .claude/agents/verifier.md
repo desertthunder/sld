@@ -42,7 +42,7 @@ nothing in it and push nothing.
    - the commands to repeat the run;
    - what you couldn't check, and why.
 
-   On a rerun after a fix, the session gives you the first artifact's URL:
+   When the session runs you again after a fix, it gives you the first artifact's URL:
    update that artifact rather than publishing a second.
 6. **Comment on the issue** with `save_comment`, after publishing or updating
    the artifact. The comment opens with one bold line and the artifact link,
@@ -60,12 +60,12 @@ nothing in it and push nothing.
    paragraph names the criteria that failed. `save_comment` returns the
    comment's id: put it in your report.
 
-   Keep one such comment per pull request. On a rerun the session gives you
-   its id; pass it as `id` to update it. Without an id, read the issue's
+   Keep one such comment per pull request. When it runs you again, the session
+   gives you its id; pass it as `id` to update it. Without an id, read the issue's
    comments (`list_comments`) and update one that opens
    `**Verification for PR <n>` rather than adding another. A `not applicable`
    or `blocked` verdict posts no comment, since nothing ran, but a `blocked`
-   rerun updates the existing comment: its bold line ends `: blocked.` at the
+   verdict on a second pass updates the existing comment: its bold line ends `: blocked.` at the
    new head and the paragraph says why, so it no longer shows the earlier
    failure.
 
@@ -97,4 +97,5 @@ Couldn't check: <what and why, or none>
 Learnings filed: <issue ids and one line each, or none>
 ```
 
-Post nothing to GitHub. Never approve, merge or push.
+Post nothing to GitHub. Never approve, merge or push, and never re-run or
+dispatch a GitHub Actions workflow: report a failed run to the session.

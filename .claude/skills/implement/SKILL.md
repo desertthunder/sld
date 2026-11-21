@@ -33,7 +33,8 @@ pushes. The Branch PR workflow opens the pull request as a draft.
 
 When it returns, confirm the branch head with `git ls-remote`, find the draft
 (`list_pull_requests` with `head`). If the implementer stopped without
-pushing, report why and stop.
+pushing, report why and stop. If no draft opens, report the failed Branch push
+or Branch PR run to Owais and stop; `docs/setup.md` has his recovery steps.
 
 ## II. Standard review and revise
 
@@ -84,8 +85,8 @@ why. It then comments on the issue with the verdict, criteria passed out of
 checked and the artifact link, files learnings for later issues as Linear
 comments, and returns a Verdict, the artifact URL, the comment id, the criteria
 table, what it couldn't check and the learnings filed. A `not applicable` or
-`blocked` verdict posts no comment, except that a `blocked` rerun updates
-the earlier one. Remove the worktree when it returns.
+`blocked` verdict posts no comment, except that a `blocked` verdict on a
+second verifier pass updates the earlier one. Remove the worktree when it returns.
 
 A failed criterion is a finding with no review comment id. Dispatch the
 `reviser` agent with it, the checkout on the branch and the issue text, confirm
@@ -126,8 +127,11 @@ Every draft push already left a `ci` check run on the head that completed as
 method `get_check_runs`, compare each `ci` run's `started_at` with the time of
 the mark, and poll until that run completes (foreground `sleep` is blocked).
 Only its `success` is green. If no such run starts within ten minutes, stop and
-report it. If it fails, read the
-failing step's log, dispatch the `reviser` agent with it as a finding with no
+report it. If it fails, read the failing step's log. A failure outside the code
+(billing, a GitHub outage, a runner that never started or a job cancelled
+before its steps ran) is not the reviser's: stop and tell Owais which run
+failed, the likely cause and what to re-run, and leave the re-run to him. For a
+failure the code causes, dispatch the `reviser` agent with it as a finding with no
 review comment id, the checkout on the branch and the issue text, confirm its
 push, and wait for `ci` on the new head; every push to a ready pull request
 starts one. If the fix is outside the issue, or `ci` fails twice for the same
@@ -174,8 +178,9 @@ The call returns once the run is queued, and the post usually lands within a
 minute or two. Foreground `sleep` is blocked, so poll: read `pull_request_read`
 (`get_reviews`, `get_review_comments` or `get_comments`) until it shows a bot
 post created after the dispatch. If none appears after a few reads, look at the
-newest `comment.yml` runs and report the failure. Never dispatch the same post
-twice.
+newest `comment.yml` runs and report the failure to Owais: the run, the likely
+cause, and the post's text. Never dispatch the same post twice, and never re-run
+the failed run.
 
 ## Stop conditions
 
@@ -190,3 +195,6 @@ why.
 - The verifier returns `blocked`.
 - `ci` on the ready pull request fails twice for the same cause, its fix is
   outside the issue, or no `ci` run starts within ten minutes of the ready mark.
+- A GitHub Actions run fails for a reason outside the code. Report which run,
+  the likely cause and what to re-run; Owais re-runs it. Never re-run, cancel or
+  retrigger a run, or delete or push a branch again only to retrigger one.

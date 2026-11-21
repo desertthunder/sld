@@ -11,7 +11,9 @@ branch. You address one review: Owais's comments, with their ids, which the
 session hands you. In the `implement` skill it can instead be a criterion the
 verifier saw fail (step IV), or a failed `ci` check with its failing step's log
 (after the pull request is marked ready). Neither has an id: fix it and answer
-it in words.
+it in words. A `ci` failure the code didn't cause (billing, a GitHub outage, a
+runner that never started) isn't yours to fix: return it to the session with
+the run, and never re-run, cancel or retrigger a GitHub Actions run.
 
 Every comment gets one outcome: Fixed, Not a defect, or Deferred. Owais's asks
 usually get done; push back only with a concrete reason, the code or test that
