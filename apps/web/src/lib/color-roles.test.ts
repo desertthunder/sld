@@ -180,6 +180,31 @@ describe('roles', () => {
 		expect(css(appRoles(tango))).toMatchObject({ text: 'var(--base06)', danger: 'var(--base06)' });
 	});
 
+	it('uses the body color for headings when the body mix contrasts more than the strongest foreground', () => {
+		const overshoot = palette(
+			'#b42c20',
+			'#b90f41',
+			'#c2f994',
+			'#4725d6',
+			'#68edf1',
+			'#cce354',
+			'#4e8943',
+			'#acbb21',
+			'#814a9a',
+			'#50bed2',
+			'#bfeab8',
+			'#825806',
+			'#681cdc',
+			'#3008c1',
+			'#a0f87d',
+			'#ef201c'
+		);
+		const roles = slideRoles(overshoot);
+		expect(strongestForeground(overshoot)).toBe('04');
+		expect(roles.body).toMatchObject({ slot: '05', toward: '04', percent: 30 });
+		expect(roles.heading).toEqual(roles.body);
+	});
+
 	it('puts base07 on the primary color when it contrasts more than base00, as in a light scheme with a white base07', () => {
 		const whiteTop = { ...defaultLight, base07: '#ffffff', base0D: '#3465a4' };
 		expect(roleCss(appRoles(whiteTop).primary)).toBe('var(--base0D)');

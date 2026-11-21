@@ -151,7 +151,10 @@ function plain(palette: Palette, slot: Slot): Role {
 	return { slot, hex: palette[`base${slot}`] };
 }
 
-/** The roles slides read, each text role mixed toward the strongest foreground until it reaches its floor. */
+/**
+ * The roles slides read. Body, link and accent mix toward the strongest foreground until they reach their floors, and
+ * muted mixes toward the body color, or toward the strongest foreground when body had to be mixed.
+ */
 export function slideRoles(palette: Palette): SlideRoles {
 	const top = strongestForeground(palette);
 	const body = guard(palette, ['05', '06', '07'], textFloor, top);
