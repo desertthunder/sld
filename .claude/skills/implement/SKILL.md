@@ -97,8 +97,6 @@ report what blocked it.
 
 ## Finish
 
-- `ci` is green on the final head (`pull_request_read` method `get_check_runs`).
-  A red check is this session's to fix or explain before going on.
 - It still merges: `mergeable_state` is `clean`, `blocked`, `draft` or
   `unstable`. Read it again while GitHub answers `unknown`. On a conflict, merge
   `main` into the branch (never rebase), resolve, run `make ci`, push, and ask
@@ -121,8 +119,23 @@ and names any criterion that failed and the commit that fixed it, which no
 review pass read, or says in a few words why verification didn't apply. The bot marks the pull request ready,
 which requests Owais's review, then comments. Move the issue to **In Review**.
 
+CI skips drafts, so marking the pull request ready starts its first `ci` job.
+Every draft push already left a `ci` check run on the head that completed as
+`skipped`, which GitHub counts as passing, so it proves nothing. Wait for the
+`ci` check run that started after the ready mark: read `pull_request_read`
+method `get_check_runs`, compare each `ci` run's `started_at` with the time of
+the mark, and poll until that run completes (foreground `sleep` is blocked).
+Only its `success` is green. If no such run starts within ten minutes, stop and
+report it. If it fails, read the
+failing step's log, dispatch the `reviser` agent with it as a finding with no
+review comment id, the checkout on the branch and the issue text, confirm its
+push, and wait for `ci` on the new head; every push to a ready pull request
+starts one. If the fix is outside the issue, or `ci` fails twice for the same
+cause, stop and report it. Report to Owais only once `ci` is green.
+
 Report the pull request link, the head, the check state, what each pass found,
-the Verification artifact link, and anything left for Owais to judge. For a
+any commit pushed after the loop-finished comment's head (no review pass read
+it), the Verification artifact link, and anything left for Owais to judge. For a
 change with something to look at (a component, a screen), start it
 (`make dev`), report the port with `report_preview_port`,
 and say so. Never approve, merge or turn on auto-merge.
@@ -166,10 +179,14 @@ twice.
 
 ## Stop conditions
 
-Any of these ends the run without marking the pull request ready. Report why.
+Any of these ends the run without marking the pull request ready, or, when
+`ci` fails after it is ready, leaves it ready with the failure reported. Report
+why.
 
 - A fix needs a decision the issue doesn't record.
 - The same finding survives two revises without its cause changing.
 - `make ci` fails and the fix is outside the issue.
 - A verified criterion still fails after one revise.
 - The verifier returns `blocked`.
+- `ci` on the ready pull request fails twice for the same cause, its fix is
+  outside the issue, or no `ci` run starts within ten minutes of the ready mark.

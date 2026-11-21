@@ -1,7 +1,9 @@
 # Opens a draft pull request for an agent's work branch (claude/ or codex/)
 # as desertthunder-bot, so Owais is never the author and can approve it, and
-# the pull request starts CI like any other (a pull request opened with the
-# workflow's own token starts no workflow). It stays a draft while the agent
+# the pull request starts CI like any other once it is ready (a pull request
+# opened with the workflow's own token starts no workflow). Branch push signals
+# only a branch's first push, so this runs once per branch; docs/setup.md says
+# how to start it again when that run failed. It stays a draft while the agent
 # runs the review loop (AGENTS.md); the bot marks it ready through the Bot
 # comment workflow, and only then does CODEOWNERS request Owais's review.
 # The title is the branch's first commit subject and the description is that

@@ -14,11 +14,15 @@ The GitHub and Cloudflare settings this repository expects. Owais makes them by 
 
 ## How work reaches `main`
 
-Agents push `claude/<topic>` branches. Each push runs Branch push (`branch-push.yml`), which holds no secret, and when it finishes the Branch PR workflow (`branch-pr.yml`) runs from `main` and opens a draft pull request as `desertthunder-bot`, a GitHub App, so Owais is never the author and can approve it. A pull request the App opens starts `ci` like any other, so `ci` runs on pull requests and on pushes to `main` only. Sessions never comment with their own access, which would post as Owais: they dispatch the Bot comment workflow (`comment.yml`), which posts review reports, answers and the loop-finished summary as the bot and marks the draft ready. Owais squash-merges by hand and removes the agents' trailers, so nothing on `main` carries AI attribution.
+Agents push `claude/<topic>` branches. The push that creates a branch runs Branch push (`branch-push.yml`), which holds no secret, and when it finishes the Branch PR workflow (`branch-pr.yml`) runs from `main` and opens a draft pull request as `desertthunder-bot`, a GitHub App, so Owais is never the author and can approve it. Later pushes to the branch skip both, so neither is billed. `ci` runs on pushes to `main` and on pull requests once they are ready for review: agents run `make ci` before every push, so a draft starts no job, and marking it ready starts `ci` on its head. Sessions never comment with their own access, which would post as Owais: they dispatch the Bot comment workflow (`comment.yml`), which posts review reports, answers and the loop-finished summary as the bot and marks the draft ready. Owais squash-merges by hand and removes the agents' trailers, so nothing on `main` carries AI attribution.
 
 The App's key lives in a `bot` environment that only `main` may use. A push-triggered or dispatched workflow runs the YAML on the branch it ran for, so a repository secret would reach anyone who can push a branch, an agent session included. Only jobs that run `main`'s copy of a workflow, Branch PR, Release and Bot comment dispatched on `main`, can read the key.
 
 This is Reseed's setup, copied with its poster in `tools/devtools`.
+
+### When Branch PR fails
+
+Branch PR runs only after a branch's first push, so if that run failed (a missing secret, a GitHub outage), later pushes don't open the pull request. Fix the cause on `main`, then re-run the Branch push run for that first push: Actions → Branch push → the run for the branch → Re-run all jobs, or `gh run rerun <run id>` with the id from `gh run list --workflow branch-push.yml --branch <branch>`. Its completion starts Branch PR again from `main`, which opens the draft as `desertthunder-bot` with the branch's first commit as its title and description. If the branch's first push had no commits ahead of `main`, a re-run finds none either: delete the remote branch (`git push origin --delete <branch>`) and push it again, and that push counts as its first. Don't open it with `gh pr create` under your own account: you would be its author, and an author can't give the approval `main` requires.
 
 ## 1. Install desertthunder-bot and keep its key on `main`
 
@@ -50,8 +54,8 @@ GitHub runs a `workflow_run` workflow such as Branch PR only from the default br
 
 1. Push a branch named `claude/setup-check` with one small commit.
 2. Branch push should run, then Branch PR should run on `main` and open a draft pull request authored by `desertthunder-bot`, titled with the commit subject.
-3. The `ci` check should run on the pull request.
-4. Dispatch the Bot comment workflow from `main` (Actions → Bot comment → Run workflow) with the pull request's number and a body, once with `review` set to the head SHA and a line such as `low · <changed file>:1 — check`, then with `answers` set to `true` and a body `<comment id> · Fixed in <sha>.`, where the id ends the review comment's link (`#discussion_r<id>`), then with `ready` set to `true`. The review should land on the diff as the bot, the reply should land in its thread and resolve it, and the pull request should turn ready with the bot's comment. Dispatched on any other ref, the workflow should fail before its job starts, because the `bot` environment refuses it.
+3. The `ci` check should be skipped on the draft. Push a second commit: Branch push should conclude `skipped` and Branch PR should not open a second pull request or run its job.
+4. Dispatch the Bot comment workflow from `main` (Actions → Bot comment → Run workflow) with the pull request's number and a body, once with `review` set to the head SHA and a line such as `low · <changed file>:1 — check`, then with `answers` set to `true` and a body `<comment id> · Fixed in <sha>.`, where the id ends the review comment's link (`#discussion_r<id>`), then with `ready` set to `true`. The review should land on the diff as the bot, the reply should land in its thread and resolve it, and the pull request should turn ready with the bot's comment and start one `ci` job. Dispatched on any other ref, the workflow should fail before its job starts, because the `bot` environment refuses it.
 5. Close the pull request and delete the branch.
 
 ## Releases
