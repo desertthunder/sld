@@ -216,6 +216,18 @@ describe('connect to a database another tab elected and migrated', () => {
 		expect(decks.rows).toEqual([{ id: 1, body: 'first slide' }]);
 	});
 
+	it('stops the worker when the check fails, as when the leader changes during it', async () => {
+		vi.mocked(PGliteWorker.prototype.query).mockImplementation((query, parameters) =>
+			query.includes('migrations') ? Promise.reject(new Error('Leader changed')) : leader.query(query, parameters)
+		);
+		const onLost = vi.fn();
+		const { worker, connecting, tab } = await readyWorker(onLost, [create, notes, titles]);
+		tab.send({ type: 'connected' });
+		await expect(connecting).rejects.toThrow('Leader changed');
+		expect(worker.terminate).toHaveBeenCalledOnce();
+		expect(onLost).not.toHaveBeenCalled();
+	});
+
 	it('opens a database with every migration this build carries', async () => {
 		const { connecting, tab } = await readyWorker(undefined, [create, notes]);
 		tab.send({ type: 'connected' });

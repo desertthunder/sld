@@ -32,7 +32,7 @@ const shared: { opening?: Promise<Database> } = {};
  * worker to hold the database and serves the other tabs through it. That worker migrates the database before any tab
  * can use it, and `onProgress` hears how far it has got. `onLost` hears of a failure after it opened. When the elected
  * worker runs older code, so the database lacks one of this build's migrations, it rejects with an
- * `OutdatedDatabaseError` without having queried anything else.
+ * `OutdatedDatabaseError` without having written to it.
  */
 export async function openDatabase(
 	onLost: (error: unknown) => void = () => {},
@@ -92,7 +92,13 @@ export async function connect(
 	state.client = await Promise.race([PGliteWorker.create(worker, { id: electionId }), failed]);
 	await Promise.race([state.client.waitReady, failed]);
 	// The elected worker migrates with its own code, which may be older than this tab's after a deploy.
-	const missing = await Promise.race([missingMigrations(state.client, migrations), failed]);
+	let missing: string[];
+	try {
+		missing = await Promise.race([missingMigrations(state.client, migrations), failed]);
+	} catch (error) {
+		fail(error);
+		return failed;
+	}
 	if (missing.length > 0) {
 		fail(new OutdatedDatabaseError(missing));
 		return failed;
