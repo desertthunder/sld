@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Frontmatter } from '#lib/deck-markdown.ts';
+import { slideFrontmatter, type Frontmatter } from '#lib/deck-markdown.ts';
 import { layoutClass, layouts, readSlideMeta, slideClasses } from '#lib/slide-meta.ts';
 
 const yaml = (data: Record<string, unknown>): Frontmatter => ({ format: 'yaml', raw: '', data });
@@ -102,6 +102,15 @@ describe('readSlideMeta', () => {
 		const { meta, warnings } = readSlideMeta(yaml({ layout: 'center', class: [...reserved, 'wide'] }));
 		expect(meta).toEqual({ layout: 'center', notes: undefined, classes: ['wide'] });
 		expect(warnings).toEqual(reserved.map((value) => ({ kind: 'reserved-class', value })));
+	});
+
+	it('leaves a field with no value unset, with no warning', () => {
+		const frontmatter = slideFrontmatter('---\nlayout:\nnotes:\nclass:\n---\n# One');
+		expect(Object.keys(frontmatter?.data ?? {})).toEqual(['layout', 'notes', 'class']);
+		expect(readSlideMeta(frontmatter)).toEqual({
+			meta: { layout: 'default', notes: undefined, classes: [] },
+			warnings: []
+		});
 	});
 
 	it('leaves keys it does not read out of the meta, with no warning', () => {

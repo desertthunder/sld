@@ -15,7 +15,7 @@ export type Layout = (typeof layouts)[number];
  * - `classes` are the extra class names from `class`, valid class tokens only, and never `slide`, a `layout-` or
  *   `svelte-` name, or one of the stage's own classes.
  *
- * Keys sld doesn't read stay out of it, with no warning.
+ * Keys sld doesn't read, and keys left empty, stay out of it, with no warning.
  */
 export type SlideMeta = { layout: Layout; notes: string | undefined; classes: string[] };
 
@@ -55,12 +55,14 @@ export function slideClasses(meta: SlideMeta): string[] {
 /** Reads a slide's meta from its frontmatter, falling back to each field's default when a value isn't usable. */
 export function readSlideMeta(frontmatter: Frontmatter | undefined): ReadSlideMeta {
 	const data = frontmatter?.data ?? {};
+	// YAML reads a key with no value as null, which leaves the field unset.
+	const field = (key: string): unknown => data[key] ?? undefined;
 	const warnings: SlideWarning[] = [];
 	return {
 		meta: {
-			layout: readLayout(data.layout, warnings),
-			notes: readNotes(data.notes, warnings),
-			classes: readClasses(data.class, warnings)
+			layout: readLayout(field('layout'), warnings),
+			notes: readNotes(field('notes'), warnings),
+			classes: readClasses(field('class'), warnings)
 		},
 		warnings
 	};

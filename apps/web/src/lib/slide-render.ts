@@ -44,8 +44,8 @@ function loadRenderer(): Promise<Renderer> {
 /**
  * A slide's HTML, frontmatter and meta. The frontmatter is read as the deck splitter reads it, and only the markdown
  * after it reaches Sätteri, whose own frontmatter support would also swallow a block that doesn't parse. A block that
- * doesn't parse stays slide text, as the splitter keeps it, and comes back as an `invalid-frontmatter` warning. GFM is on, and raw
- * HTML passes through, since the markdown is the person's own. Results are cached by markdown and options.
+ * doesn't parse stays slide text, as the splitter keeps it, and comes back as an `invalid-frontmatter` warning. GFM is
+ * on, and raw HTML passes through, since the markdown is the person's own. Results are cached by markdown and options.
  */
 export async function renderSlide(markdown: string, options: SlideOptions = defaultOptions): Promise<RenderedSlide> {
 	const key = `${options.lineNumbers ? 'numbered' : 'plain'}\n${markdown}`;
