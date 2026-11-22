@@ -104,22 +104,28 @@ jobs:
         if: steps.filter.outputs.web == 'true' && steps.browser-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @sld/web exec playwright install-deps chromium
       # The runner has 2 vCPUs, so each suite keeps the 1 worker it had when it ran alone: the browser tests took about
-      # 6 minutes and the unit tests 2. Sharing the CPUs slows the database tests, so they get 30 seconds before a
-      # timeout instead of 5 and 10. The browser tests print as they run, so a run the job timeout kills still shows
-      # them; the unit tests write to a log, printed once they finish: folded if they pass, open if they fail.
+      # 6 minutes and the unit tests 2. Sharing the CPUs slows the database tests, so their hooks get 30 seconds before
+      # a timeout instead of 10, as their tests already do, and every other test 30 instead of 5. The browser tests
+      # print as they run; the unit tests write to a log, printed once they finish, folded if they pass, or when the job
+      # timeout or a cancel stops the step. Both run in the background because bash runs a trap during `wait` at once,
+      # but only after a foreground command exits.
       - name: Web test and browser test, at the same time
         if: steps.filter.outputs.web == 'true'
         env:
           VITEST_MAX_WORKERS: '1'
         run: |
           unit_log="$RUNNER_TEMP/web-test.log"
+          trap 'echo "::error title=web::The step was stopped. The web test log follows."; cat "$unit_log"; exit 1' INT TERM
           pnpm --filter @sld/web test --testTimeout=30000 --hookTimeout=30000 > "$unit_log" 2>&1 &
           unit=$!
+          pnpm --filter @sld/web e2e --project=chromium --workers=1 &
+          browser=$!
           browser_status=0
-          pnpm --filter @sld/web e2e --project=chromium --workers=1 || browser_status=$?
+          wait "$browser" || browser_status=$?
           if [ "$browser_status" -ne 0 ]; then echo "::error title=web::Web browser test failed with exit code $browser_status."; fi
           unit_status=0
           wait "$unit" || unit_status=$?
+          trap - INT TERM
           if [ "$unit_status" -eq 0 ]; then
             echo "::group::Web test passed"
             cat "$unit_log"
