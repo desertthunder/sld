@@ -5,15 +5,15 @@
 # runs the web steps, the devtools steps or both, and fails if any step fails.
 # One job is billed once, where a job per package was billed per job.
 #
-# The browser tests run in Chromium. A `firefox` or `webkit` label on the pull
-# request adds that engine, and adding one to a ready pull request starts a run
-# on its head. Any other label starts a run that skips at once, in a
-# concurrency group of its own so it cancels no run in progress.
+# The browser tests run in Chromium only. Browsers (browsers.yml) runs them in
+# Firefox or WebKit when a pull request carries that label. `ci` never runs on
+# a label event: a label would start a run that skips, and a skipped `ci`
+# counts as passing even after a failed run on the same head.
 name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -21,14 +21,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}${{ github.event.action == 'labeled' && !contains(fromJSON('["firefox", "webkit"]'), github.event.label.name) && format('-label-{0}', github.run_id) || '' }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   ci:
-    if: >-
-      github.event_name != 'pull_request' || (!github.event.pull_request.draft
-      && (github.event.action != 'labeled' || contains(fromJSON('["firefox", "webkit"]'), github.event.label.name)))
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -80,48 +78,35 @@ jobs:
       - name: Web test
         if: steps.filter.outputs.web == 'true'
         run: pnpm --filter @sld/web test
-      - name: Choose the browsers for the web browser tests
+      - name: Key the browser cache by Playwright version
         if: steps.filter.outputs.web == 'true'
         id: browsers
-        env:
-          FIREFOX: ${{ contains(github.event.pull_request.labels.*.name, 'firefox') }}
-          WEBKIT: ${{ contains(github.event.pull_request.labels.*.name, 'webkit') }}
         run: |
-          browsers=chromium
-          if [ "$FIREFOX" = true ]; then browsers="$browsers firefox"; fi
-          if [ "$WEBKIT" = true ]; then browsers="$browsers webkit"; fi
           version=$(pnpm --filter @sld/web exec playwright --version | awk '{ print $2 }')
-          echo "list=$browsers" >> "$GITHUB_OUTPUT"
-          echo "cache-key=playwright-$RUNNER_OS-$version-${browsers// /-}" >> "$GITHUB_OUTPUT"
-      - name: Restore the browsers from the cache
+          echo "cache-key=playwright-$RUNNER_OS-$version-chromium" >> "$GITHUB_OUTPUT"
+      - name: Restore Chromium from the cache
         if: steps.filter.outputs.web == 'true'
         id: browser-cache
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ steps.browsers.outputs.cache-key }}
-      - name: Install the browsers and their system packages
+      - name: Install Chromium and its system packages
         if: steps.filter.outputs.web == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
-        env:
-          BROWSERS: ${{ steps.browsers.outputs.list }}
-        run: pnpm --filter @sld/web exec playwright install --with-deps $BROWSERS
+        run: pnpm --filter @sld/web exec playwright install --with-deps chromium
       # Saved before the tests run, so a failing test doesn't cost the next run the download.
-      - name: Save the browsers to the cache
+      - name: Save Chromium to the cache
         if: steps.filter.outputs.web == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ steps.browsers.outputs.cache-key }}
-      - name: Install the system packages the cached browsers need
+      - name: Install the system packages the cached Chromium needs
         if: steps.filter.outputs.web == 'true' && steps.browser-cache.outputs.cache-hit == 'true'
-        env:
-          BROWSERS: ${{ steps.browsers.outputs.list }}
-        run: pnpm --filter @sld/web exec playwright install-deps $BROWSERS
+        run: pnpm --filter @sld/web exec playwright install-deps chromium
       - name: Web browser test
         if: steps.filter.outputs.web == 'true'
-        env:
-          BROWSERS: ${{ steps.browsers.outputs.list }}
-        run: make e2e BROWSERS="$BROWSERS"
+        run: make e2e BROWSERS=chromium
       - name: Web build
         if: steps.filter.outputs.web == 'true'
         run: pnpm --filter @sld/web build

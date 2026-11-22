@@ -1,0 +1,81 @@
+# Runs the web app's browser tests in Firefox or WebKit when a ready pull
+# request carries a `firefox` or `webkit` label. `ci` runs them in Chromium on
+# every pull request; this workflow adds the other engines on request, so a
+# pull request pays for them only when it needs them.
+#
+# Adding either label starts a run on the head, and a push or marking the
+# draft ready runs again while a label is present. Each run tests every engine
+# the pull request is labeled with. GitHub can't filter label events by name,
+# so any other label starts a run whose job skips. That run sits in a
+# concurrency group of its own so it cancels no run in progress, and it is
+# harmless because `browsers` is not the required check.
+name: Browsers
+
+on:
+  pull_request:
+    types: [labeled, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browsers-${{ github.ref }}${{ github.event.action == 'labeled' && !contains(fromJSON('["firefox", "webkit"]'), github.event.label.name) && format('-label-{0}', github.run_id) || '' }}
+  cancel-in-progress: true
+
+jobs:
+  browsers:
+    if: >-
+      !github.event.pull_request.draft && (
+      (github.event.action == 'labeled' && contains(fromJSON('["firefox", "webkit"]'), github.event.label.name))
+      || (github.event.action != 'labeled' && (contains(github.event.pull_request.labels.*.name, 'firefox')
+      || contains(github.event.pull_request.labels.*.name, 'webkit'))))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Choose the labeled browsers
+        id: browsers
+        env:
+          FIREFOX: ${{ contains(github.event.pull_request.labels.*.name, 'firefox') }}
+          WEBKIT: ${{ contains(github.event.pull_request.labels.*.name, 'webkit') }}
+        run: |
+          browsers=()
+          if [ "$FIREFOX" = true ]; then browsers+=(firefox); fi
+          if [ "$WEBKIT" = true ]; then browsers+=(webkit); fi
+          version=$(pnpm --filter @sld/web exec playwright --version | awk '{ print $2 }')
+          echo "list=${browsers[*]}" >> "$GITHUB_OUTPUT"
+          echo "cache-key=playwright-$RUNNER_OS-$version-$(IFS=-; echo "${browsers[*]}")" >> "$GITHUB_OUTPUT"
+      - name: Restore the browsers from the cache
+        id: browser-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers.outputs.cache-key }}
+      - name: Install the browsers and their system packages
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        env:
+          BROWSERS: ${{ steps.browsers.outputs.list }}
+        run: pnpm --filter @sld/web exec playwright install --with-deps $BROWSERS
+      # Saved before the tests run, so a failing test doesn't cost the next run the download.
+      - name: Save the browsers to the cache
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers.outputs.cache-key }}
+      - name: Install the system packages the cached browsers need
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        env:
+          BROWSERS: ${{ steps.browsers.outputs.list }}
+        run: pnpm --filter @sld/web exec playwright install-deps $BROWSERS
+      - name: Web browser test
+        env:
+          BROWSERS: ${{ steps.browsers.outputs.list }}
+        run: make e2e BROWSERS="$BROWSERS"
