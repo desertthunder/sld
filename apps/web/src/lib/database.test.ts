@@ -1,8 +1,8 @@
 import { PGlite } from '@electric-sql/pglite';
-import { PGliteWorker } from '@electric-sql/pglite/worker';
+import { LeaderChangedError, PGliteWorker } from '@electric-sql/pglite/worker';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { connect, createDatabase, openDatabase, type Database } from '#lib/database.ts';
+import { connect, createDatabase, openDatabase, syncWhenHidden, writeDurably, type Database } from '#lib/database.ts';
 import { migrate, migrationChannelName, OutdatedDatabaseError, type Migration } from '#lib/migrate.ts';
 
 describe('createDatabase', () => {
@@ -40,6 +40,111 @@ describe('createDatabase', () => {
 		).rejects.toThrow('abort');
 		const result = await database.execute(sql`select * from notes`);
 		expect(result.rows).toEqual([]);
+	});
+});
+
+describe('writeDurably', () => {
+	it('resolves with what the write returns once the database has synced after it', async () => {
+		const client = new PGlite();
+		const events: string[] = [];
+		vi.spyOn(client, 'syncToFs').mockImplementation(async () => {
+			events.push('sync');
+		});
+		const saved = await writeDurably(createDatabase(client), async (database) => {
+			await database.execute(sql`create table notes (body text not null)`);
+			events.length = 0;
+			events.push('write');
+			return 'saved';
+		});
+		expect(saved).toBe('saved');
+		expect(events).toEqual(['write', 'sync']);
+		await client.close();
+	});
+
+	it('does not sync or report a write that failed', async () => {
+		const client = new PGlite();
+		const sync = vi.spyOn(client, 'syncToFs');
+		await expect(
+			writeDurably(createDatabase(client), async () => {
+				throw new Error('constraint failed');
+			})
+		).rejects.toThrow('constraint failed');
+		expect(sync).not.toHaveBeenCalled();
+		await client.close();
+	});
+
+	it("rejects when another tab's worker takes over during the write, though the write never settles", async () => {
+		const { client, changeLeader, stop } = workerClient();
+		const saving = writeDurably(createDatabase(client), () => new Promise<never>(() => {}));
+		changeLeader();
+		await expect(saving).rejects.toBeInstanceOf(LeaderChangedError);
+		expect(stop).toHaveBeenCalledOnce();
+	});
+
+	it('stops listening for a new leader once the write is saved', async () => {
+		const { client, changeLeader, stop } = workerClient();
+		await expect(writeDurably(createDatabase(client), async () => 'saved')).resolves.toBe('saved');
+		expect(client.syncToFs).toHaveBeenCalledOnce();
+		expect(stop).toHaveBeenCalledOnce();
+		changeLeader();
+	});
+});
+
+function workerClient() {
+	const listeners: (() => void)[] = [];
+	const stop = vi.fn();
+	const client: PGliteWorker = Object.assign(Object.create(PGliteWorker.prototype) as PGliteWorker, {
+		syncToFs: vi.fn(async () => {}),
+		onLeaderChange: (listener: () => void) => {
+			listeners.push(listener);
+			return stop;
+		}
+	});
+	const changeLeader = () => {
+		for (const listener of listeners) listener();
+	};
+	return { client, stop, changeLeader };
+}
+
+function hiddenPage() {
+	const page = new EventTarget();
+	const document = Object.assign(new EventTarget(), { visibilityState: 'visible' as DocumentVisibilityState });
+	const client = { syncToFs: vi.fn(async () => {}) };
+	const stop = syncWhenHidden(client, page as Window, document as unknown as Document);
+	return { page, document, client, stop };
+}
+
+describe('syncWhenHidden', () => {
+	it('syncs when the page is about to unload', () => {
+		const { page, client } = hiddenPage();
+		page.dispatchEvent(new Event('pagehide'));
+		expect(client.syncToFs).toHaveBeenCalledOnce();
+	});
+
+	it('syncs when the page is hidden, and not when it is shown again', () => {
+		const { document, client } = hiddenPage();
+		document.visibilityState = 'hidden';
+		document.dispatchEvent(new Event('visibilitychange'));
+		document.visibilityState = 'visible';
+		document.dispatchEvent(new Event('visibilitychange'));
+		expect(client.syncToFs).toHaveBeenCalledOnce();
+	});
+
+	it('stops syncing once stopped', () => {
+		const { page, document, client, stop } = hiddenPage();
+		stop();
+		page.dispatchEvent(new Event('pagehide'));
+		document.visibilityState = 'hidden';
+		document.dispatchEvent(new Event('visibilitychange'));
+		expect(client.syncToFs).not.toHaveBeenCalled();
+	});
+
+	it('ignores a sync that fails while the page goes away', async () => {
+		const { page, client } = hiddenPage();
+		client.syncToFs.mockRejectedValueOnce(new Error('The database worker stopped'));
+		page.dispatchEvent(new Event('pagehide'));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(client.syncToFs).toHaveBeenCalledOnce();
 	});
 });
 

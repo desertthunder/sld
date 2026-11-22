@@ -18,3 +18,7 @@ Requirements: Node 22.18+ and pnpm 10 (`corepack enable`).
 make install
 make ci
 ```
+
+On Linux, the browser tests also need WebKit's system libraries:
+`pnpm --filter @sld/web exec playwright install-deps chromium webkit`, which
+installs packages with `sudo`.

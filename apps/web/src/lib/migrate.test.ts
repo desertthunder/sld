@@ -97,6 +97,31 @@ describe('migrate', () => {
 		]);
 	});
 
+	it('syncs each migration to storage after it commits and before reporting it applied', async () => {
+		const events: string[] = [];
+		const transaction = client.transaction.bind(client);
+		vi.spyOn(client, 'transaction').mockImplementation(async (callback) => {
+			const result = await transaction(callback);
+			events.push('commit');
+			return result;
+		});
+		vi.spyOn(client, 'syncToFs').mockImplementation(async () => {
+			events.push('sync');
+		});
+		await migrate(client, [create, notes], ({ applied }) => {
+			events.push(`applied ${applied}`);
+		});
+		const commits = events
+			.entries()
+			.filter(([, event]) => event === 'commit')
+			.map(([index]) => index)
+			.toArray();
+		expect(commits.map((index) => events.slice(index, index + 3))).toEqual([
+			['commit', 'sync', 'applied 1'],
+			['commit', 'sync', 'applied 2']
+		]);
+	});
+
 	it('rolls back a failing migration and stops before the next', async () => {
 		await migrate(client, [create]);
 		const broken: Migration = { tag: '0001_broken', sql: 'create table notes (id serial); select * from missing;' };

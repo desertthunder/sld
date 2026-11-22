@@ -8,6 +8,8 @@ export default defineConfig({
 	testMatch: '**/*.e2e.ts',
 	outputDir: 'test-results',
 	reporter: 'list',
+	// WebKit takes over 20 seconds for a test that opens the app in two tabs.
+	timeout: 90_000,
 	forbidOnly: Boolean(process.env.CI),
 	use: { baseURL: `http://localhost:${port}` },
 	projects: [
