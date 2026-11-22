@@ -10,12 +10,12 @@ export type MigrationProgress = { applied: number; total: number };
 /** The channel the elected worker posts `MigrationProgress` on, so every tab waiting for the database hears it. */
 export const migrationChannelName = 'sld-migrations';
 
-type Client = Pick<PGliteInterface, 'query' | 'transaction'>;
+type Client = Pick<PGliteInterface, 'query' | 'transaction'> & { syncToFs(): Promise<void> };
 
 /**
  * Applies, in order, each of `migrations` that the `migrations` table does not list, each in its own transaction that
- * also records it. The first migration creates that table, so a fresh database has none of them. A failed migration
- * rolls back and stops the rest.
+ * also records it, and reports each one applied once its files are synced. The first migration creates that table, so
+ * a fresh database has none of them. A failed migration rolls back and stops the rest.
  */
 export async function migrate(
 	client: Client,
@@ -35,6 +35,8 @@ export async function migrate(
 		} catch (error) {
 			throw new Error(`Migration ${tag} failed: ${errorText(error)}`, { cause: error });
 		}
+		// PGlite writes a commit to IndexedDB only with the next statement, so a reload now would lose it.
+		await client.syncToFs();
 		onProgress({ applied: index + 1, total: pending.length });
 	}
 }

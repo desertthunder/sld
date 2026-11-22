@@ -1,5 +1,5 @@
-import type { PGlite, PGliteInterface } from '@electric-sql/pglite';
-import { PGliteWorker } from '@electric-sql/pglite/worker';
+import type { PGlite } from '@electric-sql/pglite';
+import { LeaderChangedError, PGliteWorker } from '@electric-sql/pglite/worker';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { migrations } from 'virtual:migrations';
 import {
@@ -10,12 +10,61 @@ import {
 	type MigrationProgress
 } from '#lib/migrate.ts';
 
-export type Database = PgliteDatabase;
+/** The PGlite clients the app uses: the shared one in a worker, or one in memory. */
+export type Client = PGlite | PGliteWorker;
+
+/** A Drizzle database, with the client it wraps as `$client`. */
+export type Database = PgliteDatabase & { $client: Client };
 
 /** Wraps any PGlite client, in a worker or in memory, with Drizzle. */
-export function createDatabase(client: PGliteInterface): Database {
+export function createDatabase(client: Client): Database {
 	// Drizzle types its client as `PGlite`, but only calls the query and transaction methods every PGlite client has.
 	return drizzle({ client: client as PGlite });
+}
+
+/**
+ * Runs `write` against `database` and resolves once IndexedDB holds everything it wrote, so a reload or a closed tab
+ * keeps it. Report a write saved only once this resolves. It rejects with a `LeaderChangedError` when a different
+ * tab's worker takes over the database during the write, which then may or may not have been saved.
+ */
+export async function writeDurably<T>(database: Database, write: (database: Database) => Promise<T>): Promise<T> {
+	const { $client } = database;
+	const durably = async () => {
+		const result = await write(database);
+		await $client.syncToFs();
+		return result;
+	};
+	if (!($client instanceof PGliteWorker)) return durably();
+	// PGlite drops a call the tab sends while the new leader is still opening, so without this the write could wait forever.
+	const { promise: leaderChanged, reject } = Promise.withResolvers<never>();
+	const stop = $client.onLeaderChange(() => reject(new LeaderChangedError()));
+	try {
+		return await Promise.race([durably(), leaderChanged]);
+	} finally {
+		stop();
+	}
+}
+
+/**
+ * Asks the database to sync to IndexedDB whenever the page is hidden or about to unload, until the returned function
+ * stops it. Browsers may stop a hidden or closing tab before the sync finishes, so this only narrows the window for a
+ * write still in flight; `writeDurably` is what makes a saved write survive.
+ */
+export function syncWhenHidden(
+	client: Pick<Client, 'syncToFs'>,
+	page: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+	document: Pick<Document, 'addEventListener' | 'removeEventListener' | 'visibilityState'>
+): () => void {
+	const sync = () => void client.syncToFs().catch(() => {});
+	const onVisibilityChange = () => {
+		if (document.visibilityState === 'hidden') sync();
+	};
+	page.addEventListener('pagehide', sync);
+	document.addEventListener('visibilitychange', onVisibilityChange);
+	return () => {
+		page.removeEventListener('pagehide', sync);
+		document.removeEventListener('visibilitychange', onVisibilityChange);
+	};
 }
 
 /** What the database worker posts, with the error as plain text, when this tab's worker cannot open the database. */
@@ -40,14 +89,10 @@ export async function openDatabase(
 ): Promise<Database> {
 	const progress = new BroadcastChannel(migrationChannelName);
 	progress.addEventListener('message', (event: MessageEvent<MigrationProgress>) => onProgress(event.data));
-	shared.opening ??= connect(
-		new Worker(new URL('database-worker.ts', import.meta.url), { type: 'module', name: 'sld-database' }),
-		migrations,
-		(error) => {
-			shared.opening = undefined;
-			onLost(error);
-		}
-	);
+	shared.opening ??= openShared((error) => {
+		shared.opening = undefined;
+		onLost(error);
+	});
 	try {
 		return await shared.opening;
 	} catch (error) {
@@ -56,6 +101,20 @@ export async function openDatabase(
 	} finally {
 		progress.close();
 	}
+}
+
+async function openShared(onLost: (error: unknown) => void): Promise<Database> {
+	const listening: { stop?: () => void } = {};
+	const database = await connect(
+		new Worker(new URL('database-worker.ts', import.meta.url), { type: 'module', name: 'sld-database' }),
+		migrations,
+		(error) => {
+			listening.stop?.();
+			onLost(error);
+		}
+	);
+	listening.stop = syncWhenHidden(database.$client, globalThis, document);
+	return database;
 }
 
 /**

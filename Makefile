@@ -2,13 +2,14 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install dev fmt lint check test build app-shell dry-run lockfile ci
+.PHONY: help install dev fmt lint check test e2e build app-shell dry-run lockfile ci
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-10s %s\n", $$1, $$2}'
 
-install: ## Install dependencies
+install: ## Install dependencies, and the browsers the web app's browser tests use
 	pnpm install
+	pnpm --filter @sld/web exec playwright install chromium webkit
 
 dev: ## Run the web app on :5173
 	pnpm --filter @sld/web dev
@@ -24,6 +25,9 @@ check: ## Type-check TypeScript
 
 test: ## Run every test suite
 	pnpm test
+
+e2e: ## Run the web app's browser tests in headless Chromium and WebKit
+	pnpm --filter @sld/web e2e
 
 build: ## Build every package
 	pnpm build
@@ -48,4 +52,4 @@ dry-run: ## Run the Bot comment poster as comment.yml does, posting nothing
 lockfile: ## Check pnpm-lock.yaml matches every package.json
 	pnpm install --frozen-lockfile
 
-ci: lockfile lint check test build app-shell dry-run ## Everything CI runs
+ci: lockfile lint check test e2e build app-shell dry-run ## Everything CI runs
