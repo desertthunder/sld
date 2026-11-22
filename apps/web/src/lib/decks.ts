@@ -30,12 +30,21 @@ async function slideCount(tx: Transaction, deckId: string): Promise<number> {
 	return row?.total ?? 0;
 }
 
-// Postgres throws on an id that is not a uuid, and such an id can name no deck or slide.
+// Postgres throws on an id that is not a uuid. The queries take only the canonical form the database returns, though
+// Postgres would also read braced or unhyphenated uuids.
 const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 
 function isUuid(id: string): boolean {
 	return uuid.test(id);
 }
+
+// Postgres text cannot hold U+0000. CommonMark replaces it with U+FFFD, so markdown means the same either way.
+function storable(text: string): string {
+	return text.replaceAll('\0', '\u{FFFD}');
+}
+
+// Postgres binds at most 65,535 parameters to one statement, and each slide row takes three.
+const slidesPerInsert = 1000;
 
 function clampPosition(position: number, last: number): number {
 	if (!Number.isSafeInteger(position)) throw new RangeError(`A slide position must be an integer, not ${position}`);
@@ -43,13 +52,19 @@ function clampPosition(position: number, last: number): number {
 }
 
 /** Creates a deck, with its slides when `slides` lists their markdown, and returns it. */
-export function createDeck(database: Database, { slides: markdowns = [], ...fields }: NewDeck): Promise<Deck> {
+export function createDeck(database: Database, { slides: markdowns = [], title, ...fields }: NewDeck): Promise<Deck> {
 	return write(database, async (tx) => {
-		const [deck] = await tx.insert(decks).values(fields).returning();
-		if (markdowns.length > 0) {
-			await tx
-				.insert(slides)
-				.values(markdowns.map((markdown, position) => ({ deckId: deck!.id, position, markdown })));
+		const [deck] = await tx
+			.insert(decks)
+			.values({ ...fields, title: storable(title) })
+			.returning();
+		const rows = markdowns.map((markdown, position) => ({
+			deckId: deck!.id,
+			position,
+			markdown: storable(markdown)
+		}));
+		for (let start = 0; start < rows.length; start += slidesPerInsert) {
+			await tx.insert(slides).values(rows.slice(start, start + slidesPerInsert));
 		}
 		return deck!;
 	});
@@ -77,7 +92,7 @@ export function renameDeck(database: Database, id: string, title: string): Promi
 		if (!isUuid(id)) return;
 		const [deck] = await tx
 			.update(decks)
-			.set({ title, updatedAt: sql`now()` })
+			.set({ title: storable(title), updatedAt: sql`now()` })
 			.where(eq(decks.id, id))
 			.returning();
 		return deck;
@@ -108,7 +123,7 @@ export function insertSlide(
 		const touched = await touchDeck(tx, deckId).returning({ id: decks.id });
 		if (touched.length === 0) return;
 		const at = clampPosition(position, await slideCount(tx, deckId));
-		return insertAt(tx, deckId, at, markdown);
+		return insertAt(tx, deckId, at, storable(markdown));
 	});
 }
 
@@ -127,7 +142,7 @@ export function updateSlide(database: Database, id: string, markdown: string): P
 		if (!isUuid(id)) return;
 		const [slide] = await tx
 			.update(slides)
-			.set({ markdown, updatedAt: sql`now()` })
+			.set({ markdown: storable(markdown), updatedAt: sql`now()` })
 			.where(eq(slides.id, id))
 			.returning();
 		if (slide) await touchDeck(tx, slide.deckId);

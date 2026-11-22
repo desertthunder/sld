@@ -92,16 +92,36 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await positions(deck.id)).toEqual([0, 1]);
 		});
 
-		it('syncs a write to storage before resolving', async () => {
-			const sync = vi.spyOn(client, 'syncToFs');
-			const deck = await createDeck(database, { title: 'Talk' });
-			expect(sync).toHaveBeenCalled();
-			sync.mockClear();
-			await renameDeck(database, deck.id, 'Renamed');
-			expect(sync).toHaveBeenCalled();
-			sync.mockClear();
-			await updateSlide(database, missing, '');
-			expect(sync).toHaveBeenCalled();
+		it('syncs every write to storage after it commits, before resolving', async () => {
+			const events: string[] = [];
+			const transaction = client.transaction.bind(client);
+			vi.spyOn(client, 'transaction').mockImplementation(async (callback) => {
+				const result = await transaction(callback);
+				events.push('commit');
+				return result;
+			});
+			const sync = client.syncToFs.bind(client);
+			vi.spyOn(client, 'syncToFs').mockImplementation(async () => {
+				events.push('sync');
+				await sync();
+			});
+			const deck = await createDeck(database, { title: 'Talk', slides: ['# One', '# Two'] });
+			expect(events.slice(-2)).toEqual(['commit', 'sync']);
+			const id = await slideId(deck.id, 0);
+			const writes = [
+				() => renameDeck(database, deck.id, 'Renamed'),
+				() => insertSlide(database, deck.id, 0, '# Zero'),
+				() => updateSlide(database, id, '# One, edited'),
+				() => duplicateSlide(database, id),
+				() => moveSlide(database, id, 0),
+				() => deleteSlide(database, id),
+				() => deleteDeck(database, deck.id)
+			];
+			for (const change of writes) {
+				events.length = 0;
+				await change();
+				expect(events.slice(-2)).toEqual(['commit', 'sync']);
+			}
 		});
 
 		it('lists decks, the most recently changed first', async () => {
@@ -130,6 +150,29 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await duplicateSlide(database, id)).toBeUndefined();
 			expect(await moveSlide(database, id, 0)).toBeUndefined();
 			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
+		});
+
+		it('stores U+0000 in a title or markdown as U+FFFD, which Postgres text can hold', async () => {
+			const deck = await createDeck(database, { title: 'A\0B', slides: ['# One\0'] });
+			expect(deck.title).toBe('A\u{FFFD}B');
+			expect(await markdowns(deck.id)).toEqual(['# One\u{FFFD}']);
+			expect(await renameDeck(database, deck.id, '\0')).toMatchObject({ title: '\u{FFFD}' });
+			expect(await insertSlide(database, deck.id, 1, '\0')).toMatchObject({ markdown: '\u{FFFD}' });
+			expect(await updateSlide(database, await slideId(deck.id, 0), 'a\0b')).toMatchObject({
+				markdown: 'a\u{FFFD}b'
+			});
+		});
+
+		it('creates a deck with more slides than one statement can bind', async () => {
+			const total = 21_846;
+			const deck = await createDeck(database, {
+				title: 'Long',
+				slides: Array.from({ length: total }, (_, index) => `# ${index}`)
+			});
+			const result = await database.execute<{ total: number; last: number }>(
+				sql`select count(*)::int as total, max(position) as last from slides where deck_id = ${deck.id}`
+			);
+			expect(result.rows).toEqual([{ total, last: total - 1 }]);
 		});
 
 		it('renames a deck and updates when it changed', async () => {
