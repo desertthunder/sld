@@ -28,7 +28,8 @@
 		onclose();
 	}}
 	onclose={() => {
-		if (open) onclose();
+		// The close event arrives a task late, after a quick ? may already have opened the dialog again.
+		if (open && !dialog?.open) onclose();
 	}}>
 	<section class="help">
 		<h2 id="shortcuts-heading">Shortcuts</h2>

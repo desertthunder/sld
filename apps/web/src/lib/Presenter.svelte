@@ -55,8 +55,9 @@
 
 	function stopPresenting() {
 		void exitFullscreen(document);
-		// eslint-disable-next-line svelte/no-navigation-without-resolve -- The path starts from `resolve`.
-		void goto(`${resolve('/app')}/deck/${deck.id}?slide=${number}`);
+		// `resolve` builds the path, and the rule doesn't follow it into a string with a query.
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
+		void goto(`${resolve('/app/deck/[id]', { id: deck.id })}?slide=${number}`);
 	}
 
 	function act(action: PresenterAction) {
