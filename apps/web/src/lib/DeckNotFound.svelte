@@ -3,7 +3,7 @@
 	import { appName } from '#lib/app-info.ts';
 	import EditorFrame from '#lib/EditorFrame.svelte';
 
-	const heading = "This deck isn't here";
+	const heading = 'Deck not found';
 </script>
 
 <svelte:head>

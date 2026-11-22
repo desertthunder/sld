@@ -206,6 +206,29 @@ test('Present shows disabled until the presenter exists', async ({ page }) => {
 	await expect(page.getByRole('button', { name: /Present/ })).toBeDisabled();
 });
 
+test('toolbar icons sit beside their text and stay hidden from assistive technology', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+	const toolbar = page.getByRole('banner');
+	const controls = [
+		page.getByRole('link', { name: 'Decks', exact: true }),
+		page.getByRole('button', { name: 'Rename deck: Talk' }),
+		toolbar.locator('.saved'),
+		page.getByRole('button', { name: /Present/ })
+	];
+	for (const control of controls) {
+		const icon = control.locator('[class*="i-ri-"]');
+		await expect(icon).toHaveCount(1);
+		await expect(icon).toBeVisible();
+		await expect(icon).toHaveAttribute('aria-hidden', 'true');
+	}
+	await expect(page.getByRole('link', { name: 'Decks', exact: true })).toHaveText('Decks');
+	await expect(page.getByRole('button', { name: 'Rename deck: Talk' })).toHaveText('Talk');
+	await expect(toolbar.locator('.saved')).toHaveText('Saved');
+	await expect(page.getByRole('button', { name: /Present/ })).toHaveText('PresentP');
+});
+
 test('pane widths persist across a reload', async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	const id = await createDeck(page, 'Talk', ['# One']);
@@ -238,11 +261,40 @@ test('an unknown deck shows the not-found state', async ({ page }) => {
 	await waitForApp(page);
 	for (const id of ['00000000-0000-4000-8000-000000000000', 'not-a-deck']) {
 		await page.goto(`/app/deck/${id}`);
-		await expect(page.getByRole('heading', { level: 1, name: "This deck isn't here" })).toBeVisible({
-			timeout: 30_000
-		});
+		await expect(page.getByRole('heading', { level: 1, name: 'Deck not found' })).toBeVisible({ timeout: 30_000 });
 		await expect(page.getByRole('link', { name: 'Back to decks' })).toHaveAttribute('href', '/app');
 	}
+});
+
+/** Makes every later slide write fail, by moving the slides table out of the way. */
+async function breakSlideWrites(page: Page) {
+	await page.evaluate(
+		async ({ urls }) => {
+			const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
+			const database = await openDatabase();
+			await database.$client.exec('ALTER TABLE slides RENAME TO slides_away');
+		},
+		{ urls: modules }
+	);
+}
+
+const saveState = (page: Page) => page.getByRole('banner').locator('.saved');
+
+test('the saving icon spins only when motion is welcome', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	const animation = async () => {
+		await editor(page).press('End');
+		await page.keyboard.type('!');
+		await expect(saveState(page)).toHaveText('Saving…');
+		return saveState(page)
+			.locator('.i-ri-loader-4-line')
+			.evaluate((icon) => getComputedStyle(icon).animationName);
+	};
+	await page.emulateMedia({ reducedMotion: 'no-preference' });
+	expect(await animation()).not.toBe('none');
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	expect(await animation()).toBe('none');
 });
 
 async function hasNoHorizontalScroll(page: Page): Promise<boolean> {
@@ -263,6 +315,13 @@ test.describe('at phone width', () => {
 		await expect(editor(page)).toBeVisible();
 		await expect(slideList(page)).toBeHidden();
 		expect(await hasNoHorizontalScroll(page)).toBe(true);
+		const title = page.getByRole('button', { name: `Rename deck: ${long}` });
+		const pencil = title.locator('.i-ri-pencil-line');
+		await expect(pencil).toBeVisible();
+		const pencilBox = await pencil.boundingBox();
+		const titleBox = await title.boundingBox();
+		expect(pencilBox!.x + pencilBox!.width).toBeLessThanOrEqual(titleBox!.x + titleBox!.width);
+		expect(await title.locator('.text').evaluate((text) => text.scrollWidth > text.clientWidth)).toBe(true);
 
 		await tabs.getByRole('tab', { name: 'Slides' }).click();
 		await expect(slideList(page)).toBeVisible();
@@ -283,6 +342,24 @@ test.describe('at phone width', () => {
 		await page.setViewportSize({ width: 844, height: 390 });
 		await page.setViewportSize({ width: 390, height: 844 });
 		await expect(page.getByRole('tab', { name: 'Preview' })).toHaveAttribute('aria-selected', 'true');
+		expect(await hasNoHorizontalScroll(page)).toBe(true);
+	});
+
+	test('the save state shows only when a write fails, with its warning icon', async ({ page }) => {
+		const id = await createDeck(page, 'A deck title long enough to overflow the toolbar on a phone held upright', [
+			'# One'
+		]);
+		await page.goto(`/app/deck/${id}`);
+		await expect(editor(page)).toBeVisible({ timeout: 30_000 });
+		await expect(saveState(page)).toHaveText('Saved');
+		await expect(saveState(page)).toBeHidden();
+		await breakSlideWrites(page);
+		await editor(page).fill('# One, edited');
+		await expect(saveState(page)).toHaveText('Not saved');
+		await expect(saveState(page)).toBeVisible();
+		const warning = saveState(page).locator('.i-ri-error-warning-line');
+		await expect(warning).toBeVisible();
+		await expect(warning).toHaveAttribute('aria-hidden', 'true');
 		expect(await hasNoHorizontalScroll(page)).toBe(true);
 	});
 });

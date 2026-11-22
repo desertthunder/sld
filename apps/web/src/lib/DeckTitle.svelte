@@ -58,7 +58,8 @@
 		title={shown}
 		bind:this={button}
 		onclick={start}>
-		{shown}
+		<span class="text">{shown}</span>
+		<span class="i-ri-pencil-line icon" aria-hidden="true"></span>
 	</button>
 {/if}
 
@@ -80,6 +81,24 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		cursor: text;
+	}
+
+	button.title {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.text {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.icon {
+		width: 16px;
+		height: 16px;
+		color: var(--muted);
 	}
 
 	button.title:hover {

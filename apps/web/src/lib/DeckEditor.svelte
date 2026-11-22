@@ -58,6 +58,13 @@
 		}
 	}
 
+	// UnoCSS finds icon classes in the component source, so the names stay whole here.
+	const saveStatusIcons: Record<SaveStatus, string> = {
+		saved: 'i-ri-check-line',
+		saving: 'i-ri-loader-4-line',
+		failed: 'i-ri-error-warning-line'
+	};
+
 	// The deck is loaded once; from here on this state is the source, and every change is written through.
 	// svelte-ignore state_referenced_locally
 	const { id: deckId, title, slides } = deck;
@@ -288,7 +295,9 @@
 
 {#snippet toolbar()}
 	<DeckTitle title={editor.title} onrename={rename} />
-	<span class="saved" class:failed={editor.status === 'failed'}>{saveStatusLabels[editor.status]}</span>
+	<span class="saved" class:failed={editor.status === 'failed'}>
+		<span class="{saveStatusIcons[editor.status]} icon" aria-hidden="true"></span>{saveStatusLabels[editor.status]}
+	</span>
 	<span class="spacer"></span>
 	<!-- TODO: open the presenter at the selected slide, from this button and the P key, once it exists. -->
 	<button class="present" type="button" disabled aria-keyshortcuts="P">
@@ -383,6 +392,9 @@
 <style>
 	.saved {
 		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		font-size: 13px;
 		color: var(--muted);
 	}
@@ -390,6 +402,18 @@
 	.saved.failed {
 		color: var(--heading);
 		font-weight: 600;
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.saved :global(.i-ri-loader-4-line) {
+			animation: spin 1s linear infinite;
+		}
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(1turn);
+		}
 	}
 
 	.spacer {
