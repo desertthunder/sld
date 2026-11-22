@@ -82,20 +82,17 @@ describe('deckFromNote', () => {
 		expect(deckFromNote('---\naspect: 21:9\n---\n\n# One\n')).toEqual({ title: 'One', slides: ['# One'] });
 	});
 
-	it.each([
-		['a closed heading', '## Closed heading ##', 'Closed heading'],
-		['a list item', '- First item\n- Second item', 'First item'],
-		['a quote', '> Quoted line', 'Quoted line'],
-		['a setext heading', 'Plain title\n===', 'Plain title']
-	])('takes the text of %s as the title', (_case, markdown, title) => {
-		expect(deckFromNote(markdown).title).toBe(title);
+	it('titles a note with no heading for the day it was made', () => {
+		expect(deckFromNote('Just a line\n\n- and a list', new Date(2026, 10, 22, 23, 30)).title).toBe(
+			'Untitled Deck - 2026-11-22'
+		);
 	});
 
-	it("skips a slide's frontmatter and slides with no text when it looks for a title", () => {
-		expect(deckFromNote('---\n\n+++\nlayout = "title"\n+++\n\n---\n\n## Second\n').title).toBe('Second');
+	it("skips a slide's frontmatter and slides with no heading when it looks for a title", () => {
+		expect(deckFromNote('Intro\n\n---\n\n+++\nlayout = "title"\n+++\n\n## Second\n').title).toBe('Second');
 	});
 
-	it('gives an empty note no slides and no title', () => {
-		expect(deckFromNote('\n\n')).toEqual({ title: '', slides: [] });
+	it('gives an empty note no slides and an untitled title', () => {
+		expect(deckFromNote('\n\n', new Date(2026, 0, 5))).toEqual({ title: 'Untitled Deck - 2026-01-05', slides: [] });
 	});
 });

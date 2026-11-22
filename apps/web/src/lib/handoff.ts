@@ -1,4 +1,5 @@
-import { slideParts, splitDeck } from '#lib/deck-markdown.ts';
+import { splitDeck } from '#lib/deck-markdown.ts';
+import { deckTitle } from '#lib/deck-title.ts';
 import type { NewDeck } from '#lib/decks.ts';
 import { isUuid } from '#lib/uuid.ts';
 
@@ -47,28 +48,16 @@ export function clearHandoff(storage: HandoffStorage, id: string): void {
 }
 
 const aspects = new Set(['16:9', '4:3']);
-const markers = /^ {0,3}(?:#{1,6}(?=\s|$)|>|[-+*](?=\s)|\d{1,9}[.)](?=\s))\s*/;
-
-function firstLine(slide: string): string | undefined {
-	for (const line of slideParts(slide).body.split('\n')) {
-		const text = line
-			.replace(markers, '')
-			.replace(/\s+#+\s*$/, '')
-			.trim();
-		if (text !== '') return text;
-	}
-	return undefined;
-}
 
 /**
- * The deck a note makes: its slides as `splitDeck` splits them, its scheme and aspect from its frontmatter, and its
- * title from its frontmatter or else the first line of text in its slides, without heading, quote or list markers.
+ * The deck a note makes on the day it is `made`: its slides as `splitDeck` splits them, its scheme and aspect from its
+ * frontmatter, and its title as `deckTitle` gives it.
  */
-export function deckFromNote(markdown: string): Omit<NewDeck, 'id'> & { slides: string[] } {
-	const { frontmatter, slides } = splitDeck(markdown);
-	const title = frontmatter?.title?.trim() || slides.map((slide) => firstLine(slide)).find(Boolean) || '';
+export function deckFromNote(markdown: string, made: Date = new Date()): Omit<NewDeck, 'id'> & { slides: string[] } {
+	const split = splitDeck(markdown);
+	const { frontmatter, slides } = split;
 	return {
-		title,
+		title: deckTitle(split, made),
 		...(frontmatter?.scheme && { scheme: frontmatter.scheme }),
 		...(frontmatter?.aspect && aspects.has(frontmatter.aspect) && { aspect: frontmatter.aspect }),
 		slides

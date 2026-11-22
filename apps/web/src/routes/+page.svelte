@@ -137,11 +137,15 @@
 				<section class="band">
 					<div class="two">
 						<div>
-							<h2>Live Preview</h2>
+							<h2 id="live-preview">Live Preview</h2>
 							<p class="copy">The slide updates as you type.</p>
 						</div>
 						<div class="flip">
-							<textarea class="card source-card" spellcheck="false" bind:value={note.preview}></textarea>
+							<textarea
+								class="card source-card"
+								aria-labelledby="live-preview"
+								spellcheck="false"
+								bind:value={note.preview}></textarea>
 							<div class="card preview-card">
 								<span class="number">2 / {sampleSlides.length}</span>
 								<div class="face">{@render slide(note.preview)}</div>

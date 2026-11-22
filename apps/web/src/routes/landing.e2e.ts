@@ -74,6 +74,8 @@ test('the landing page draws and responds before PGlite has downloaded', async (
 	await expect(page.getByRole('status').filter({ hasText: 'Opening decks' })).toBeVisible();
 	await noteBox(page).fill('# One\n\n---\n\n# Two');
 	await expect(page.getByText('2 slides', { exact: true })).toBeVisible();
+	await page.getByRole('textbox', { name: 'Live Preview' }).fill('## Edited');
+	await expect(page.getByRole('textbox', { name: 'Live Preview' })).toHaveValue('## Edited');
 	release();
 	await expect(page.getByRole('status').filter({ hasText: 'Decks ready' })).toBeVisible({ timeout: 30_000 });
 });
