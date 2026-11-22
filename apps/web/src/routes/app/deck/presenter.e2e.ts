@@ -259,6 +259,29 @@ test('? shows every key the presenter handles, and ? or Esc hides it', async ({ 
 	await expect(help).toBeHidden();
 });
 
+test('the shortcuts fit a phone screen without scrolling sideways', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	const id = await createDeck(page);
+	await present(page, id, '#2');
+	await page.keyboard.press('?');
+	const help = page.getByRole('dialog', { name: 'Shortcuts' });
+	await expect(help).toBeVisible();
+	const card = help.locator('section');
+	const { scrollWidth, clientWidth } = await card.evaluate((element) => ({
+		scrollWidth: element.scrollWidth,
+		clientWidth: element.clientWidth
+	}));
+	expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+	const descriptions = help.locator('dd');
+	await expect(descriptions).toHaveCount(7);
+	const rows = await descriptions.all();
+	for (const description of rows) {
+		await expect(description).toBeVisible();
+		expect((await description.boundingBox())!.width).toBeGreaterThan(0);
+	}
+	expect(await card.evaluate((element) => element === document.activeElement)).toBe(false);
+});
+
 test('f toggles full screen, Esc leaves it, and a second Esc returns to the editor', async ({ page }) => {
 	const id = await createDeck(page);
 	await present(page, id, '#3');

@@ -7,8 +7,11 @@
 
 	$effect(() => {
 		if (!dialog) return;
-		if (open && !dialog.open) dialog.showModal();
-		else if (!open && dialog.open) dialog.close();
+		if (open && !dialog.open) {
+			dialog.showModal();
+			// Chromium would otherwise focus the card whenever it scrolls.
+			dialog.focus();
+		} else if (!open && dialog.open) dialog.close();
 	});
 
 	function closeOnScrim(event: MouseEvent) {
@@ -18,6 +21,7 @@
 
 <!-- The presenter's keys close it on ? and Esc, and a click on the scrim around the card closes it too. -->
 <dialog
+	tabindex="-1"
 	class="scrim"
 	bind:this={dialog}
 	aria-labelledby="shortcuts-heading"
@@ -109,7 +113,7 @@
 
 	dl {
 		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-columns: fit-content(60%) minmax(0, 1fr);
 		gap: 10px 20px;
 		align-items: center;
 		margin: 0;
@@ -126,6 +130,20 @@
 	dd {
 		margin: 0;
 		color: var(--text);
+	}
+
+	@media (max-width: 480px) {
+		.scrim {
+			padding: 16px;
+		}
+
+		.help {
+			padding: 22px 20px 20px;
+		}
+
+		dl {
+			gap: 10px 14px;
+		}
 	}
 
 	.gesture {
