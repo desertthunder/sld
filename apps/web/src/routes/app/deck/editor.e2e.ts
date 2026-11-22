@@ -40,6 +40,7 @@ const slideList = (page: Page) => page.getByRole('navigation', { name: 'Slides' 
 const slideItems = (page: Page) => slideList(page).locator('button[data-index]');
 const selectedItem = (page: Page) => slideList(page).locator('button[aria-current="true"]');
 const editor = (page: Page) => page.getByRole('textbox', { name: /^Markdown for slide/ });
+const saveState = (page: Page) => page.getByRole('banner').locator('.saved');
 
 async function openDeck(page: Page, id: string, search = '') {
 	await page.goto(`/app/deck/${id}${search}`);
@@ -107,7 +108,85 @@ test('adds, duplicates and deletes slides from buttons and keys', async ({ page 
 	await page.keyboard.press('Delete');
 	await expect(slideItems(page)).toHaveCount(5);
 	await expect(selectedItem(page)).toBeFocused();
+	await expect(saveState(page)).toHaveText('Saved');
 	expect(await storedSlides(page, id)).toEqual(['# One', '# Two', '# Three', '# Three', '# Three']);
+});
+
+test('three quick presses of N add three slides, and a reload shows them all', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await selectedItem(page).focus();
+	await page.keyboard.press('n');
+	await page.keyboard.press('n');
+	await page.keyboard.press('n');
+	await expect(slideItems(page)).toHaveCount(4);
+	await expect(selectedItem(page)).toHaveText('Slide 4 Untitled slide');
+	await expect(saveState(page)).toHaveText('Saved');
+	await page.reload();
+	await expect(slideItems(page)).toHaveText(
+		['Slide 1 One', 'Slide 2 Untitled slide', 'Slide 3 Untitled slide', 'Slide 4 Untitled slide'],
+		{ timeout: 30_000 }
+	);
+});
+
+/** Holds the database's transaction lock, so every write waits, until the returned function lets it go. */
+async function holdWrites(page: Page): Promise<() => Promise<void>> {
+	await page.evaluate(
+		async ({ urls }) => {
+			const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
+			const database = await openDatabase();
+			const { promise: held, resolve: hold } = Promise.withResolvers<void>();
+			const { promise: release, resolve } = Promise.withResolvers<void>();
+			Object.assign(globalThis, { releaseWrites: resolve });
+			void database.$client.transaction(async () => {
+				hold();
+				await release;
+			});
+			await held;
+		},
+		{ urls: modules }
+	);
+	return () => page.evaluate(() => (globalThis as unknown as { releaseWrites: () => void }).releaseWrites());
+}
+
+test('the list changes at once and the changes save in order after it', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One', '# Two']);
+	await openDeck(page, id);
+	const release = await holdWrites(page);
+	await page.getByRole('button', { name: 'New slide' }).click();
+	await expect(slideItems(page)).toHaveText(['Slide 1 One', 'Slide 2 Untitled slide', 'Slide 3 Two']);
+	await expect(page.getByRole('status').filter({ hasText: 'Added slide 2.' })).toBeAttached();
+	await expect(saveState(page)).toHaveText('Saving…');
+	await editor(page).fill('# New');
+	await page.getByRole('button', { name: 'Duplicate slide 2' }).click();
+	await expect(selectedItem(page)).toHaveText('Slide 3 New');
+	await slideItems(page).first().click();
+	await page.getByRole('button', { name: 'Delete slide 1' }).click();
+	await expect(slideItems(page)).toHaveText(['Slide 1 New', 'Slide 2 New', 'Slide 3 Two']);
+	await expect(saveState(page)).toHaveText('Saving…');
+	await release();
+	await expect(saveState(page)).toHaveText('Saved');
+	expect(await storedSlides(page, id)).toEqual(['# New', '# New', '# Two']);
+});
+
+test('a change that fails shows Not saved, and the list goes back to what is stored', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One', '# Two']);
+	await openDeck(page, id);
+	await breakSlideWrites(page);
+	await selectedItem(page).focus();
+	await page.keyboard.press('n');
+	await page.keyboard.press('n');
+	await page.keyboard.press('d');
+	await expect(saveState(page)).toHaveText('Not saved');
+	await expect(slideItems(page)).toHaveText(['Slide 1 One', 'Slide 2 Two']);
+	await restoreSlideWrites(page);
+	expect(await storedSlides(page, id)).toEqual(['# One', '# Two']);
+	await selectedItem(page).focus();
+	await page.keyboard.press('n');
+	await expect(saveState(page)).toHaveText('Saved');
+	await page.reload();
+	await expect(slideItems(page)).toHaveCount(3, { timeout: 30_000 });
+	expect(await storedSlides(page, id)).toHaveLength(3);
 });
 
 test('keys typed in the editor do not reach the slide list', async ({ page }) => {
@@ -130,6 +209,7 @@ test('deleting the selected slide selects its neighbor, and the last slide stays
 	await selectedItem(page).focus();
 	await page.keyboard.press('Delete');
 	await expect(slideItems(page)).toHaveCount(1);
+	await expect(saveState(page)).toHaveText('Saved');
 	expect(await storedSlides(page, id)).toEqual(['# One']);
 });
 
@@ -149,6 +229,7 @@ test('a change another tab already made shows instead of failing quietly', async
 	await page.getByRole('button', { name: 'Delete slide 1' }).click();
 	await expect(slideItems(page)).toHaveText(['Slide 1 One']);
 	await expect(page.getByRole('button', { name: 'Delete slide 1' })).toBeDisabled();
+	await expect(saveState(page)).toHaveText('Saved');
 	expect(await storedSlides(page, id)).toEqual(['# One']);
 });
 
@@ -266,19 +347,26 @@ test('an unknown deck shows the not-found state', async ({ page }) => {
 	}
 });
 
-/** Makes every later slide write fail, by moving the slides table out of the way. */
-async function breakSlideWrites(page: Page) {
+async function runSql(page: Page, statement: string) {
 	await page.evaluate(
-		async ({ urls }) => {
+		async ({ urls, statement }) => {
 			const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
 			const database = await openDatabase();
-			await database.$client.exec('ALTER TABLE slides RENAME TO slides_away');
+			await database.$client.exec(statement);
 		},
-		{ urls: modules }
+		{ urls: modules, statement }
 	);
 }
 
-const saveState = (page: Page) => page.getByRole('banner').locator('.saved');
+/** Makes every later slide write fail, by moving the slides table out of the way. */
+function breakSlideWrites(page: Page) {
+	return runSql(page, 'ALTER TABLE slides RENAME TO slides_away');
+}
+
+/** Puts the slides table back after `breakSlideWrites`. */
+function restoreSlideWrites(page: Page) {
+	return runSql(page, 'ALTER TABLE slides_away RENAME TO slides');
+}
 
 test('the saving icon spins only when motion is welcome', async ({ page }) => {
 	const id = await createDeck(page, 'Talk', ['# One']);

@@ -120,29 +120,31 @@ export function deleteDeck(database: Database, id: string): Promise<Deck | undef
 
 /**
  * Inserts a slide into a deck at `position`, moving the slides from there on one place later, and returns it. A
- * position past the end appends the slide. It returns `undefined` when there is no such deck.
+ * position past the end appends the slide. Give `id` to choose the new slide's id, so it can be shown before the write
+ * resolves. It returns `undefined` when there is no such deck.
  */
 export function insertSlide(
 	database: Database,
 	deckId: string,
 	position: number,
-	markdown: string
+	markdown: string,
+	id?: string
 ): Promise<Slide | undefined> {
 	return write(database, async (tx) => {
 		if (!isUuid(deckId)) return;
 		const touched = await touchDeck(tx, deckId).returning({ id: decks.id });
 		if (touched.length === 0) return;
 		const at = clampPosition(position, await slideCount(tx, deckId));
-		return insertAt(tx, deckId, at, storable(markdown));
+		return insertAt(tx, { id, deckId, position: at, markdown: storable(markdown) });
 	});
 }
 
-async function insertAt(tx: Transaction, deckId: string, position: number, markdown: string): Promise<Slide> {
+async function insertAt(tx: Transaction, row: typeof slides.$inferInsert): Promise<Slide> {
 	await tx
 		.update(slides)
 		.set({ position: sql`${slides.position} + 1` })
-		.where(and(eq(slides.deckId, deckId), gte(slides.position, position)));
-	const [slide] = await tx.insert(slides).values({ deckId, position, markdown }).returning();
+		.where(and(eq(slides.deckId, row.deckId), gte(slides.position, row.position)));
+	const [slide] = await tx.insert(slides).values(row).returning();
 	return slide!;
 }
 
@@ -180,14 +182,18 @@ export function deleteSlide(database: Database, id: string): Promise<Slide | und
 	});
 }
 
-/** Copies a slide to the place right after it and returns the copy, or `undefined` when there is no such slide. */
-export function duplicateSlide(database: Database, id: string): Promise<Slide | undefined> {
+/**
+ * Copies a slide to the place right after it and returns the copy, or `undefined` when there is no such slide. Give
+ * `copyId` to choose the copy's id.
+ */
+export function duplicateSlide(database: Database, id: string, copyId?: string): Promise<Slide | undefined> {
 	return write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [slide] = await tx.select().from(slides).where(eq(slides.id, id));
 		if (!slide) return;
 		await touchDeck(tx, slide.deckId);
-		return insertAt(tx, slide.deckId, slide.position + 1, slide.markdown);
+		const { deckId, position, markdown } = slide;
+		return insertAt(tx, { id: copyId, deckId, position: position + 1, markdown });
 	});
 }
 

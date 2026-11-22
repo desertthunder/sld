@@ -221,6 +221,20 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await positions(deck.id)).toEqual([0, 1, 2, 3, 4, 5]);
 		});
 
+		it('inserts and duplicates a slide with the id it is given', async () => {
+			const deck = await threeSlides();
+			const [added, copied] = [crypto.randomUUID(), crypto.randomUUID()];
+			expect(await insertSlide(database, deck.id, 1, '# New', added)).toMatchObject({ id: added, position: 1 });
+			expect(await duplicateSlide(database, added, copied)).toMatchObject({ id: copied, position: 2 });
+			const stored = (await getDeck(database, deck.id))!.slides.map(({ id, markdown }) => ({ id, markdown }));
+			expect(stored.slice(1, 3)).toEqual([
+				{ id: added, markdown: '# New' },
+				{ id: copied, markdown: '# New' }
+			]);
+			await expect(insertSlide(database, deck.id, 0, '# Again', added)).rejects.toThrow();
+			expect(await markdowns(deck.id)).toEqual(['# One', '# New', '# New', '# Two', '# Three']);
+		});
+
 		it('inserts the first slide of an empty deck', async () => {
 			const deck = await createDeck(database, { title: 'Talk' });
 			await insertSlide(database, deck.id, 3, '# Only');

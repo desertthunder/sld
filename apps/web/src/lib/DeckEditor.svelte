@@ -68,9 +68,10 @@
 	// The deck is loaded once; from here on this state is the source, and every change is written through.
 	// svelte-ignore state_referenced_locally
 	const { id: deckId, title, slides } = deck;
+	type SlideItem = { id: string; markdown: string };
 	const editor: {
 		title: string;
-		slides: { id: string; markdown: string }[];
+		slides: SlideItem[];
 		selected: number;
 		status: SaveStatus;
 		announcement: string;
@@ -86,12 +87,18 @@
 		tab: parseEditorTab(readStored(() => sessionStorage, editorTabKey))
 	});
 	const current = $derived(editor.slides[editor.selected]!);
-	const changing = { isBusy: false };
+	// The slides as last known to be stored, to go back to when a change fails and the deck can't be read. A change
+	// shows at once and waits its turn to be written; `generation` moves on whenever the list is replaced by what is
+	// stored, so the changes still waiting, made to the list that was replaced, are dropped.
+	const changes: { stored: SlideItem[]; generation: number } = {
+		stored: slides.map(({ id, markdown }) => ({ id, markdown })),
+		generation: 0
+	};
 
 	const saver = createSlideSaver({
 		save: async (id, markdown) => {
 			// Another tab deleted the slide or its deck, so show what is stored.
-			if (!(await updateSlide(database, id, markdown))) void refresh(editor.selected);
+			if (!(await updateSlide(database, id, markdown))) await refresh();
 		},
 		onStatus: (status) => (editor.status = status),
 		delay: 400
@@ -131,50 +138,91 @@
 		editor.announcement = message;
 	}
 
-	async function refresh(index: number) {
-		const stored = await getDeck(database, deckId);
+	/**
+	 * Shows `list` in place of the slides, keeping the selected slide selected while it is there. Edits not yet written
+	 * stay, and so does the markdown on screen when `list` was not just read from the database.
+	 */
+	function show(list: readonly SlideItem[], isRead: boolean) {
+		const selectedId = current.id;
+		const shown = new Map(editor.slides.map(({ id, markdown }) => [id, markdown]));
+		editor.slides = list.map(({ id, markdown }) => ({
+			id,
+			markdown: saver.pending(id) ?? (isRead ? undefined : shown.get(id)) ?? markdown
+		}));
+		changes.generation++;
+		const index = editor.slides.findIndex(({ id }) => id === selectedId);
+		select(index === -1 ? editor.selected : index);
+	}
+
+	/**
+	 * Shows what is stored, or the slides last known to be stored when the deck can't be read. Call it only from a
+	 * write in the saver's queue, so no other write lands between the read and the list it shows.
+	 */
+	async function refresh() {
+		let stored: DeckWithSlides | undefined;
+		try {
+			stored = await getDeck(database, deckId);
+		} catch {
+			show(changes.stored, false);
+			return;
+		}
 		if (!stored) {
 			onmissing();
 			return;
 		}
-		editor.slides = stored.slides.map(({ id, markdown }) => ({ id, markdown: saver.pending(id) ?? markdown }));
-		select(index);
+		changes.stored = stored.slides.map(({ id, markdown }) => ({ id, markdown }));
+		show(changes.stored, true);
 	}
 
-	/** Runs one change to the deck's slides at a time, after the edits before it are written. */
-	async function change(write: () => Promise<number | undefined>, message: (index: number) => string) {
-		if (changing.isBusy) return;
-		changing.isBusy = true;
-		try {
-			const index = await saver.run(write);
-			// Another tab changed the deck first, so show what is stored.
-			if (index === undefined) {
-				await refresh(editor.selected);
-				return;
+	/**
+	 * Shows `list` with the slide at `index` selected at once, then writes the change after the writes before it. When
+	 * the write fails, or another tab changed the deck first, the list goes back to what is stored.
+	 */
+	async function change(list: SlideItem[], index: number, message: string, write: () => Promise<unknown>) {
+		const { generation } = changes;
+		editor.slides = list;
+		select(index);
+		const stored = list.map(({ id, markdown }) => ({ id, markdown }));
+		void (async () => {
+			try {
+				await saver.run(
+					async () => {
+						let isStored: boolean;
+						try {
+							isStored = (await write()) !== undefined;
+						} catch (error) {
+							await refresh();
+							throw error;
+						}
+						if (isStored) changes.stored = stored;
+						else await refresh();
+					},
+					() => changes.generation !== generation
+				);
+			} catch {
+				// The saver reports the failure as the status.
 			}
-			await refresh(index);
-			await announce(message(index));
-		} catch {
-			// The saver reports the failure as the status.
-		} finally {
-			changing.isBusy = false;
-		}
+		})();
+		await announce(message);
 	}
 
 	function addSlide() {
 		const at = editor.selected + 1;
-		return change(
-			async () => ((await insertSlide(database, deckId, at, '')) ? at : undefined),
-			(index) => `Added slide ${index + 1}.`
+		const id = crypto.randomUUID();
+		return change(editor.slides.toSpliced(at, 0, { id, markdown: '' }), at, `Added slide ${at + 1}.`, () =>
+			insertSlide(database, deckId, at, '', id)
 		);
 	}
 
 	function duplicateSelected() {
-		const { id } = current;
+		const { id, markdown } = current;
 		const from = editor.selected;
+		const copy = crypto.randomUUID();
 		return change(
-			async () => ((await duplicateSlide(database, id)) ? from + 1 : undefined),
-			(index) => `Duplicated slide ${from + 1} as slide ${index + 1}.`
+			editor.slides.toSpliced(from + 1, 0, { id: copy, markdown }),
+			from + 1,
+			`Duplicated slide ${from + 1} as slide ${from + 2}.`,
+			() => duplicateSlide(database, id, copy)
 		);
 	}
 
@@ -184,15 +232,19 @@
 		const { id } = current;
 		const from = editor.selected;
 		await change(
-			async () => ((await deleteSlide(database, id)) ? indexAfterDelete(from, count) : undefined),
-			() => `Deleted slide ${from + 1}.`
+			editor.slides.toSpliced(from, 1),
+			indexAfterDelete(from, count),
+			`Deleted slide ${from + 1}.`,
+			() => deleteSlide(database, id)
 		);
 	}
 
 	async function rename(next: string) {
 		editor.title = next;
 		try {
-			if (!(await saver.run(() => renameDeck(database, deckId, next)))) await refresh(editor.selected);
+			await saver.run(async () => {
+				if (!(await renameDeck(database, deckId, next))) await refresh();
+			});
 		} catch {
 			// The saver reports the failure as the status.
 		}

@@ -114,6 +114,31 @@ describe('createSlideSaver', () => {
 		expect(slides.pending('a')).toBeUndefined();
 	});
 
+	it('skips a dropped run when its turn comes, leaving a failure reported', async () => {
+		const slides = saver();
+		const state = { isDropped: false };
+		const ran: string[] = [];
+		const failed = slides.run(async () => {
+			state.isDropped = true;
+			throw new Error('no');
+		});
+		const dropped = slides.run(
+			async () => {
+				ran.push('dropped');
+			},
+			() => state.isDropped
+		);
+		await expect(failed).rejects.toThrow('no');
+		await expect(dropped).resolves.toBeUndefined();
+		expect(ran).toEqual([]);
+		expect(statuses).toEqual(['saving', 'failed']);
+		await slides.run(async () => {
+			ran.push('later');
+		});
+		expect(ran).toEqual(['later']);
+		expect(statuses.at(-1)).toBe('saved');
+	});
+
 	it('reports a failed run and rethrows it', async () => {
 		const slides = saver();
 		await expect(slides.run(() => Promise.reject(new Error('no')))).rejects.toThrow('no');
