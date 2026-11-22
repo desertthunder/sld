@@ -88,6 +88,13 @@ describe('saveHandoff', { timeout: 30_000 }, () => {
 		expect(second.items.has(handoffKey)).toBe(false);
 	});
 
+	it('saves a note whose frontmatter scheme holds U+0000, which Postgres text cannot', async () => {
+		const storage = memoryStorage();
+		handOff(storage, '+++\nscheme = "a\\u0000b"\n+++\n\n# One\n', id);
+		expect(await saveHandoff(database, storage)).toMatchObject({ id, title: 'One', scheme: 'a\u{FFFD}b' });
+		expect(storage.items.has(handoffKey)).toBe(false);
+	});
+
 	it('keeps the note when the write fails, so a reload can try again', async () => {
 		const storage = memoryStorage();
 		handOff(storage, note, id);

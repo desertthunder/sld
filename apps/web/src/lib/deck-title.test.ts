@@ -17,7 +17,8 @@ describe('firstHeading', () => {
 		['a setext heading over two lines', 'Plain\ntitle\n---', 'Plain title'],
 		['a heading after fenced code', '```sh\n# not a heading\n```\n\n# Real', 'Real'],
 		['a heading after a tilde fence holding backticks', '~~~\n```\n# no\n~~~\n# Yes', 'Yes'],
-		['a heading after an empty one', '#\n\n# Named', 'Named']
+		['a heading after an empty one', '#\n\n# Named', 'Named'],
+		['a heading after an empty one with a closing sequence', '## ##\n\n# #\n\n# C#', 'C#']
 	])('finds %s', (_case, markdown, heading) => {
 		expect(firstHeading(markdown)).toBe(heading);
 	});

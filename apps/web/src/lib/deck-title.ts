@@ -34,7 +34,9 @@ export function firstHeading(markdown: string): string | undefined {
 		if (paragraph.length > 0 && setextUnderline.test(line)) return paragraph.join(' ');
 		const atx = line.match(atxHeading);
 		if (atx) {
-			if (atx[1]?.trim()) return atx[1].trim();
+			// What is left of `## ##` is its closing sequence, so the heading is empty.
+			const text = atx[1]?.replace(/^#+$/, '').trim();
+			if (text) return text;
 			paragraph = [];
 		} else if (line.trim() === '' || otherBlock.test(line) || (paragraph.length === 0 && indentedCode.test(line))) {
 			paragraph = [];

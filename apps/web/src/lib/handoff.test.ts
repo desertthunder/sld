@@ -30,6 +30,19 @@ describe('handOff and pendingHandoff', () => {
 		expect(pendingHandoff(storage)).toEqual(second);
 	});
 
+	it('removes an older waiting note when the new one does not fit', () => {
+		const storage = memoryStorage();
+		handOff(storage, 'older', other);
+		const full = {
+			...storage,
+			setItem: () => {
+				throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+			}
+		};
+		expect(() => handOff(full, 'newer', id)).toThrow('quota');
+		expect(pendingHandoff(storage)).toBeUndefined();
+	});
+
 	it('finds nothing when no note is stored', () => {
 		expect(pendingHandoff(memoryStorage())).toBeUndefined();
 	});

@@ -19,10 +19,18 @@ export type HandoffStorage = {
 	removeItem(key: string): void;
 };
 
-/** Stores `markdown` for `/app` to save as a new deck, and returns what it stored. */
+/**
+ * Stores `markdown` for `/app` to save as a new deck, and returns what it stored. When storing fails, it also removes
+ * any older note still waiting, so `/app` never saves a note other than the one handed over last.
+ */
 export function handOff(storage: HandoffStorage, markdown: string, id: string = crypto.randomUUID()): Handoff {
 	const handoff = { id, markdown };
-	storage.setItem(handoffKey, JSON.stringify(handoff));
+	try {
+		storage.setItem(handoffKey, JSON.stringify(handoff));
+	} catch (error) {
+		storage.removeItem(handoffKey);
+		throw error;
+	}
 	return handoff;
 }
 

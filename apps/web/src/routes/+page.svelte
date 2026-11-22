@@ -61,6 +61,7 @@
 			handOff(sessionStorage, note.markdown);
 		} catch {
 			// Where the browser blocks this site's storage, `/app` can't open decks either, and its splash says so.
+			// TODO: say so when the note is too big for `sessionStorage`; `/app` opens without it.
 		}
 		await goto(resolve('/app'));
 	}

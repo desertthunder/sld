@@ -54,11 +54,19 @@ function clampPosition(position: number, last: number): number {
 }
 
 /** Creates a deck, with its slides when `slides` lists their markdown, and returns it. */
-export function createDeck(database: Database, { slides: markdowns = [], title, ...fields }: NewDeck): Promise<Deck> {
+export function createDeck(
+	database: Database,
+	{ slides: markdowns = [], title, scheme, aspect, ...fields }: NewDeck
+): Promise<Deck> {
 	return write(database, async (tx) => {
 		const [deck] = await tx
 			.insert(decks)
-			.values({ ...fields, title: storable(title) })
+			.values({
+				...fields,
+				title: storable(title),
+				scheme: scheme && storable(scheme),
+				aspect: aspect && storable(aspect)
+			})
 			.returning();
 		const rows = markdowns.map((markdown, position) => ({
 			deckId: deck!.id,
