@@ -103,37 +103,31 @@ jobs:
       - name: Install the system packages the cached Chromium needs
         if: steps.filter.outputs.web == 'true' && steps.browser-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @sld/web exec playwright install-deps chromium
-      # The two suites share the runner's 4 vCPUs. Alone, the browser tests took about 6 minutes and the unit tests 2,
-      # so the browser tests get 3 workers (Playwright's default is 2) and the unit tests 2 (vitest's default is 3).
-      # Sharing the CPUs slows the database tests, so they get 30 seconds before a timeout instead of 5 and 10.
-      # Each suite writes to its own log, printed once both finish: a passing suite folded, a failing one open.
+      # The runner has 2 vCPUs, so each suite keeps the 1 worker it had when it ran alone: the browser tests took about
+      # 6 minutes and the unit tests 2. Sharing the CPUs slows the database tests, so they get 30 seconds before a
+      # timeout instead of 5 and 10. The browser tests print as they run, so a run the job timeout kills still shows
+      # them; the unit tests write to a log, printed once they finish: folded if they pass, open if they fail.
       - name: Web test and browser test, at the same time
         if: steps.filter.outputs.web == 'true'
         env:
-          VITEST_MAX_WORKERS: '2'
+          VITEST_MAX_WORKERS: '1'
         run: |
           unit_log="$RUNNER_TEMP/web-test.log"
-          browser_log="$RUNNER_TEMP/web-browser-test.log"
           pnpm --filter @sld/web test --testTimeout=30000 --hookTimeout=30000 > "$unit_log" 2>&1 &
           unit=$!
-          pnpm --filter @sld/web e2e --project=chromium --workers=3 > "$browser_log" 2>&1 &
-          browser=$!
+          browser_status=0
+          pnpm --filter @sld/web e2e --project=chromium --workers=1 || browser_status=$?
+          if [ "$browser_status" -ne 0 ]; then echo "::error title=web::Web browser test failed with exit code $browser_status."; fi
           unit_status=0
           wait "$unit" || unit_status=$?
-          browser_status=0
-          wait "$browser" || browser_status=$?
-          report() {
-            if [ "$2" -eq 0 ]; then
-              echo "::group::$1 passed"
-              cat "$3"
-              echo "::endgroup::"
-            else
-              echo "::error title=web::$1 failed with exit code $2."
-              cat "$3"
-            fi
-          }
-          report 'Web test' "$unit_status" "$unit_log"
-          report 'Web browser test' "$browser_status" "$browser_log"
+          if [ "$unit_status" -eq 0 ]; then
+            echo "::group::Web test passed"
+            cat "$unit_log"
+            echo "::endgroup::"
+          else
+            echo "::error title=web::Web test failed with exit code $unit_status."
+            cat "$unit_log"
+          fi
           [ "$unit_status" -eq 0 ] && [ "$browser_status" -eq 0 ]
       - name: Web build
         if: steps.filter.outputs.web == 'true'
