@@ -13,11 +13,9 @@ describe('renderSlide', () => {
 			<p>Each slide is <strong>markdown</strong>, with <a href="https://commonmark.org">links</a>, <code>code</code> and <del>mistakes</del>.</p>
 			<h2>Lists</h2>
 			<ul>
-			<li>Paste a deck</li>
 			<li>Edit a slide
 			<ol>
 			<li>Change its markdown</li>
-			<li>See it change</li>
 			</ol>
 			</li>
 			</ul>

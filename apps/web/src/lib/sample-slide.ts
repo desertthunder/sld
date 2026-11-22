@@ -12,10 +12,8 @@ Each slide is **markdown**, with [links](https://commonmark.org), \`code\` and ~
 
 ## Lists
 
-- Paste a deck
 - Edit a slide
   1. Change its markdown
-  2. See it change
 
 * [x] Split on \`---\`
 * [ ] Present
