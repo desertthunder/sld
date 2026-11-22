@@ -38,7 +38,7 @@ Decisions live in Linear. State a decision in the issue it belongs to, as a date
 
 Requirements: Node 22.18+ (see `.nvmrc`) and pnpm 10 (`corepack enable`).
 
-Run `make help` for every target. The ones you will use most: `make dev` (the web app on :5173) and `make ci` (everything CI runs: run it before pushing).
+Run `make help` for every target. The ones you will use most: `make dev` (the web app on :5173) and `make ci` (everything CI runs: run it before pushing). Browser tests run in Chromium; `make e2e BROWSERS=webkit` (or `firefox`, or several such as `BROWSERS="chromium webkit"`) runs another engine after `make install BROWSERS=webkit`.
 
 Checks for what you touched, if you don't run `make ci`:
 
