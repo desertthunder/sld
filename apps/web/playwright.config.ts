@@ -11,6 +11,8 @@ export default defineConfig({
 	// WebKit takes over 20 seconds for a test that opens the app in two tabs.
 	timeout: 90_000,
 	forbidOnly: Boolean(process.env.CI),
+	// The CI runner has 4 vCPUs. Playwright's default, half the CPUs, ran the suite about 10% slower on a 4-core machine.
+	workers: process.env.CI ? 4 : undefined,
 	use: { baseURL: `http://localhost:${port}` },
 	projects: [
 		{ name: 'chromium', use: { ...devices['Desktop Chrome'] } },

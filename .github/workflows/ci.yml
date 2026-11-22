@@ -1,9 +1,15 @@
 # Checks pull requests once they are ready for review, and every push to main.
 # Agents run `make ci` before each push, so a draft starts no job: a skipped
 # required check counts as passing, which is safe only because a draft cannot
-# merge. One job, `ci`, the only required status check: it filters paths, then
-# runs the web steps, the devtools steps or both, and fails if any step fails.
-# One job is billed once, where a job per package was billed per job.
+# merge.
+#
+# Two jobs run side by side: `checks` (lockfile, lint, type check, unit tests,
+# build, app shell, dry run) and `browser` (the browser tests, the slowest
+# part). Each filters paths itself and skips the steps for a package the change
+# doesn't touch, so neither job skips on a ready pull request. A third job,
+# `ci`, the only required status check, waits for both and passes only if both
+# succeeded. It runs even when one failed or the run was cancelled, so it fails
+# rather than skips; it skips only on a draft, along with the others.
 #
 # The browser tests run in Chromium only. Browsers (browsers.yml) runs them in
 # Firefox or WebKit when a pull request carries that label. `ci` never runs on
@@ -25,7 +31,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
+  checks:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -39,7 +45,7 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          filters: |
+          filters: &filters |
             shared_ts: &shared_ts
               - package.json
               - pnpm-lock.yaml
@@ -78,6 +84,51 @@ jobs:
       - name: Web test
         if: steps.filter.outputs.web == 'true'
         run: pnpm --filter @sld/web test
+      - name: Web build
+        if: steps.filter.outputs.web == 'true'
+        run: pnpm --filter @sld/web build
+      - name: Check the build serves the app shell for every path
+        if: steps.filter.outputs.web == 'true'
+        run: make app-shell
+
+      # Run after a failed web step too, so one run reports both packages.
+      - name: Devtools lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
+        run: pnpm exec prettier --check tools/devtools && pnpm exec eslint tools/devtools
+      - name: Devtools check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
+        run: pnpm --filter @sld/devtools check
+      - name: Devtools test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
+        run: pnpm --filter @sld/devtools test
+      - name: Dry run as comment.yml does
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
+        run: make dry-run
+
+  browser:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: *filters
+
+      - if: steps.filter.outputs.web == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.filter.outputs.web == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - if: steps.filter.outputs.web == 'true'
+        run: pnpm install --frozen-lockfile
+
       - name: Key the browser cache by Playwright version
         if: steps.filter.outputs.web == 'true'
         id: browsers
@@ -107,23 +158,22 @@ jobs:
       - name: Web browser test
         if: steps.filter.outputs.web == 'true'
         run: make e2e BROWSERS=chromium
-      - name: Web build
-        if: steps.filter.outputs.web == 'true'
-        run: pnpm --filter @sld/web build
-      - name: Check the build serves the app shell for every path
-        if: steps.filter.outputs.web == 'true'
-        run: make app-shell
 
-      # Run after a failed web step too, so one run reports both packages.
-      - name: Devtools lint
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
-        run: pnpm exec prettier --check tools/devtools && pnpm exec eslint tools/devtools
-      - name: Devtools check
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
-        run: pnpm --filter @sld/devtools check
-      - name: Devtools test
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
-        run: pnpm --filter @sld/devtools test
-      - name: Dry run as comment.yml does
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
-        run: make dry-run
+  # always() rather than !cancelled(): a cancelled run must fail `ci`, because
+  # a skipped `ci` would count as passing.
+  ci:
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    needs: [checks, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Pass only if both jobs succeeded
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          BROWSER: ${{ needs.browser.result }}
+        run: |
+          if [ "$CHECKS" != success ] || [ "$BROWSER" != success ]; then
+            echo "::error title=ci::checks: $CHECKS, browser: $BROWSER."
+            exit 1
+          fi
