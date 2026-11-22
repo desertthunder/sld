@@ -88,6 +88,26 @@ describe('createSlideSaver', () => {
 		expect(statuses.at(-1)).toBe('saved');
 	});
 
+	it('drops an edit to a slide that is gone and reports it as not saved', async () => {
+		const slides = saver();
+		save = async (id, markdown) => {
+			saved.push([id, markdown]);
+			return id !== 'gone';
+		};
+		slides.edit('gone', '# Lost');
+		slides.edit('b', '# B');
+		await expect(slides.flush()).rejects.toThrow();
+		expect(saved).toEqual([
+			['gone', '# Lost'],
+			['b', '# B']
+		]);
+		expect(slides.pending('gone')).toBeUndefined();
+		expect(statuses.at(-1)).toBe('failed');
+		await slides.flush();
+		expect(saved).toHaveLength(2);
+		expect(statuses.at(-1)).toBe('failed');
+	});
+
 	it('keeps a newer edit over one whose write failed', async () => {
 		const slides = saver();
 		let fail!: (error: Error) => void;

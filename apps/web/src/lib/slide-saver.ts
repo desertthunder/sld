@@ -4,7 +4,10 @@ export type SaveStatus = 'saved' | 'saving' | 'failed';
 export const saveStatusLabels: Record<SaveStatus, string> = { saved: 'Saved', saving: 'Saving…', failed: 'Not saved' };
 
 export type SlideSaverOptions = {
-	/** Stores a slide's markdown, resolving once it is durable. */
+	/**
+	 * Stores a slide's markdown, resolving once it is durable. It resolves to `false` when the slide is gone, so the edit
+	 * can't be stored: the edit is dropped rather than tried again, and the status becomes `failed`.
+	 */
 	save: (id: string, markdown: string) => Promise<unknown>;
 	/** Hears every change of status. */
 	onStatus: (status: SaveStatus) => void;
@@ -107,9 +110,10 @@ export function createSlideSaver({ save, onStatus, delay }: SlideSaverOptions): 
 		}
 		for (const [id, markdown] of edits) writing.set(id, markdown);
 		await enqueue(async () => {
+			let isLost = false;
 			for (const [index, [id, markdown]] of edits.entries()) {
 				try {
-					await save(id, markdown);
+					if ((await save(id, markdown)) === false) isLost = true;
 					forget(id, markdown);
 				} catch (error) {
 					for (const [laterId, laterMarkdown] of edits.slice(index)) {
@@ -119,6 +123,7 @@ export function createSlideSaver({ save, onStatus, delay }: SlideSaverOptions): 
 					throw error;
 				}
 			}
+			if (isLost) throw new Error('An edit was not saved because its slide is gone');
 		});
 	};
 

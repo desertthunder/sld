@@ -90,15 +90,18 @@
 	// The slides as last known to be stored, to go back to when a change fails and the deck can't be read. A change
 	// shows at once and waits its turn to be written; `generation` moves on whenever the list is replaced by what is
 	// stored, so the changes still waiting, made to the list that was replaced, are dropped.
-	const changes: { stored: SlideItem[]; generation: number } = {
+	const changes: { stored: SlideItem[]; generation: number; isDestroyed: boolean } = {
 		stored: slides.map(({ id, markdown }) => ({ id, markdown })),
-		generation: 0
+		generation: 0,
+		isDestroyed: false
 	};
 
 	const saver = createSlideSaver({
 		save: async (id, markdown) => {
-			// Another tab deleted the slide or its deck, so show what is stored.
-			if (!(await updateSlide(database, id, markdown))) await refresh();
+			if (await updateSlide(database, id, markdown)) return true;
+			// The slide is gone, since its insert failed or another tab deleted it, so show what is stored.
+			await refresh();
+			return false;
 		},
 		onStatus: (status) => (editor.status = status),
 		delay: 400
@@ -159,13 +162,16 @@
 	 * write in the saver's queue, so no other write lands between the read and the list it shows.
 	 */
 	async function refresh() {
+		// A change can fail after the editor is gone, and showing the deck then would put it back in the URL.
+		if (changes.isDestroyed) return;
 		let stored: DeckWithSlides | undefined;
 		try {
 			stored = await getDeck(database, deckId);
 		} catch {
-			show(changes.stored, false);
+			if (!changes.isDestroyed) show(changes.stored, false);
 			return;
 		}
+		if (changes.isDestroyed) return;
 		if (!stored) {
 			onmissing();
 			return;
@@ -222,7 +228,7 @@
 			editor.slides.toSpliced(from + 1, 0, { id: copy, markdown }),
 			from + 1,
 			`Duplicated slide ${from + 1} as slide ${from + 2}.`,
-			() => duplicateSlide(database, id, copy)
+			() => duplicateSlide(database, id, { id: copy, markdown })
 		);
 	}
 
@@ -333,6 +339,7 @@
 		addEventListener('pagehide', flush);
 		document.addEventListener('visibilitychange', onVisibilityChange);
 		return () => {
+			changes.isDestroyed = true;
 			removeEventListener('pagehide', flush);
 			document.removeEventListener('visibilitychange', onVisibilityChange);
 			saver.stop();

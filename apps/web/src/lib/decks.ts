@@ -184,16 +184,25 @@ export function deleteSlide(database: Database, id: string): Promise<Slide | und
 
 /**
  * Copies a slide to the place right after it and returns the copy, or `undefined` when there is no such slide. Give
- * `copyId` to choose the copy's id.
+ * `copy.id` to choose the copy's id, and `copy.markdown` to store that in the copy in place of the slide's markdown.
  */
-export function duplicateSlide(database: Database, id: string, copyId?: string): Promise<Slide | undefined> {
+export function duplicateSlide(
+	database: Database,
+	id: string,
+	copy: { id?: string; markdown?: string } = {}
+): Promise<Slide | undefined> {
 	return write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [slide] = await tx.select().from(slides).where(eq(slides.id, id));
 		if (!slide) return;
 		await touchDeck(tx, slide.deckId);
 		const { deckId, position, markdown } = slide;
-		return insertAt(tx, { id: copyId, deckId, position: position + 1, markdown });
+		return insertAt(tx, {
+			id: copy.id,
+			deckId,
+			position: position + 1,
+			markdown: copy.markdown === undefined ? markdown : storable(copy.markdown)
+		});
 	});
 }
 

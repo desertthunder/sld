@@ -225,7 +225,7 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			const deck = await threeSlides();
 			const [added, copied] = [crypto.randomUUID(), crypto.randomUUID()];
 			expect(await insertSlide(database, deck.id, 1, '# New', added)).toMatchObject({ id: added, position: 1 });
-			expect(await duplicateSlide(database, added, copied)).toMatchObject({ id: copied, position: 2 });
+			expect(await duplicateSlide(database, added, { id: copied })).toMatchObject({ id: copied, position: 2 });
 			const stored = (await getDeck(database, deck.id))!.slides.map(({ id, markdown }) => ({ id, markdown }));
 			expect(stored.slice(1, 3)).toEqual([
 				{ id: added, markdown: '# New' },
@@ -277,6 +277,13 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await deleteSlide(database, await slideId(deck.id, 0))).toBeUndefined();
 			expect(await markdowns(deck.id)).toEqual(['# One']);
 			expect(await updatedAt(deck)).toEqual(before);
+		});
+
+		it('duplicates a slide with the markdown it is given', async () => {
+			const deck = await threeSlides();
+			const id = await slideId(deck.id, 1);
+			expect(await duplicateSlide(database, id, { markdown: '# Shown\0' })).toMatchObject({ position: 2 });
+			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Shown\u{FFFD}', '# Three']);
 		});
 
 		it('duplicates a slide to the place right after it', async () => {

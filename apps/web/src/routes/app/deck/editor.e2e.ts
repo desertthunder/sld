@@ -269,6 +269,53 @@ test('an edit to a slide another tab deleted shows what is stored', async ({ pag
 	await editor(page).fill('# Two, edited');
 	await expect(slideItems(page)).toHaveText(['Slide 1 One']);
 	await expect(editor(page)).toHaveValue('# One');
+	await expect(saveState(page)).toHaveText('Not saved');
+});
+
+test('typing in a slide whose insert fails stays Not saved', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await failSlideWrites(page, 'INSERT');
+	const release = await holdWrites(page);
+	await page.getByRole('button', { name: 'New slide' }).click();
+	await editor(page).fill('# Typed');
+	await editor(page).blur();
+	await release();
+	await expect(slideItems(page)).toHaveText(['Slide 1 One']);
+	await expect(saveState(page)).toHaveText('Not saved');
+	expect(await storedSlides(page, id)).toEqual(['# One']);
+	await expect(saveState(page)).toHaveText('Not saved');
+});
+
+test('a copy stores the markdown it shows, even when the edit before it failed', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await failSlideWrites(page, 'UPDATE');
+	await editor(page).fill('# Edited');
+	await page.getByRole('button', { name: 'Duplicate slide 1' }).click();
+	await expect(slideItems(page)).toHaveText(['Slide 1 Edited', 'Slide 2 Edited']);
+	await expect.poll(() => storedSlides(page, id)).toEqual(['# One', '# Edited']);
+	await runSql(page, 'DROP TRIGGER fail_slide_writes ON slides');
+	await editor(page).focus();
+	await editor(page).blur();
+	await expect(saveState(page)).toHaveText('Saved');
+	expect(await storedSlides(page, id)).toEqual(['# Edited', '# Edited']);
+});
+
+test('a change that fails after leaving the deck leaves the URL alone', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await failSlideWrites(page, 'INSERT');
+	const release = await holdWrites(page);
+	await page.getByRole('button', { name: 'New slide' }).click();
+	await page.getByRole('link', { name: /Decks/ }).click();
+	await expect(page).toHaveURL(/\/app$/);
+	await release();
+	// Each read waits behind the failed insert and the read-back it would start.
+	await storedSlides(page, id);
+	await storedSlides(page, id);
+	await page.waitForTimeout(500);
+	await expect(page).toHaveURL(/\/app$/);
 });
 
 test('saving the title by clicking away leaves focus where it went', async ({ page }) => {
@@ -381,6 +428,15 @@ async function runSql(page: Page, statement: string) {
 /** Makes every later slide write fail, by moving the slides table out of the way. */
 function breakSlideWrites(page: Page) {
 	return runSql(page, 'ALTER TABLE slides RENAME TO slides_away');
+}
+
+/** Makes every later slide `INSERT` or `UPDATE` fail, until the `fail_slide_writes` trigger is dropped. */
+function failSlideWrites(page: Page, write: 'INSERT' | 'UPDATE') {
+	return runSql(
+		page,
+		`CREATE OR REPLACE FUNCTION fail_slide_writes() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'no'; END $$ LANGUAGE plpgsql;
+		CREATE TRIGGER fail_slide_writes BEFORE ${write} ON slides FOR EACH ROW EXECUTE FUNCTION fail_slide_writes();`
+	);
 }
 
 /** Puts the slides table back after `breakSlideWrites`. */
