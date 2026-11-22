@@ -1,7 +1,9 @@
 import { slideParts, type SplitDeck } from '#lib/deck-markdown.ts';
+import { plainInline } from '#lib/inline-text.ts';
 
 const fenceOpener = /^ {0,3}(`{3,}|~{3,})/;
-const atxHeading = /^ {0,3}#{1,6}(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
+const atxOpener = /^ {0,3}#{1,6}(?=[ \t]|$)/;
+const atxCloser = /(?:^|[ \t])#+$/;
 const setextUnderline = /^ {0,3}(?:=+|-+)[ \t]*$/;
 const indentedCode = /^(?: {4}|\t)/;
 // Lines that start a block of their own, so they neither start nor continue a paragraph a setext underline could make a
@@ -15,7 +17,10 @@ export function untitledDeck(made: Date): string {
 	return `Untitled Deck - ${made.getFullYear()}-${month}-${day}`;
 }
 
-/** The text of the first ATX or setext heading in `markdown`, outside fenced and indented code. */
+/**
+ * The plain text of the first ATX or setext heading in `markdown` that has any, outside fenced and indented code, with
+ * its inline markup stripped by `plainInline`.
+ */
 export function firstHeading(markdown: string): string | undefined {
 	let fence: { marker: string; length: number } | undefined;
 	let paragraph: string[] = [];
@@ -31,11 +36,15 @@ export function firstHeading(markdown: string): string | undefined {
 			paragraph = [];
 			continue;
 		}
-		if (paragraph.length > 0 && setextUnderline.test(line)) return paragraph.join(' ');
-		const atx = line.match(atxHeading);
-		if (atx) {
-			// What is left of `## ##` is its closing sequence, so the heading is empty.
-			const text = atx[1]?.replace(/^#+$/, '').trim();
+		if (paragraph.length > 0 && setextUnderline.test(line)) {
+			const text = plainInline(paragraph.join(' '));
+			if (text) return text;
+			paragraph = [];
+			continue;
+		}
+		const atx = line.match(atxOpener)?.[0];
+		if (atx !== undefined) {
+			const text = plainInline(line.slice(atx.length).trim().replace(atxCloser, ''));
 			if (text) return text;
 			paragraph = [];
 		} else if (line.trim() === '' || otherBlock.test(line) || (paragraph.length === 0 && indentedCode.test(line))) {

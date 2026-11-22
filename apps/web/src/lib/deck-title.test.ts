@@ -18,7 +18,18 @@ describe('firstHeading', () => {
 		['a heading after fenced code', '```sh\n# not a heading\n```\n\n# Real', 'Real'],
 		['a heading after a tilde fence holding backticks', '~~~\n```\n# no\n~~~\n# Yes', 'Yes'],
 		['a heading after an empty one', '#\n\n# Named', 'Named'],
-		['a heading after an empty one with a closing sequence', '## ##\n\n# #\n\n# C#', 'C#']
+		['a heading after an empty one with a closing sequence', '## ##\n\n# #\n\n# C#', 'C#'],
+		['a heading as plain text', '# **Bold** title', 'Bold title'],
+		['a heading holding code', '# Using `code`', 'Using code'],
+		['a heading holding a link', '# [Link](https://x)', 'Link'],
+		['a heading holding both emphases', '# _a_ and *b*', 'a and b'],
+		['a heading holding escapes', String.raw`# \*Starred\* \#1`, '*Starred* #1'],
+		['a heading holding HTML', '# <span>Tagged</span> <b>title</b>', 'Tagged title'],
+		['a heading holding a file name', '# my_file_name.ts', 'my_file_name.ts'],
+		['a setext heading as plain text', '**Bold**\nsetext\n===', 'Bold setext'],
+		['a heading after one that strips to nothing', '# <br>\n\n## Real', 'Real'],
+		['a setext heading holding an empty code span', 'Text `` `` <br>\n===\n\n# Next', 'Text'],
+		['a heading after a setext one that strips to nothing', '`` `` <br>\n===\n\n# Next', 'Next']
 	])('finds %s', (_case, markdown, heading) => {
 		expect(firstHeading(markdown)).toBe(heading);
 	});
@@ -33,6 +44,12 @@ describe('firstHeading', () => {
 		['an unclosed fence', '```\n# inside']
 	])('finds none in %s', (_case, markdown) => {
 		expect(firstHeading(markdown)).toBeUndefined();
+	});
+
+	it('stays fast on a long heading line', () => {
+		const start = performance.now();
+		expect(firstHeading(`# a${' '.repeat(100_000)}b ##`)).toBe('a');
+		expect(performance.now() - start).toBeLessThan(100);
 	});
 });
 
@@ -51,6 +68,20 @@ describe('deckTitle', () => {
 		expect(deckTitle(splitDeck('Intro\n\n---\n\n+++\nlayout = "title"\n# a comment\n+++\n\nText\n'), made)).toBe(
 			'Untitled Deck - 2026-11-22'
 		);
+	});
+
+	it('keeps the frontmatter title as written', () => {
+		expect(deckTitle(splitDeck('---\ntitle: "  **Talk** about `code`  "\n---\n\n# Heading\n'), made)).toBe(
+			'**Talk** about `code`'
+		);
+	});
+
+	it('takes a later heading when the first strips to nothing', () => {
+		expect(deckTitle(splitDeck('# <br>\n\n---\n\n## <span>Second</span>\n'), made)).toBe('Second');
+	});
+
+	it('names a deck whose only heading strips to nothing for the day it was made', () => {
+		expect(deckTitle(splitDeck('# <br/>'), made)).toBe('Untitled Deck - 2026-11-22');
 	});
 
 	it('names a deck with no heading for the day it was made', () => {
