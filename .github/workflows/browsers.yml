@@ -8,12 +8,26 @@
 # the pull request is labeled with. GitHub can't filter label events by name,
 # so any other label starts a run whose job skips. That run sits in a
 # concurrency group of its own so it cancels no run in progress, and it is
-# harmless because `browsers` is not the required check.
+# harmless because `browsers` is not the required check. A pull request that
+# changes none of the paths below starts no run, which is safe for the same
+# reason.
 name: Browsers
 
 on:
   pull_request:
     types: [labeled, synchronize, ready_for_review]
+    # ci.yml's web filter, with this workflow in place of ci.yml.
+    paths:
+      - apps/web/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .nvmrc
+      - eslint.config.js
+      - prettier.config.js
+      - .prettierignore
+      - .github/workflows/browsers.yml
+      - Makefile
 
 permissions:
   contents: read
