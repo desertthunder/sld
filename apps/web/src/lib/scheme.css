@@ -1,7 +1,6 @@
 /*
  * The default Base16 schemes, Oxocarbon Dark and Oxocarbon Light, and the color roles the app reads.
- * They apply only while the `/app` layout's `.scheme` wrapper is on the page: SvelteKit adds this stylesheet to `/` too
- * when it preloads `/app`, and keeps it after navigating back.
+ * They apply only while a `.scheme` wrapper, the landing page's or the `/app` layout's, is on the page.
  * TODO: let people pick a scheme, and load its colors in place of these defaults.
  */
 .scheme {
