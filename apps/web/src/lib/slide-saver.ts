@@ -22,7 +22,8 @@ export type SlideSaver = {
 	/**
 	 * Writes the waiting edits, then runs `write` after them, so writes reach the database in the order they were asked
 	 * for. A failure is reported as the `failed` status and rethrown. When `isDropped` returns true as its turn comes,
-	 * `write` doesn't run, the status stays as it was, and the promise resolves to `undefined`.
+	 * `write` doesn't run, the status becomes `failed` since the change was not saved, and the promise resolves to
+	 * `undefined`.
 	 */
 	run<T>(write: () => Promise<T>, isDropped?: () => boolean): Promise<T | undefined>;
 	/** Stops the timer. Waiting edits stay waiting until `flush`. */
@@ -68,7 +69,10 @@ export function createSlideSaver({ save, onStatus, delay }: SlideSaverOptions): 
 		const result = (async () => {
 			await previous;
 			try {
-				if (isDropped?.()) return;
+				if (isDropped?.()) {
+					state.hasFailed = true;
+					return;
+				}
 				const value = await write();
 				state.hasFailed = false;
 				return value;

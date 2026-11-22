@@ -233,6 +233,26 @@ test('a change another tab already made shows instead of failing quietly', async
 	expect(await storedSlides(page, id)).toEqual(['# One']);
 });
 
+test('a change dropped because another tab changed the deck shows Not saved', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One', '# Two']);
+	await openDeck(page, id, '?slide=2');
+	await page.evaluate(
+		async ({ urls, id }) => {
+			const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
+			const { deleteSlide, getDeck } = (await import(urls.decks)) as typeof DecksModule;
+			const database = await openDatabase();
+			const deck = await getDeck(database, id);
+			await deleteSlide(database, deck!.slides[1]!.id);
+		},
+		{ urls: modules, id }
+	);
+	await editor(page).fill('# Gone');
+	await page.getByRole('button', { name: 'New slide' }).click();
+	await expect(saveState(page)).toHaveText('Not saved');
+	await expect(slideItems(page)).toHaveText(['Slide 1 One']);
+	expect(await storedSlides(page, id)).toEqual(['# One']);
+});
+
 test('an edit to a slide another tab deleted shows what is stored', async ({ page }) => {
 	const id = await createDeck(page, 'Talk', ['# One', '# Two']);
 	await openDeck(page, id, '?slide=2');
