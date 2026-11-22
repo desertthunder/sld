@@ -118,6 +118,20 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await getDeck(database, missing)).toBeUndefined();
 		});
 
+		it('finds nothing for an id that is not a uuid', async () => {
+			const deck = await threeSlides();
+			const id = 'not-a-uuid';
+			expect(await getDeck(database, id)).toBeUndefined();
+			expect(await renameDeck(database, id, 'Keynote')).toBeUndefined();
+			expect(await deleteDeck(database, id)).toBeUndefined();
+			expect(await insertSlide(database, id, 0, '# Lost')).toBeUndefined();
+			expect(await updateSlide(database, id, '# Lost')).toBeUndefined();
+			expect(await deleteSlide(database, id)).toBeUndefined();
+			expect(await duplicateSlide(database, id)).toBeUndefined();
+			expect(await moveSlide(database, id, 0)).toBeUndefined();
+			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
+		});
+
 		it('renames a deck and updates when it changed', async () => {
 			const deck = await createDeck(database, { title: 'Talk' });
 			const before = await ageDeck(deck);
@@ -142,8 +156,10 @@ describe('deck queries', { timeout: 30_000 }, () => {
 	describe('slides', () => {
 		it('inserts a slide at the start, in the middle and past the end', async () => {
 			const deck = await threeSlides();
+			const before = await ageDeck(deck);
 			const first = await insertSlide(database, deck.id, 0, '# Zero');
 			expect(first).toMatchObject({ deckId: deck.id, position: 0, markdown: '# Zero' });
+			expect(await updatedAt(deck)).toBeGreaterThan(before);
 			await insertSlide(database, deck.id, 2, '# One and a half');
 			await insertSlide(database, deck.id, 99, '# Last');
 			expect(await markdowns(deck.id)).toEqual([
@@ -222,9 +238,11 @@ describe('deck queries', { timeout: 30_000 }, () => {
 		])('moves $name', async ({ from, to, order }) => {
 			const deck = await threeSlides();
 			const before = await ageDeck(deck);
-			const moved = await moveSlide(database, await slideId(deck.id, from), to);
+			const slide = (await getDeck(database, deck.id))!.slides[from]!;
+			const moved = await moveSlide(database, slide.id, to);
 			expect(moved!.map(({ markdown }) => markdown)).toEqual(order);
 			expect(moved!.map(({ position }) => position)).toEqual([0, 1, 2]);
+			expect(moved!.find(({ id }) => id === slide.id)!.updatedAt).toEqual(slide.updatedAt);
 			expect(await markdowns(deck.id)).toEqual(order);
 			expect(await updatedAt(deck)).toBeGreaterThan(before);
 		});
@@ -245,9 +263,21 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await moveSlide(database, missing, 0)).toBeUndefined();
 		});
 
-		it('rolls back a move that fails, keeping the old order', async () => {
+		it('refuses a move to a position that is not an integer', async () => {
 			const deck = await threeSlides();
 			await expect(moveSlide(database, await slideId(deck.id, 0), 0.5)).rejects.toThrow(RangeError);
+			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
+		});
+
+		it('rolls back a move that fails after renumbering, keeping the old order', async () => {
+			const deck = await threeSlides();
+			await client.exec(`
+				create function refuse() returns trigger language plpgsql as $$ begin raise exception 'refused'; end $$;
+				create trigger refuse before update on decks for each row execute function refuse();
+			`);
+			await expect(moveSlide(database, await slideId(deck.id, 0), 2)).rejects.toMatchObject({
+				cause: { message: 'refused' }
+			});
 			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
 		});
 

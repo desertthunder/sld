@@ -30,6 +30,13 @@ async function slideCount(tx: Transaction, deckId: string): Promise<number> {
 	return row?.total ?? 0;
 }
 
+// Postgres throws on an id that is not a uuid, and such an id can name no deck or slide.
+const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
+function isUuid(id: string): boolean {
+	return uuid.test(id);
+}
+
 function clampPosition(position: number, last: number): number {
 	if (!Number.isSafeInteger(position)) throw new RangeError(`A slide position must be an integer, not ${position}`);
 	return Math.min(Math.max(position, 0), last);
@@ -55,6 +62,7 @@ export function listDecks(database: Database): Promise<Deck[]> {
 
 /** Gets a deck with its slides in order, or `undefined` when there is no such deck. */
 export async function getDeck(database: Database, id: string): Promise<DeckWithSlides | undefined> {
+	if (!isUuid(id)) return;
 	return database.transaction(async (tx) => {
 		const [deck] = await tx.select().from(decks).where(eq(decks.id, id));
 		if (!deck) return;
@@ -66,6 +74,7 @@ export async function getDeck(database: Database, id: string): Promise<DeckWithS
 /** Renames a deck and returns it, or `undefined` when there is no such deck. */
 export function renameDeck(database: Database, id: string, title: string): Promise<Deck | undefined> {
 	return write(database, async (tx) => {
+		if (!isUuid(id)) return;
 		const [deck] = await tx
 			.update(decks)
 			.set({ title, updatedAt: sql`now()` })
@@ -78,6 +87,7 @@ export function renameDeck(database: Database, id: string, title: string): Promi
 /** Deletes a deck and its slides, and returns the deck, or `undefined` when there is no such deck. */
 export function deleteDeck(database: Database, id: string): Promise<Deck | undefined> {
 	return write(database, async (tx) => {
+		if (!isUuid(id)) return;
 		const [deck] = await tx.delete(decks).where(eq(decks.id, id)).returning();
 		return deck;
 	});
@@ -94,6 +104,7 @@ export function insertSlide(
 	markdown: string
 ): Promise<Slide | undefined> {
 	return write(database, async (tx) => {
+		if (!isUuid(deckId)) return;
 		const touched = await touchDeck(tx, deckId).returning({ id: decks.id });
 		if (touched.length === 0) return;
 		const at = clampPosition(position, await slideCount(tx, deckId));
@@ -113,6 +124,7 @@ async function insertAt(tx: Transaction, deckId: string, position: number, markd
 /** Replaces a slide's markdown and returns the slide, or `undefined` when there is no such slide. */
 export function updateSlide(database: Database, id: string, markdown: string): Promise<Slide | undefined> {
 	return write(database, async (tx) => {
+		if (!isUuid(id)) return;
 		const [slide] = await tx
 			.update(slides)
 			.set({ markdown, updatedAt: sql`now()` })
@@ -129,6 +141,7 @@ export function updateSlide(database: Database, id: string, markdown: string): P
  */
 export function deleteSlide(database: Database, id: string): Promise<Slide | undefined> {
 	return write(database, async (tx) => {
+		if (!isUuid(id)) return;
 		const [slide] = await tx.delete(slides).where(eq(slides.id, id)).returning();
 		if (!slide) return;
 		await tx
@@ -143,6 +156,7 @@ export function deleteSlide(database: Database, id: string): Promise<Slide | und
 /** Copies a slide to the place right after it and returns the copy, or `undefined` when there is no such slide. */
 export function duplicateSlide(database: Database, id: string): Promise<Slide | undefined> {
 	return write(database, async (tx) => {
+		if (!isUuid(id)) return;
 		const [slide] = await tx.select().from(slides).where(eq(slides.id, id));
 		if (!slide) return;
 		await touchDeck(tx, slide.deckId);
@@ -157,6 +171,7 @@ export function duplicateSlide(database: Database, id: string): Promise<Slide | 
  */
 export function moveSlide(database: Database, id: string, position: number): Promise<Slide[] | undefined> {
 	return write(database, async (tx) => {
+		if (!isUuid(id)) return;
 		const [slide] = await tx.select().from(slides).where(eq(slides.id, id));
 		if (!slide) return;
 		const { deckId, position: from } = slide;
