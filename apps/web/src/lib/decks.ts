@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gt, gte, sql } from 'drizzle-orm';
 import { writeDurably, type Database } from '#lib/database.ts';
 import { decks, slides } from '#lib/schema.ts';
+import { isUuid } from '#lib/uuid.ts';
 
 export type Deck = typeof decks.$inferSelect;
 export type Slide = typeof slides.$inferSelect;
@@ -8,8 +9,17 @@ export type Slide = typeof slides.$inferSelect;
 /** A deck with its slides in order. */
 export type DeckWithSlides = Deck & { slides: Slide[] };
 
-/** What a new deck needs: its title, and optionally its scheme, aspect and the markdown of its slides in order. */
-export type NewDeck = { title: string; scheme?: string | null; aspect?: string; slides?: readonly string[] };
+/**
+ * What a new deck needs: its title, and optionally its id, scheme, aspect and the markdown of its slides in order. Give
+ * an id to make the write safe to repeat: a second deck with the same id fails to insert.
+ */
+export type NewDeck = {
+	id?: string;
+	title: string;
+	scheme?: string | null;
+	aspect?: string;
+	slides?: readonly string[];
+};
 
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -28,14 +38,6 @@ function touchDeck(tx: Transaction, deckId: string) {
 async function slideCount(tx: Transaction, deckId: string): Promise<number> {
 	const [row] = await tx.select({ total: count() }).from(slides).where(eq(slides.deckId, deckId));
 	return row?.total ?? 0;
-}
-
-// Postgres throws on an id that is not a uuid. The queries take only the canonical form the database returns, though
-// Postgres would also read braced or unhyphenated uuids.
-const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
-
-function isUuid(id: string): boolean {
-	return uuid.test(id);
 }
 
 // Postgres text cannot hold U+0000. CommonMark replaces it with U+FFFD, so markdown means the same either way.

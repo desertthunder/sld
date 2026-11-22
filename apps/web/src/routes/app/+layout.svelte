@@ -9,6 +9,7 @@
 	import { boot, startBoot } from '#lib/boot.svelte.ts';
 	import { isolate, type IsolationOutcome } from '#lib/cross-origin-isolation.ts';
 	import { shouldShowSplash, splashDelay, splashView } from '#lib/splash.ts';
+	import { openDecks } from '#lib/warm.ts';
 
 	let { children } = $props();
 
@@ -21,10 +22,7 @@
 		void (async () => {
 			isolation.outcome = await isolate();
 			if (isolation.outcome !== 'isolated') return;
-			startBoot(async (lost, progress) => {
-				const { openDatabase } = await import('#lib/database.ts');
-				return openDatabase(lost, progress);
-			});
+			startBoot(openDecks);
 		})();
 		return () => clearTimeout(timer);
 	});

@@ -1,0 +1,76 @@
+import { slideParts, splitDeck } from '#lib/deck-markdown.ts';
+import type { NewDeck } from '#lib/decks.ts';
+import { isUuid } from '#lib/uuid.ts';
+
+/**
+ * A note the landing page hands to `/app` to save as a deck. The id, chosen when the note is handed over, becomes the
+ * deck's id, so saving it twice can't make two decks.
+ */
+export type Handoff = { id: string; markdown: string };
+
+/** The `sessionStorage` key that holds the handed-over note until `/app` has saved it. */
+export const handoffKey = 'sld:handoff';
+
+/** The parts of `sessionStorage` a handoff uses. */
+export type HandoffStorage = {
+	getItem(key: string): unknown;
+	setItem(key: string, value: string): void;
+	removeItem(key: string): void;
+};
+
+/** Stores `markdown` for `/app` to save as a new deck, and returns what it stored. */
+export function handOff(storage: HandoffStorage, markdown: string, id: string = crypto.randomUUID()): Handoff {
+	const handoff = { id, markdown };
+	storage.setItem(handoffKey, JSON.stringify(handoff));
+	return handoff;
+}
+
+/** The note waiting in `storage` to be saved, or `undefined` when there is none or it can't be read. */
+export function pendingHandoff(storage: HandoffStorage): Handoff | undefined {
+	const text = storage.getItem(handoffKey);
+	if (typeof text !== 'string') return undefined;
+	let value: unknown;
+	try {
+		value = JSON.parse(text);
+	} catch {
+		return undefined;
+	}
+	if (typeof value !== 'object' || value === null) return undefined;
+	const { id, markdown } = value as Record<string, unknown>;
+	return typeof id === 'string' && typeof markdown === 'string' && isUuid(id) ? { id, markdown } : undefined;
+}
+
+/** Removes the note `storage` holds once the deck `id` is saved, unless a newer note has replaced it since. */
+export function clearHandoff(storage: HandoffStorage, id: string): void {
+	const pending = pendingHandoff(storage);
+	if (pending === undefined || pending.id === id) storage.removeItem(handoffKey);
+}
+
+const aspects = new Set(['16:9', '4:3']);
+const markers = /^ {0,3}(?:#{1,6}(?=\s|$)|>|[-+*](?=\s)|\d{1,9}[.)](?=\s))\s*/;
+
+function firstLine(slide: string): string | undefined {
+	for (const line of slideParts(slide).body.split('\n')) {
+		const text = line
+			.replace(markers, '')
+			.replace(/\s+#+\s*$/, '')
+			.trim();
+		if (text !== '') return text;
+	}
+	return undefined;
+}
+
+/**
+ * The deck a note makes: its slides as `splitDeck` splits them, its scheme and aspect from its frontmatter, and its
+ * title from its frontmatter or else the first line of text in its slides, without heading, quote or list markers.
+ */
+export function deckFromNote(markdown: string): Omit<NewDeck, 'id'> & { slides: string[] } {
+	const { frontmatter, slides } = splitDeck(markdown);
+	const title = frontmatter?.title?.trim() || slides.map((slide) => firstLine(slide)).find(Boolean) || '';
+	return {
+		title,
+		...(frontmatter?.scheme && { scheme: frontmatter.scheme }),
+		...(frontmatter?.aspect && aspects.has(frontmatter.aspect) && { aspect: frontmatter.aspect }),
+		slides
+	};
+}
