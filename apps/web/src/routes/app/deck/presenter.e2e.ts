@@ -127,6 +127,40 @@ test('a tap on the right third moves forward and one on the left third moves bac
 	await expectSlide(page, 2);
 });
 
+test('a click that closes the shortcuts moves no slide', async ({ page }) => {
+	const id = await createDeck(page);
+	await present(page, id, '#2');
+	const help = page.getByRole('dialog', { name: 'Shortcuts' });
+	const { width, height } = page.viewportSize()!;
+	await page.keyboard.press('?');
+	await expect(help).toBeVisible();
+	await page.mouse.click(width - 8, height / 2);
+	await expect(help).toBeHidden();
+	await expectSlide(page, 2);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.keyboard.press('?');
+	const card = await help.locator('section').boundingBox();
+	await page.mouse.click(card!.x + card!.width - 8, card!.y + 8);
+	await expect(help).toBeVisible();
+	await expectSlide(page, 2);
+});
+
+test('moving fast lands on the last slide asked for, without leaving the stage empty', async ({ page }) => {
+	const id = await createDeck(page);
+	await present(page, id, '#1');
+	await page.evaluate(() => {
+		const state = globalThis as unknown as { stageEmptied: boolean };
+		state.stageEmptied = false;
+		new MutationObserver(() => {
+			if (!document.querySelector('article.slide')) state.stageEmptied = true;
+		}).observe(document.body, { subtree: true, childList: true });
+	});
+	for (let index = 0; index < 4; index++) await page.keyboard.press('PageDown');
+	await page.keyboard.press('PageUp');
+	await expectSlide(page, 4);
+	expect(await page.evaluate(() => (globalThis as unknown as { stageEmptied: boolean }).stageEmptied)).toBe(false);
+});
+
 test('the controls and the cursor show on pointer movement and hide after two seconds', async ({ page }) => {
 	const id = await createDeck(page);
 	await present(page, id, '#2');

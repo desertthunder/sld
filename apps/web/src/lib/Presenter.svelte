@@ -95,7 +95,8 @@
 		act(action);
 	}
 
-	const tappable = 'a[href], button, input, select, textarea, summary, video, audio, [contenteditable], .controls';
+	const tappable =
+		'a[href], button, input, select, textarea, summary, video, audio, [contenteditable], .controls, dialog';
 
 	function onclick(event: MouseEvent) {
 		if (event.target instanceof Element && event.target.closest(tappable)) return;
@@ -271,7 +272,7 @@
 
 	button:disabled,
 	button[aria-disabled='true'] {
-		color: var(--base03);
+		color: color-mix(in oklab, var(--muted) 55%, var(--surface));
 		cursor: default;
 	}
 
