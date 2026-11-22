@@ -1,8 +1,7 @@
 /*
  * Code blocks on a slide, in the stage's pixels. Token colors are the scheme's `--code-<kind>` variables, so a new
  * scheme recolors code without highlighting it again.
- * TODO: shrink code that overflows its block down to 20px, then clip it and flag the slide, once the stage measures
- * overflow.
+ * TODO: shrink code that overflows its block down to 20px before the block clips it and the stage flags the slide.
  */
 .slide pre.code-block {
 	--code-inline: 44px;
