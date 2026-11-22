@@ -3,6 +3,7 @@
 	import '@fontsource-variable/hubot-sans/wght.css';
 	import '@fontsource-variable/mona-sans/wght.css';
 	import '@fontsource/monaspace-neon/latin-400.css';
+	import '@fontsource/monaspace-neon/latin-400-italic.css';
 	import '#lib/scheme.css';
 	import Splash from '#lib/Splash.svelte';
 	import { boot, startBoot } from '#lib/boot.svelte.ts';
