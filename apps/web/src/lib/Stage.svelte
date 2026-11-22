@@ -10,15 +10,25 @@
 
 	const size = $derived(stageSize(aspect));
 	const container = $state({ width: 0, height: 0 });
-	const content = $state({ width: 0, height: 0 });
+	const content = $state({ width: 0, height: 0, clipped: false });
 	const fit: Fit = $derived(fitStage(size, container));
 	let stage: HTMLElement | undefined = $state();
+
+	function hasClippedContent(slide: HTMLElement): boolean {
+		return [...slide.querySelectorAll('*')].some((element) => {
+			if (element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight)
+				return false;
+			const { overflowX, overflowY } = getComputedStyle(element);
+			return overflowX !== 'visible' || overflowY !== 'visible';
+		});
+	}
 
 	// A line too long for the stage, such as in a code block, widens neither the stage nor the content, so no resize
 	// reports it: measure the stage's scroll width whenever the slide's DOM, its height or its fonts change. The slide's
 	// bottom padding is room its content may run into, and only content past the stage's edge is clipped, so the height
 	// that counts ends at the slide's content box: line heights differ between browsers, and a slide that fits in one
-	// would otherwise be flagged in another.
+	// would otherwise be flagged in another. An element that clips its own overflow, such as a code block, hides a line
+	// before it reaches the stage's edge, so the slide also counts as overflowing when one of those clips something.
 	$effect(() => {
 		if (!stage) return;
 		const element = stage;
@@ -30,8 +40,10 @@
 				// eslint-disable-next-line unicorn/prefer-number-coercion -- The computed padding ends in px, which Number() rejects.
 				const padding = Number.parseFloat(getComputedStyle(slide).paddingBottom);
 				content.height = slide.offsetTop + slide.offsetHeight - padding;
+				content.clipped = hasClippedContent(slide);
 			} else {
 				content.height = 0;
+				content.clipped = false;
 			}
 		};
 		const resizes = new ResizeObserver(measure);
@@ -50,7 +62,7 @@
 
 	$effect(() => {
 		// eslint-disable-next-line unicorn/no-top-level-assignment-in-function -- Svelte writes a bindable prop by assignment.
-		overflowing = content.height > size.height || content.width > size.width;
+		overflowing = content.clipped || content.height > size.height || content.width > size.width;
 	});
 
 	onDestroy(() => {

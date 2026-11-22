@@ -1,8 +1,12 @@
 import { expect, test, type Browser, type BrowserType, type Page } from '@playwright/test';
+import type * as SlideRenderModule from '#lib/slide-render.ts';
 
 type Screen = { width: number; height: number; deviceScaleFactor: number };
 type Browsers = { browser: Browser; browserName: string; firefox: BrowserType };
 type Showing = { page: Page; close: () => Promise<void> };
+
+// The dev server serves the app's modules at their source paths.
+const slideRenderModule = '/src/lib/slide-render.ts';
 
 /**
  * Opens a page on a screen `width` by `height` with `deviceScaleFactor`. Firefox drops an emulated scale factor when it
@@ -301,5 +305,43 @@ test('a slide wider than the stage wraps what it can and is flagged for what it 
 	await expect(frame).toHaveAttribute('data-overflowing', 'true');
 
 	await page.locator('.slide code').evaluate((code) => ((code.firstChild as Text).data = 'const deck = 1;'));
+	await expect(frame).toHaveAttribute('data-overflowing', 'false');
+});
+
+/** A TypeScript code block with its second line highlighted. */
+function fence(...lines: string[]): string {
+	return ['```ts {2}', ...lines, '```'].join('\n');
+}
+
+test('a code block that clips a line too long for the stage flags the slide', async ({ page }) => {
+	await page.goto('/app');
+	const article = page.locator('article.slide');
+	await expect(article).toBeVisible({ timeout: 30_000 });
+	const frame = page.locator('.frame');
+	const long = `const items = [${Array.from({ length: 60 }, (_, index) => `'item${index}'`).join(', ')}];`;
+	const show = (markdown: string) =>
+		page.evaluate(
+			async ({ url, markdown }) => {
+				const { renderSlide } = (await import(url)) as typeof SlideRenderModule;
+				const { html } = await renderSlide(markdown, { lineNumbers: true });
+				document.querySelector('article.slide')!.innerHTML = html;
+			},
+			{ url: slideRenderModule, markdown }
+		);
+
+	await show(fence('const deck = 1;', 'const slide = 2;'));
+	await expect(page.locator('pre.code-block .code-keyword').first()).toBeVisible();
+	await expect(frame).toHaveAttribute('data-overflowing', 'false');
+
+	// The block clips a long line at its own edge, so the stage stays as wide as it is.
+	await show(fence('const deck = 1;', long));
+	await expect(frame).toHaveAttribute('data-overflowing', 'true');
+	expect(await page.locator('.stage').evaluate((stage) => stage.scrollWidth)).toBe(1920);
+
+	// The first line of a labeled block shows only its first row, beside the label.
+	await show(fence(long, 'const slide = 2;'));
+	await expect(frame).toHaveAttribute('data-overflowing', 'true');
+
+	await show(fence('const deck = 1;', 'const slide = 2;'));
 	await expect(frame).toHaveAttribute('data-overflowing', 'false');
 });
