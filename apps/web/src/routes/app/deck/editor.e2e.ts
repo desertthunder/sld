@@ -110,7 +110,7 @@ test('adds, duplicates and deletes slides from buttons and keys', async ({ page 
 	expect(await storedSlides(page, id)).toEqual(['# One', '# Two', '# Three', '# Three', '# Three']);
 });
 
-test('keys typed in the editor and the title do not reach the slide list', async ({ page }) => {
+test('keys typed in the editor do not reach the slide list', async ({ page }) => {
 	const id = await createDeck(page, 'Talk', ['# One', '# Two']);
 	await openDeck(page, id);
 	await editor(page).fill('');
@@ -130,6 +130,25 @@ test('deleting the selected slide selects its neighbor, and the last slide stays
 	await selectedItem(page).focus();
 	await page.keyboard.press('Delete');
 	await expect(slideItems(page)).toHaveCount(1);
+	expect(await storedSlides(page, id)).toEqual(['# One']);
+});
+
+test('a change another tab already made shows instead of failing quietly', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One', '# Two']);
+	await openDeck(page, id);
+	await page.evaluate(
+		async ({ urls, id }) => {
+			const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
+			const { deleteSlide, getDeck } = (await import(urls.decks)) as typeof DecksModule;
+			const database = await openDatabase();
+			const deck = await getDeck(database, id);
+			await deleteSlide(database, deck!.slides[1]!.id);
+		},
+		{ urls: modules, id }
+	);
+	await page.getByRole('button', { name: 'Delete slide 1' }).click();
+	await expect(slideItems(page)).toHaveText(['Slide 1 One']);
+	await expect(page.getByRole('button', { name: 'Delete slide 1' })).toBeDisabled();
 	expect(await storedSlides(page, id)).toEqual(['# One']);
 });
 
@@ -231,7 +250,7 @@ test.describe('at phone width', () => {
 		expect(await hasNoHorizontalScroll(page)).toBe(true);
 
 		await page.getByRole('tab', { name: 'Preview' }).click();
-		await expect(page.getByRole('region', { name: 'Preview' })).toBeVisible();
+		await expect(page.getByRole('tabpanel', { name: 'Preview' })).toBeVisible();
 		await page.setViewportSize({ width: 844, height: 390 });
 		await page.setViewportSize({ width: 390, height: 844 });
 		await expect(page.getByRole('tab', { name: 'Preview' })).toHaveAttribute('aria-selected', 'true');

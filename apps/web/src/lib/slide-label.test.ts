@@ -17,6 +17,12 @@ describe('slideLabel', () => {
 			markdown: '# **Bold** `code` [link](https://x.test)',
 			label: 'Bold code link'
 		},
+		{ name: 'underscore emphasis in a heading', markdown: '# _Why_ __now__', label: 'Why now' },
+		{
+			name: 'underscores inside words in a heading',
+			markdown: '# Rename my_file_name.ts to __init__',
+			label: 'Rename my_file_name.ts to init'
+		},
 		{ name: 'a heading after fenced code', markdown: '```md\n# Not this\n```\n# This one', label: 'This one' },
 		{
 			name: 'a heading after tilde fenced code',

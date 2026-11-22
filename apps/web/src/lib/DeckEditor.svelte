@@ -137,7 +137,11 @@
 		changing.isBusy = true;
 		try {
 			const index = await saver.run(write);
-			if (index === undefined) return;
+			// Another tab changed the deck first, so show what is stored.
+			if (index === undefined) {
+				await refresh(editor.selected);
+				return;
+			}
 			await refresh(index);
 			await announce(message(index));
 		} catch {
@@ -252,6 +256,12 @@
 	}
 
 	const paneIds: Record<EditorTab, string> = { slides: 'pane-slides', edit: 'pane-edit', preview: 'pane-preview' };
+	const panelIds: Record<EditorTab, string> = { ...paneIds, slides: 'panel-slides' };
+
+	/** The panes are tab panels only while they show as tabs. */
+	function panel(tab: EditorTab) {
+		return phone.current ? { role: 'tabpanel', 'aria-labelledby': `tab-${tab}` } : {};
+	}
 
 	onMount(() => {
 		showSelectedInUrl();
@@ -292,7 +302,7 @@
 				role="tab"
 				id="tab-{name}"
 				aria-selected={editor.tab === name}
-				aria-controls={paneIds[name]}
+				aria-controls={panelIds[name]}
 				tabindex={editor.tab === name ? 0 : -1}
 				onclick={() => chooseTab(name)}
 				onkeydown={ontabkeydown}>
@@ -301,7 +311,12 @@
 		{/each}
 	</div>
 	<div class="body" style:--columns={columns} bind:this={body}>
-		<div class="pane-slot" class:away={editor.tab !== 'slides'} bind:this={listPane}>
+		<div
+			class="pane-slot"
+			class:away={editor.tab !== 'slides'}
+			id={panelIds.slides}
+			{...panel('slides')}
+			bind:this={listPane}>
 			<SlideList
 				id={paneIds.slides}
 				slides={editor.slides}
@@ -323,7 +338,12 @@
 			ondrag={dragList}
 			ondone={saveWidths}
 			onreset={() => resetWidth('list')} />
-		<section class="pane" class:away={editor.tab !== 'edit'} id={paneIds.edit} aria-label="Markdown">
+		<section
+			class="pane"
+			class:away={editor.tab !== 'edit'}
+			id={paneIds.edit}
+			aria-label="Markdown"
+			{...panel('edit')}>
 			<div class="pane-header"><span>Slide {editor.selected + 1} · markdown</span></div>
 			<!-- TODO: replace the text area with the CodeMirror editor. -->
 			<textarea
@@ -344,7 +364,12 @@
 			ondrag={dragEditor}
 			ondone={saveWidths}
 			onreset={() => resetWidth('editor')} />
-		<section class="pane" class:away={editor.tab !== 'preview'} id={paneIds.preview} aria-label="Preview">
+		<section
+			class="pane"
+			class:away={editor.tab !== 'preview'}
+			id={paneIds.preview}
+			aria-label="Preview"
+			{...panel('preview')}>
 			<div class="pane-header"><span>Preview</span></div>
 			<!-- TODO: draw the selected slide here. -->
 			<div class="preview"></div>
@@ -479,7 +504,7 @@
 	}
 
 	@media (max-width: 760px) {
-		.saved,
+		.saved:not(.failed),
 		.present kbd {
 			display: none;
 		}

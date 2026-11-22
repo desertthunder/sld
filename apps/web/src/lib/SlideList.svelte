@@ -249,7 +249,7 @@
 	}
 
 	.icon-button:disabled {
-		color: var(--base03);
+		color: color-mix(in oklab, var(--muted) 45%, var(--background));
 		cursor: not-allowed;
 	}
 

@@ -10,11 +10,15 @@ const frontmatterDelimiters = new Set(['---', '+++']);
 
 /** Drops the inline markdown a label shouldn't show: emphasis and code marks, link targets and image syntax. */
 function plainText(text: string): string {
-	return text
-		.replaceAll(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-		.replaceAll(/(\*{1,3}|_{1,3}|`+|~~)(\S(?:.*?\S)?)\1/g, '$2')
-		.replaceAll(/\s+/g, ' ')
-		.trim();
+	return (
+		text
+			.replaceAll(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+			.replaceAll(/(\*{1,3}|`+|~~)(\S(?:.*?\S)?)\1/g, '$2')
+			// An underscore inside a word, as in `snake_case`, marks no emphasis.
+			.replaceAll(/(?<![\p{L}\p{N}])(_{1,3})(\S(?:.*?\S)?)\1(?![\p{L}\p{N}])/gu, '$2')
+			.replaceAll(/\s+/g, ' ')
+			.trim()
+	);
 }
 
 /** The line after a frontmatter block on the first line, or 0 when the slide doesn't open with one. */
