@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gt, gte, sql } from 'drizzle-orm';
 import { writeDurably, type Database } from '#lib/database.ts';
+import type { DeckSettings } from '#lib/deck-settings.ts';
 import { decks, slides } from '#lib/schema.ts';
 
 export type Deck = typeof decks.$inferSelect;
@@ -8,8 +9,17 @@ export type Slide = typeof slides.$inferSelect;
 /** A deck with its slides in order. */
 export type DeckWithSlides = Deck & { slides: Slide[] };
 
-/** What a new deck needs: its title, and optionally its scheme, aspect and the markdown of its slides in order. */
-export type NewDeck = { title: string; scheme?: string | null; aspect?: string; slides?: readonly string[] };
+/**
+ * What a new deck needs: its title, and optionally its scheme, aspect, settings and the markdown of its slides in
+ * order.
+ */
+export type NewDeck = {
+	title: string;
+	scheme?: string | null;
+	aspect?: string;
+	settings?: DeckSettings | null;
+	slides?: readonly string[];
+};
 
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 

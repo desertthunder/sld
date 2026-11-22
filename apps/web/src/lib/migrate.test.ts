@@ -78,6 +78,29 @@ describe('the migrations drizzle-kit wrote', { timeout: 30_000 }, () => {
 		await client.close();
 	});
 
+	it('keep the decks and slides of a database migrated before decks had settings', async () => {
+		const client = new PGlite();
+		const before = migrations.findIndex(({ tag }) => tag === '0002_add_deck_settings');
+		await migrate(client, migrations.slice(0, before));
+		const inserted = await client.query<{ id: string }>(
+			`insert into decks (title, scheme, aspect) values ('Talk', 'oxocarbon-dark', '4:3') returning id`
+		);
+		await client.query(
+			`insert into slides (deck_id, position, markdown) values ($1, 0, '# One'), ($1, 1, '# Two')`,
+			[inserted.rows[0]!.id]
+		);
+		const decks = await client.query<Record<string, unknown>>('select * from decks');
+		const slides = await client.query('select * from slides order by position');
+		await migrate(client, migrations);
+		const migratedDecks = await client.query<Record<string, unknown>>('select * from decks');
+		const migratedSlides = await client.query('select * from slides order by position');
+		const withoutSettings = await client.query('select id from decks where settings is null');
+		expect(migratedDecks.rows).toEqual(decks.rows.map((row) => expect.objectContaining(row)));
+		expect(withoutSettings.rows).toHaveLength(decks.rows.length);
+		expect(migratedSlides.rows).toEqual(slides.rows);
+		await client.close();
+	});
+
 	it('make the unique slide position per deck deferrable, so one statement can renumber slides', async () => {
 		const client = new PGlite();
 		await migrate(client, migrations);
