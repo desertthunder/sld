@@ -50,6 +50,14 @@ describe('slideLabel', () => {
 		expect(slideLabel('#\n\nText')).toBe('Text');
 	});
 
+	it('labels a slide with a very long first line quickly', () => {
+		const start = performance.now();
+		const label = slideLabel(`# ${'*a '.repeat(30_000)}`);
+		expect(performance.now() - start).toBeLessThan(1000);
+		expect(label.startsWith('*a *a')).toBe(true);
+		expect(label.length).toBeLessThanOrEqual(200);
+	});
+
 	it('calls a slide with no text untitled', () => {
 		expect(slideLabel('')).toBe(untitledSlide);
 		expect(slideLabel('  \n\n')).toBe(untitledSlide);

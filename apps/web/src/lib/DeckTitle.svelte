@@ -16,11 +16,13 @@
 		input?.select();
 	}
 
-	async function finish(shouldRename: boolean) {
+	/** Ends editing. Only a key takes focus back to the title: a blur leaves it where the person moved it. */
+	async function finish(shouldRename: boolean, shouldFocus: boolean) {
 		if (!field.isEditing) return;
 		field.isEditing = false;
 		const next = field.draft.trim();
 		if (shouldRename && next && next !== title) onrename(next);
+		if (!shouldFocus) return;
 		await tick();
 		button?.focus();
 	}
@@ -28,10 +30,10 @@
 	function onkeydown(event: KeyboardEvent) {
 		if (event.key === 'Enter') {
 			event.preventDefault();
-			void finish(true);
+			void finish(true, true);
 		} else if (event.key === 'Escape') {
 			event.preventDefault();
-			void finish(false);
+			void finish(false, true);
 		}
 	}
 </script>
@@ -47,7 +49,7 @@
 		bind:value={field.draft}
 		bind:this={input}
 		{onkeydown}
-		onblur={() => void finish(true)} />
+		onblur={() => void finish(true, false)} />
 {:else}
 	<button
 		class="title"

@@ -82,7 +82,10 @@
 	const changing = { isBusy: false };
 
 	const saver = createSlideSaver({
-		save: (id, markdown) => updateSlide(database, id, markdown),
+		save: async (id, markdown) => {
+			// Another tab deleted the slide or its deck, so show what is stored.
+			if (!(await updateSlide(database, id, markdown))) void refresh(editor.selected);
+		},
 		onStatus: (status) => (editor.status = status),
 		delay: 400
 	});
@@ -182,7 +185,7 @@
 	async function rename(next: string) {
 		editor.title = next;
 		try {
-			await saver.run(() => renameDeck(database, deckId, next));
+			if (!(await saver.run(() => renameDeck(database, deckId, next)))) await refresh(editor.selected);
 		} catch {
 			// The saver reports the failure as the status.
 		}

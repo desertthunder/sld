@@ -15,7 +15,7 @@ export type SlideSaverOptions = {
 export type SlideSaver = {
 	/** Records an edit to a slide, to be written once typing pauses. */
 	edit(id: string, markdown: string): void;
-	/** The edit to a slide not yet written, if there is one. */
+	/** The edit to a slide not yet written, or being written, if there is one. */
 	pending(id: string): string | undefined;
 	/** Writes every waiting edit now, resolving once they and every write before them are done. */
 	flush(): Promise<void>;
@@ -35,6 +35,7 @@ export type SlideSaver = {
  */
 export function createSlideSaver({ save, onStatus, delay }: SlideSaverOptions): SlideSaver {
 	const waiting = new Map<string, string>();
+	const writing = new Map<string, string>();
 	const state: {
 		queue: Promise<void>;
 		running: number;
@@ -86,6 +87,10 @@ export function createSlideSaver({ save, onStatus, delay }: SlideSaverOptions): 
 		state.timer = undefined;
 	};
 
+	const forget = (id: string, markdown: string) => {
+		if (writing.get(id) === markdown) writing.delete(id);
+	};
+
 	const writeWaiting = async (): Promise<void> => {
 		stop();
 		const edits = [...waiting];
@@ -94,12 +99,15 @@ export function createSlideSaver({ save, onStatus, delay }: SlideSaverOptions): 
 			await state.queue;
 			return;
 		}
+		for (const [id, markdown] of edits) writing.set(id, markdown);
 		await enqueue(async () => {
 			for (const [index, [id, markdown]] of edits.entries()) {
 				try {
 					await save(id, markdown);
+					forget(id, markdown);
 				} catch (error) {
 					for (const [laterId, laterMarkdown] of edits.slice(index)) {
+						forget(laterId, laterMarkdown);
 						if (!waiting.has(laterId)) waiting.set(laterId, laterMarkdown);
 					}
 					throw error;
@@ -115,7 +123,7 @@ export function createSlideSaver({ save, onStatus, delay }: SlideSaverOptions): 
 			state.timer = setTimeout(() => void settle(writeWaiting()), delay);
 			report();
 		},
-		pending: (id) => waiting.get(id),
+		pending: (id) => waiting.get(id) ?? writing.get(id),
 		flush: writeWaiting,
 		async run(write) {
 			const flushed = settle(writeWaiting());

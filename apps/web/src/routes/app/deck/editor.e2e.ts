@@ -152,6 +152,35 @@ test('a change another tab already made shows instead of failing quietly', async
 	expect(await storedSlides(page, id)).toEqual(['# One']);
 });
 
+test('an edit to a slide another tab deleted shows what is stored', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One', '# Two']);
+	await openDeck(page, id, '?slide=2');
+	await page.evaluate(
+		async ({ urls, id }) => {
+			const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
+			const { deleteSlide, getDeck } = (await import(urls.decks)) as typeof DecksModule;
+			const database = await openDatabase();
+			const deck = await getDeck(database, id);
+			await deleteSlide(database, deck!.slides[1]!.id);
+		},
+		{ urls: modules, id }
+	);
+	await editor(page).fill('# Two, edited');
+	await expect(slideItems(page)).toHaveText(['Slide 1 One']);
+	await expect(editor(page)).toHaveValue('# One');
+});
+
+test('saving the title by clicking away leaves focus where it went', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await page.getByRole('button', { name: 'Rename deck: Talk' }).click();
+	await page.getByRole('textbox', { name: 'Deck title' }).fill('Field notes');
+	await editor(page).click();
+	await page.keyboard.type(' and more');
+	await expect(editor(page)).toHaveValue('# One and more');
+	await expect(page.getByRole('button', { name: 'Rename deck: Field notes' })).toBeVisible();
+});
+
 test('the deck title edits in place', async ({ page }) => {
 	const id = await createDeck(page, 'Talk', ['# One']);
 	await openDeck(page, id);

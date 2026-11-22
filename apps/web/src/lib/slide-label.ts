@@ -8,10 +8,15 @@ const thematicBreak = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const containerMarker = /^ {0,3}(?:>[ \t]?|(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$))+/;
 const frontmatterDelimiters = new Set(['---', '+++']);
 
+// The list shows one line, and stripping marks takes time that grows faster than the line, so a label reads only
+// this much of it.
+const labelLength = 200;
+
 /** Drops the inline markdown a label shouldn't show: emphasis and code marks, link targets and image syntax. */
 function plainText(text: string): string {
 	return (
 		text
+			.slice(0, labelLength)
 			.replaceAll(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
 			.replaceAll(/(\*{1,3}|`+|~~)(\S(?:.*?\S)?)\1/g, '$2')
 			// An underscore inside a word, as in `snake_case`, marks no emphasis.

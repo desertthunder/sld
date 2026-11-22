@@ -101,6 +101,19 @@ describe('createSlideSaver', () => {
 		expect(slides.pending('a')).toBe('# New');
 	});
 
+	it('keeps an edit pending while its write runs', async () => {
+		const slides = saver();
+		let finish!: () => void;
+		save = () => new Promise<void>((resolve) => (finish = resolve));
+		slides.edit('a', '# A');
+		const flushed = slides.flush();
+		await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+		expect(slides.pending('a')).toBe('# A');
+		finish();
+		await flushed;
+		expect(slides.pending('a')).toBeUndefined();
+	});
+
 	it('reports a failed run and rethrows it', async () => {
 		const slides = saver();
 		await expect(slides.run(() => Promise.reject(new Error('no')))).rejects.toThrow('no');
