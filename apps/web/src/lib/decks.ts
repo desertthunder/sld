@@ -161,12 +161,14 @@ export function updateSlide(database: Database, id: string, markdown: string): P
 }
 
 /**
- * Deletes a slide, moving the slides after it one place earlier, and returns it, or `undefined` when there is no such
- * slide.
+ * Deletes a slide, moving the slides after it one place earlier, and returns it. It returns `undefined`, and deletes
+ * nothing, when there is no such slide or the slide is its deck's only one, since a deck always keeps a slide.
  */
 export function deleteSlide(database: Database, id: string): Promise<Slide | undefined> {
 	return write(database, async (tx) => {
 		if (!isUuid(id)) return;
+		const [found] = await tx.select({ deckId: slides.deckId }).from(slides).where(eq(slides.id, id));
+		if (!found || (await slideCount(tx, found.deckId)) <= 1) return;
 		const [slide] = await tx.delete(slides).where(eq(slides.id, id)).returning();
 		if (!slide) return;
 		await tx

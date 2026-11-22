@@ -1,0 +1,112 @@
+/** The search parameter that holds the selected slide's number, counted from 1. */
+export const slideParameter = 'slide';
+
+/**
+ * The index, from 0, of the slide that `?slide=` selects in a deck of `count` slides. The parameter counts from 1; a
+ * number past either end selects the slide at that end, and a missing or unreadable one selects the first slide.
+ */
+export function selectedIndex(parameter: string | undefined, count: number): number {
+	if (parameter === undefined || !/^\s*[+-]?\d+\s*$/.test(parameter)) return 0;
+	const index = Number(parameter) - 1;
+	return Math.min(Math.max(index, 0), Math.max(count - 1, 0));
+}
+
+/** The `?slide=` value for the slide at `index`, from 0. */
+export function slideParameterValue(index: number): string {
+	return String(index + 1);
+}
+
+/** The index, from 0, of the slide to select once the slide at `index` is deleted from a deck of `count` slides. */
+export function indexAfterDelete(index: number, count: number): number {
+	return Math.max(Math.min(index, count - 2), 0);
+}
+
+/** Whether a deck of `count` slides may lose one: a deck always keeps at least one slide. */
+export function canDeleteSlide(count: number): boolean {
+	return count > 1;
+}
+
+/** The slide list's width in pixels, and the editor's share of the width left for the editor and the preview. */
+export type PaneWidths = { list: number; editor: number };
+
+export const paneLimits = {
+	list: { min: 180, max: 420, step: 16 },
+	editor: { min: 0.2, max: 0.8, step: 0.02 }
+} as const;
+
+export const defaultPaneWidths: PaneWidths = { list: 248, editor: 0.47 };
+
+/** The `localStorage` key that holds the pane widths. */
+export const paneWidthsKey = 'sld:pane-widths';
+
+function clamp(value: number, { min, max }: { min: number; max: number }): number {
+	return Math.min(Math.max(value, min), max);
+}
+
+/** Holds both widths within their limits. */
+export function clampPaneWidths({ list, editor }: PaneWidths): PaneWidths {
+	return { list: Math.round(clamp(list, paneLimits.list)), editor: clamp(editor, paneLimits.editor) };
+}
+
+/** Reads stored pane widths, falling back to the default for any width that is missing or isn't a number. */
+export function parsePaneWidths(stored = ''): PaneWidths {
+	let value: unknown;
+	try {
+		value = JSON.parse(stored);
+	} catch {
+		return defaultPaneWidths;
+	}
+	if (typeof value !== 'object' || value === null) return defaultPaneWidths;
+	const { list, editor } = value as Record<string, unknown>;
+	return clampPaneWidths({
+		list: typeof list === 'number' && Number.isFinite(list) ? list : defaultPaneWidths.list,
+		editor: typeof editor === 'number' && Number.isFinite(editor) ? editor : defaultPaneWidths.editor
+	});
+}
+
+/** The panes as tabs at phone width. */
+export const editorTabs = ['slides', 'edit', 'preview'] as const;
+
+export type EditorTab = (typeof editorTabs)[number];
+
+export const tabLabels: Record<EditorTab, string> = { slides: 'Slides', edit: 'Edit', preview: 'Preview' };
+
+/** The `sessionStorage` key that holds the chosen tab, so it survives a reload of the same tab. */
+export const editorTabKey = 'sld:editor-tab';
+
+/** The width, in CSS pixels, at and below which the panes become tabs. */
+export const phoneWidth = 760;
+
+/** Reads a stored tab, falling back to the editor. */
+export function parseEditorTab(stored?: string): EditorTab {
+	return editorTabs.find((tab) => tab === stored) ?? 'edit';
+}
+
+/** What a key pressed in the slide list does. */
+export type ListCommand = 'previous' | 'next' | 'first' | 'last' | 'add' | 'duplicate' | 'delete';
+
+type Key = Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>;
+
+const listKeys: Record<string, ListCommand> = {
+	ArrowUp: 'previous',
+	ArrowDown: 'next',
+	Home: 'first',
+	End: 'last',
+	n: 'add',
+	d: 'duplicate',
+	Delete: 'delete',
+	Backspace: 'delete'
+};
+
+/**
+ * The command a key pressed in the slide list gives, or `undefined`. Keys with a modifier other than Shift belong to
+ * the browser and the system, so they give none.
+ */
+export function listCommand({ key, altKey, ctrlKey, metaKey }: Key): ListCommand | undefined {
+	if (altKey || ctrlKey || metaKey) return;
+	return listKeys[key.length === 1 ? key.toLowerCase() : key];
+}
+
+/** Describes the slide list's keys, for its accessible description. */
+export const listKeysHint =
+	'Up and Down arrows choose a slide. N adds a slide after it, D duplicates it, and Delete removes it.';
