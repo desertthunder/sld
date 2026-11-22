@@ -35,15 +35,12 @@ describe('readSlideMeta', () => {
 		});
 	});
 
-	it.each(['two-column', '', 3, ['title'], '"><script>'])(
-		'falls back to default for layout %j and warns',
-		(value) => {
-			expect(readSlideMeta(yaml({ layout: value }))).toEqual({
-				meta: { layout: 'default', notes: undefined, classes: [] },
-				warnings: [{ kind: 'unknown-layout', value }]
-			});
-		}
-	);
+	it.each(['two-column', 3, ['title'], '"><script>'])('falls back to default for layout %j and warns', (value) => {
+		expect(readSlideMeta(yaml({ layout: value }))).toEqual({
+			meta: { layout: 'default', notes: undefined, classes: [] },
+			warnings: [{ kind: 'unknown-layout', value }]
+		});
+	});
 
 	it('keeps notes as written, across lines', () => {
 		const notes = 'First point\nSecond point\n';
@@ -108,6 +105,25 @@ describe('readSlideMeta', () => {
 		const frontmatter = slideFrontmatter('---\nlayout:\nnotes:\nclass:\n---\n# One');
 		expect(Object.keys(frontmatter?.data ?? {})).toEqual(['layout', 'notes', 'class']);
 		expect(readSlideMeta(frontmatter)).toEqual({
+			meta: { layout: 'default', notes: undefined, classes: [] },
+			warnings: []
+		});
+	});
+
+	it.each(['""', "''", '"   "', String.raw`"\t"`])(
+		'leaves a field set to the blank string %s unset, with no warning',
+		(blank) => {
+			const frontmatter = slideFrontmatter(`---\nlayout: ${blank}\nnotes: ${blank}\nclass: ${blank}\n---\n# One`);
+			expect(Object.keys(frontmatter?.data ?? {})).toEqual(['layout', 'notes', 'class']);
+			expect(readSlideMeta(frontmatter)).toEqual({
+				meta: { layout: 'default', notes: undefined, classes: [] },
+				warnings: []
+			});
+		}
+	);
+
+	it('leaves blank TOML strings unset, with no warning', () => {
+		expect(readSlideMeta(slideFrontmatter('+++\nlayout = ""\nnotes = " "\n+++\n# One'))).toEqual({
 			meta: { layout: 'default', notes: undefined, classes: [] },
 			warnings: []
 		});

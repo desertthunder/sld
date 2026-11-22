@@ -128,3 +128,19 @@ test('a database one migration behind is migrated from the landing page, leaving
 	expect(progress).toEqual([]);
 	expect(await savedDecks(page)).toEqual([]);
 });
+
+test('a slide takes the layout and classes its frontmatter names, and keeps its notes off the slide', async ({
+	page
+}) => {
+	await page.goto('/');
+	const preview = page.getByRole('textbox', { name: 'Live Preview' });
+	const slide = page.locator('.preview-card article.slide');
+	for (const layout of ['default', 'title', 'center', 'section']) {
+		await preview.fill(`---\nlayout: ${layout}\nclass: wide\nnotes: Only for the speaker\n---\n# Hi`);
+		await expect(slide).toHaveClass(new RegExp(String.raw`^slide layout-${layout} wide\b`), { timeout: 30_000 });
+		await expect(slide.getByRole('heading', { level: 1, name: 'Hi' })).toBeVisible();
+		await expect(slide).not.toContainText('Only for the speaker');
+	}
+	await preview.fill('---\nlayout: two-column\n---\n# Hi');
+	await expect(slide).toHaveClass(/^slide layout-default\b/);
+});
