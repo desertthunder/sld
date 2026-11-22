@@ -23,8 +23,10 @@ const migrations = () => migrationsPlugin(fileURLToPath(new URL('drizzle', impor
 export default defineConfig({
 	plugins: [crossOriginIsolation, sveltekit(), migrations(), pagesRedirects()],
 	// Pre-bundling breaks PGlite's relative URLs to its WebAssembly and data files, and Sätteri's URL to its thread
-	// worker.
-	optimizeDeps: { exclude: ['@electric-sql/pglite', 'satteri'] },
+	// worker. No page imports the deck queries yet, and the dev server reloads the page when it first meets a dependency
+	// it has not pre-bundled.
+	// TODO: drop `include` once a page imports `#lib/decks.ts`.
+	optimizeDeps: { exclude: ['@electric-sql/pglite', 'satteri'], include: ['drizzle-orm', 'drizzle-orm/pg-core'] },
 	worker: { format: 'es', plugins: () => [migrations()] },
 	test: { include: ['src/**/*.{test,spec}.ts'] }
 });

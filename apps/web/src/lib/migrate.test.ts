@@ -23,6 +23,35 @@ async function appliedTags(client: PGlite): Promise<string[]> {
 	return result.rows.map(({ tag }) => tag);
 }
 
+/**
+ * Leaves out the statements that drop and re-add a unique constraint the database already has with the same columns
+ * in the same order. drizzle-kit reads a constraint's columns without their order, so it sees `(deck_id, position)` as
+ * `(position, deck_id)` and asks to rebuild it.
+ */
+async function withoutReorderedUniques(client: PGlite, statements: string[]): Promise<string[]> {
+	const result = await client.query<{ name: string; columns: string[] }>(
+		`select conname as name, array(
+			select attname from unnest(conkey) with ordinality as key(attnum, ord)
+			join pg_attribute on attrelid = conrelid and pg_attribute.attnum = key.attnum order by ord
+		) as columns from pg_constraint where contype = 'u'`
+	);
+	const unchanged = new Set(
+		result.rows.flatMap(({ name, columns }) =>
+			statements.some((statement) =>
+				statement.endsWith(`ADD CONSTRAINT "${name}" UNIQUE("${columns.join('","')}");`)
+			)
+				? [name]
+				: []
+		)
+	);
+	return statements.filter((statement) =>
+		[...unchanged].every(
+			(name) =>
+				!statement.includes(`DROP CONSTRAINT "${name}";`) && !statement.includes(`ADD CONSTRAINT "${name}" `)
+		)
+	);
+}
+
 // Each case starts PGlite and introspects it, which takes a few seconds when every suite runs at once.
 describe('the migrations drizzle-kit wrote', { timeout: 30_000 }, () => {
 	it.for([...migrations.keys(), migrations.length])(
@@ -32,11 +61,33 @@ describe('the migrations drizzle-kit wrote', { timeout: 30_000 }, () => {
 			await migrate(client, migrations.slice(0, start));
 			await migrate(client, migrations);
 			const { statementsToExecute } = await pushSchema(schema, drizzle({ client }));
-			expect(statementsToExecute).toEqual([]);
+			expect(await withoutReorderedUniques(client, statementsToExecute)).toEqual([]);
 			expect(await appliedTags(client)).toEqual(migrations.map(({ tag }) => tag));
 			await client.close();
 		}
 	);
+
+	it('keep the rows of a database migrated before the decks tables existed', async () => {
+		const client = new PGlite();
+		await migrate(client, migrations.slice(0, 1));
+		const before = await client.query('select tag, applied_at from migrations');
+		await migrate(client, migrations);
+		const after = await client.query('select tag, applied_at from migrations order by tag');
+		expect(after.rows.slice(0, 1)).toEqual(before.rows);
+		expect(await tableNames(client)).toEqual(['decks', 'migrations', 'slides']);
+		await client.close();
+	});
+
+	it('make the unique slide position per deck deferrable, so one statement can renumber slides', async () => {
+		const client = new PGlite();
+		await migrate(client, migrations);
+		const result = await client.query<{ deferrable: boolean; deferred: boolean }>(
+			`select condeferrable as deferrable, condeferred as deferred from pg_constraint
+			where conname = 'slides_deck_id_position_unique'`
+		);
+		expect(result.rows).toEqual([{ deferrable: true, deferred: false }]);
+		await client.close();
+	});
 
 	it('end with a snapshot that matches the schema, so the next generate writes only new changes', async () => {
 		const last = migrations.at(-1)!.tag.split('_', 1)[0];
@@ -186,7 +237,7 @@ describe('missingMigrations', () => {
 describe('openMigrated', () => {
 	it('returns the migrated client', async () => {
 		const client = await openMigrated(async () => new PGlite(), migrations);
-		expect(await tableNames(client)).toEqual(['migrations']);
+		expect(await tableNames(client)).toEqual(['decks', 'migrations', 'slides']);
 		await client.close();
 	});
 
