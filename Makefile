@@ -2,14 +2,17 @@
 
 .DEFAULT_GOAL := help
 
+# The browsers `install` fetches and `e2e` runs in: chromium, firefox, webkit or several, such as BROWSERS="chromium webkit".
+BROWSERS ?= chromium
+
 .PHONY: help install dev fmt lint check test e2e build app-shell dry-run lockfile ci
 
 help: ## List targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-10s %s\n", $$1, $$2}'
 
-install: ## Install dependencies, and the browsers the web app's browser tests use
+install: ## Install dependencies, and the browsers in BROWSERS (Chromium unless set) for the web app's browser tests
 	pnpm install
-	pnpm --filter @sld/web exec playwright install chromium webkit
+	pnpm --filter @sld/web exec playwright install $(BROWSERS)
 
 dev: ## Run the web app on :5173
 	pnpm --filter @sld/web dev
@@ -26,8 +29,8 @@ check: ## Type-check TypeScript
 test: ## Run every test suite
 	pnpm test
 
-e2e: ## Run the web app's browser tests in headless Chromium and WebKit
-	pnpm --filter @sld/web e2e
+e2e: ## Run the web app's browser tests in the browsers in BROWSERS, headless Chromium unless set
+	pnpm --filter @sld/web e2e $(addprefix --project=,$(BROWSERS))
 
 build: ## Build every package
 	pnpm build

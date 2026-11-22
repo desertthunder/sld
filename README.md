@@ -19,6 +19,10 @@ make install
 make ci
 ```
 
-On Linux, the browser tests also need WebKit's system libraries:
+`make install` and `make e2e` use Chromium. Set `BROWSERS` to run the browser
+tests in Firefox or WebKit as well, for example
+`make install e2e BROWSERS="chromium webkit"`.
+
+On Linux, the browsers also need system libraries:
 `pnpm --filter @sld/web exec playwright install-deps chromium webkit`, which
 installs packages with `sudo`.
