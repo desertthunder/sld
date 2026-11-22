@@ -1,5 +1,7 @@
 <script lang="ts">
+	import '#lib/code-block.css';
 	import { errorText } from '#lib/error-text.ts';
+	import type { SlideOptions } from '#lib/slide-plugins.ts';
 	import { RendererLoadError, renderSlide } from '#lib/slide-render.ts';
 	import Stage from '#lib/Stage.svelte';
 	import { defaultAspect, layoutClass, type Aspect } from '#lib/stage.ts';
@@ -7,10 +9,11 @@
 	let {
 		markdown,
 		aspect = defaultAspect,
+		lineNumbers = false,
 		overflowing = $bindable(false)
-	}: { markdown: string; aspect?: Aspect; overflowing?: boolean } = $props();
+	}: { markdown: string; aspect?: Aspect; overflowing?: boolean } & Partial<SlideOptions> = $props();
 
-	const slide = $derived(renderSlide(markdown));
+	const slide = $derived(renderSlide(markdown, { lineNumbers }));
 </script>
 
 {#await slide}

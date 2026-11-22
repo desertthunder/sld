@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { appRoles, roleCss, slideRoles, slots, type Role } from '#lib/color-roles.ts';
+import { appRoles, roleCss, slideRoles, slots, tokenRoles, type Role } from '#lib/color-roles.ts';
 import type { SchemeFile } from '#lib/scheme-compiler.ts';
 import { loadSchemes } from '#lib/schemes.ts';
 
@@ -30,10 +30,11 @@ describe('the compiled Base16 schemes', () => {
 	});
 
 	it('hold the roles the compiler gives their colors, so a change to the roles needs the file compiled again', () => {
-		for (const { slug, colors, roles, appRoles: app, lowContrast } of file.schemes) {
+		for (const { slug, colors, roles, appRoles: app, tokens, lowContrast } of file.schemes) {
 			const slide = slideRoles(colors);
 			expect(roles, slug).toEqual(cssRoles(slide));
 			expect(app, slug).toEqual(cssRoles(appRoles(colors, slide)));
+			expect(tokens, slug).toEqual(cssRoles(tokenRoles(colors)));
 			expect(lowContrast, slug).toBe(slide.body.short === true);
 		}
 	});

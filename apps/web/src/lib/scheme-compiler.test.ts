@@ -48,6 +48,10 @@ describe('compileScheme', () => {
 		expect(scheme.lowContrast).toBe(false);
 		expect(scheme.roles.body).toBe('var(--base05)');
 		expect(scheme.appRoles.danger).toBe('color-mix(in oklab, var(--base08) 70%, var(--base07))');
+		expect(scheme.tokens).toMatchObject({
+			keyword: 'var(--base0E)',
+			comment: 'color-mix(in oklab, var(--base03) 60%, var(--base07))'
+		});
 	});
 
 	it('trims the name and author', () => {
