@@ -220,3 +220,72 @@ export function moveSlide(database: Database, id: string, position: number): Pro
 		return tx.select().from(slides).where(eq(slides.deckId, deckId)).orderBy(asc(slides.position));
 	});
 }
+
+/** A deck with how many slides it has, as the library lists it. */
+export type DeckSummary = Deck & { slideCount: number };
+
+/** Lists every deck with its slide count, the most recently changed first. */
+export function listDeckSummaries(database: Database): Promise<DeckSummary[]> {
+	return database.transaction(async (tx) => {
+		const rows = await tx.select().from(decks).orderBy(desc(decks.updatedAt), asc(decks.title));
+		const counts = await tx.select({ deckId: slides.deckId, total: count() }).from(slides).groupBy(slides.deckId);
+		const totals = new Map(counts.map(({ deckId, total }) => [deckId, total]));
+		return rows.map((deck) => ({ ...deck, slideCount: totals.get(deck.id) ?? 0 }));
+	});
+}
+
+async function insertSlideRows(tx: Transaction, rows: (typeof slides.$inferInsert)[]) {
+	for (let start = 0; start < rows.length; start += slidesPerInsert) {
+		await tx.insert(slides).values(rows.slice(start, start + slidesPerInsert));
+	}
+}
+
+/**
+ * Copies a deck, its settings and its slides in order, as a new deck titled `title`, and returns the copy, or
+ * `undefined` when there is no such deck.
+ */
+export function duplicateDeck(database: Database, id: string, title: string): Promise<Deck | undefined> {
+	return write(database, async (tx) => {
+		if (!isUuid(id)) return;
+		const [source] = await tx.select().from(decks).where(eq(decks.id, id));
+		if (!source) return;
+		// Columns left undefined take their defaults: a new id, and the time of the copy.
+		const [copy] = await tx
+			.insert(decks)
+			.values({ ...source, id: undefined, createdAt: undefined, updatedAt: undefined, title: storable(title) })
+			.returning();
+		const rows = await tx.select().from(slides).where(eq(slides.deckId, id)).orderBy(asc(slides.position));
+		await insertSlideRows(
+			tx,
+			rows.map(({ position, markdown }) => ({ deckId: copy!.id, position, markdown }))
+		);
+		return copy!;
+	});
+}
+
+/**
+ * Deletes a deck and its slides, and returns them as they were, for `restoreDeck` to put back, or `undefined` when
+ * there is no such deck.
+ */
+export function removeDeck(database: Database, id: string): Promise<DeckWithSlides | undefined> {
+	return write(database, async (tx) => {
+		if (!isUuid(id)) return;
+		const [deck] = await tx.select().from(decks).where(eq(decks.id, id));
+		if (!deck) return;
+		const rows = await tx.select().from(slides).where(eq(slides.deckId, id)).orderBy(asc(slides.position));
+		await tx.delete(decks).where(eq(decks.id, id));
+		return { ...deck, slides: rows };
+	});
+}
+
+/**
+ * Puts back a deck that `removeDeck` returned, exactly as it was: the same ids, title, settings, times and slides in
+ * order. It returns the deck, and rejects, restoring nothing, when a deck with its id exists.
+ */
+export function restoreDeck(database: Database, { slides: rows, ...deck }: DeckWithSlides): Promise<Deck> {
+	return write(database, async (tx) => {
+		const [restored] = await tx.insert(decks).values(deck).returning();
+		await insertSlideRows(tx, rows);
+		return restored!;
+	});
+}

@@ -23,6 +23,16 @@ it('applies the scheme only where the /app layout wraps the page, so it never re
 	expect(new Set(selectors)).toEqual(new Set(['.scheme', ':root:has(.scheme)']));
 });
 
+it('gives destructive actions the danger color the compiler gives the default schemes', () => {
+	const file = JSON.parse(read('schemes/base16.json')) as SchemeFile;
+	const danger = (slug: string) => file.schemes.find((scheme) => scheme.slug === slug)!.appRoles.danger;
+	const [dark, light] = css
+		.split('@media (prefers-color-scheme: light)', 2)
+		.map((block) => block.match(/--danger:\s*([^;]+);/)?.[1]);
+	expect(dark).toBe(danger('oxocarbon-dark'));
+	expect(light).toBe(danger('oxocarbon-light'));
+});
+
 describe('code token colors', () => {
 	it('match what the compiler gives the default schemes, Oxocarbon Dark and Oxocarbon Light', () => {
 		const file = JSON.parse(read('schemes/base16.json')) as SchemeFile;
