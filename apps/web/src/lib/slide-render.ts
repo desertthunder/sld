@@ -1,9 +1,18 @@
-import { slideParts, type Frontmatter } from '#lib/deck-markdown.ts';
+import { slideFrontmatterError, slideParts, type Frontmatter } from '#lib/deck-markdown.ts';
 import { errorText } from '#lib/error-text.ts';
 import type { SlideOptions } from '#lib/slide-plugins.ts';
+import { readSlideMeta, type SlideMeta, type SlideWarning } from '#lib/slide-meta.ts';
 
-/** A slide's HTML and the frontmatter block its markdown opens with, if any. */
-export type RenderedSlide = { html: string; frontmatter: Frontmatter | undefined };
+/**
+ * A slide's HTML, the frontmatter block its markdown opens with, if any, the meta read from it, and what reading the
+ * frontmatter set aside, for the editor to show.
+ */
+export type RenderedSlide = {
+	html: string;
+	frontmatter: Frontmatter | undefined;
+	meta: SlideMeta;
+	warnings: SlideWarning[];
+};
 
 type Renderer = (markdown: string, options: SlideOptions) => Promise<RenderedSlide>;
 
@@ -33,8 +42,9 @@ function loadRenderer(): Promise<Renderer> {
 }
 
 /**
- * A slide's HTML and frontmatter. The frontmatter is read as the deck splitter reads it, and only the markdown after
- * it reaches Sätteri, whose own frontmatter support would also swallow a block that doesn't parse. GFM is on, and raw
+ * A slide's HTML, frontmatter and meta. The frontmatter is read as the deck splitter reads it, and only the markdown
+ * after it reaches Sätteri, whose own frontmatter support would also swallow a block that doesn't parse. A block that
+ * doesn't parse stays slide text, as the splitter keeps it, and comes back as an `invalid-frontmatter` warning. GFM is on, and raw
  * HTML passes through, since the markdown is the person's own. Results are cached by markdown and options.
  */
 export async function renderSlide(markdown: string, options: SlideOptions = defaultOptions): Promise<RenderedSlide> {
@@ -67,6 +77,9 @@ async function createRenderer(): Promise<Renderer> {
 			hastPlugins: hastPlugins(options),
 			features: { gfm: true, frontmatter: false, directive: false }
 		});
-		return { html, frontmatter };
+		const frontmatterError = frontmatter ? undefined : slideFrontmatterError(markdown);
+		const { meta, warnings } = readSlideMeta(frontmatter);
+		if (frontmatterError) warnings.unshift({ kind: 'invalid-frontmatter', ...frontmatterError });
+		return { html, frontmatter, meta, warnings };
 	};
 }

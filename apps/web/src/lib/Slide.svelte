@@ -2,9 +2,10 @@
 	import '#lib/code-block.css';
 	import { errorText } from '#lib/error-text.ts';
 	import type { SlideOptions } from '#lib/slide-plugins.ts';
+	import { slideClasses } from '#lib/slide-meta.ts';
 	import { RendererLoadError, renderSlide } from '#lib/slide-render.ts';
 	import Stage from '#lib/Stage.svelte';
-	import { defaultAspect, layoutClass, type Aspect } from '#lib/stage.ts';
+	import { defaultAspect, type Aspect } from '#lib/stage.ts';
 
 	let {
 		markdown,
@@ -18,11 +19,11 @@
 
 {#await slide}
 	<p role="status">Getting slides ready…</p>
-{:then { html, frontmatter }}
+{:then { html, meta }}
 	<Stage {aspect} bind:overflowing>
 		<!-- Raw HTML in a slide passes through: the markdown is the person's own. -->
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-		<article class="slide {layoutClass(frontmatter?.data.layout)}">{@html html}</article>
+		<article class={slideClasses(meta)}>{@html html}</article>
 	</Stage>
 {:catch error}
 	{#if error instanceof RendererLoadError}
