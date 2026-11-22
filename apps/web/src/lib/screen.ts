@@ -19,8 +19,13 @@ export function keepScreenOn(navigator: WakeLockNavigator, document: ScreenDocum
 	const request = async () => {
 		try {
 			const lock = await wakeLock.request('screen');
-			if (isStopped) await lock.release();
-			else sentinel = lock;
+			if (isStopped) {
+				await lock.release();
+				return;
+			}
+			const replaced = sentinel;
+			sentinel = lock;
+			await replaced?.release();
 		} catch {
 			// The screen may sleep, which is all a refusal costs.
 		}

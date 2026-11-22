@@ -53,6 +53,19 @@ describe('keepScreenOn', () => {
 		expect(request).toHaveBeenCalledTimes(2);
 	});
 
+	it('releases a lock it replaces, so stopping leaves none held', async () => {
+		const { document, show } = fakeDocument();
+		const locks = [vi.fn(async () => {}), vi.fn(async () => {})];
+		const request = vi.fn(async () => ({ release: locks[request.mock.calls.length - 1]! }));
+		const stop = keepScreenOn({ wakeLock: { request } }, document);
+		await settle();
+		show('visible');
+		await settle();
+		expect(locks[0]).toHaveBeenCalledOnce();
+		stop();
+		expect(locks[1]).toHaveBeenCalledOnce();
+	});
+
 	it('waits for a hidden tab to become visible before asking', async () => {
 		const { navigator, request } = fakeWakeLock();
 		const { document, show } = fakeDocument('hidden');

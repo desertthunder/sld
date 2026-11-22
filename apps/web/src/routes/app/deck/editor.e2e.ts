@@ -216,6 +216,23 @@ test('Present and the P key open the presenter on the selected slide, with the l
 	await expect(page).toHaveURL(new RegExp(`/app/deck/${id}/present#3$`));
 });
 
+test('Present waits for the latest edit to be stored before it leaves the editor', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await page.evaluate(async (url) => {
+		const { openDatabase } = (await import(url)) as typeof DatabaseModule;
+		const { $client } = await openDatabase();
+		// Holds the database, so the edit's write waits until the transaction ends.
+		void $client.transaction(() => new Promise((resolve) => setTimeout(resolve, 3000)));
+	}, modules.database);
+	await editor(page).fill('# One, edited');
+	await page.getByRole('button', { name: /Present/ }).click();
+	await page.waitForTimeout(1500);
+	await expect(page).toHaveURL(/\?slide=1$/);
+	await expect(page).toHaveURL(new RegExp(`/app/deck/${id}/present#1$`), { timeout: 30_000 });
+	await expect(page.locator('article.slide h1')).toHaveText('One, edited', { timeout: 30_000 });
+});
+
 test('P typed in the markdown stays text', async ({ page }) => {
 	const id = await createDeck(page, 'Talk', ['# One']);
 	await openDeck(page, id);

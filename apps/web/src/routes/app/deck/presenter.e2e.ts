@@ -191,6 +191,25 @@ test('the controls move through the deck and open the shortcuts', async ({ page 
 	await expect(page.getByRole('dialog', { name: 'Shortcuts' })).toBeVisible();
 });
 
+test('Space and Enter move on after a control was clicked, rather than pressing it again', async ({ page }) => {
+	const id = await createDeck(page);
+	await present(page, id, '#3');
+	await page.mouse.move(300, 300);
+	await controls(page).getByRole('button', { name: 'Previous slide' }).click();
+	await expectSlide(page, 2);
+	await page.keyboard.press('Space');
+	await expectSlide(page, 3);
+	await page.mouse.move(320, 320);
+	await controls(page).getByRole('button', { name: 'Shortcuts' }).click();
+	const help = page.getByRole('dialog', { name: 'Shortcuts' });
+	await expect(help).toBeVisible();
+	await page.keyboard.press('?');
+	await expect(help).toBeHidden();
+	await page.keyboard.press('Enter');
+	await expectSlide(page, 4);
+	await expect(help).toBeHidden();
+});
+
 test('? shows every key the presenter handles, and ? or Esc hides it', async ({ page }) => {
 	const id = await createDeck(page);
 	await present(page, id, '#2');
@@ -265,6 +284,8 @@ test('Stop presenting returns to the editor on the current slide', async ({ page
 	await page.mouse.move(300, 300);
 	await controls(page).getByRole('button', { name: 'Stop presenting' }).click();
 	await expect(page).toHaveURL(new RegExp(String.raw`/app/deck/${id}\?slide=5$`));
+	await page.goBack();
+	await expect(page).not.toHaveURL(/\/present/);
 });
 
 test('the slide number shows only when the deck turns it on', async ({ page }) => {

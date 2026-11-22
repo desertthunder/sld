@@ -57,7 +57,15 @@
 		void exitFullscreen(document);
 		// `resolve` builds the path, and the rule doesn't follow it into a string with a query.
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		void goto(`${resolve('/app/deck/[id]', { id: deck.id })}?slide=${number}`);
+		void goto(`${resolve('/app/deck/[id]', { id: deck.id })}?slide=${number}`, { replaceState: true });
+	}
+
+	/** A control's click handler. A pointer click leaves focus on the control, where Space and Enter would press it. */
+	function press(run: () => void) {
+		return (event: MouseEvent & { currentTarget: HTMLButtonElement }) => {
+			if (event.detail > 0) event.currentTarget.blur();
+			run();
+		};
 	}
 
 	function act(action: PresenterAction) {
@@ -153,7 +161,7 @@
 			type="button"
 			aria-label="Previous slide"
 			aria-disabled={view.index === 0}
-			onclick={() => act('previous')}>
+			onclick={press(() => act('previous'))}>
 			<span class="i-bi-chevron-left" aria-hidden="true"></span>
 		</button>
 		<span class="count">{number} / {total}</span>
@@ -161,7 +169,7 @@
 			type="button"
 			aria-label="Next slide"
 			aria-disabled={view.index === total - 1}
-			onclick={() => act('next')}>
+			onclick={press(() => act('next'))}>
 			<span class="i-bi-chevron-right" aria-hidden="true"></span>
 		</button>
 		<span class="separator" aria-hidden="true"></span>
@@ -169,10 +177,10 @@
 		<button type="button" aria-label="Overview" disabled>
 			<span class="i-bi-grid" aria-hidden="true"></span>
 		</button>
-		<button type="button" aria-label="Shortcuts" onclick={() => act('help')}>
+		<button type="button" aria-label="Shortcuts" onclick={press(() => act('help'))}>
 			<span class="i-bi-question-circle" aria-hidden="true"></span>
 		</button>
-		<button type="button" aria-label="Stop presenting" onclick={stopPresenting}>
+		<button type="button" aria-label="Stop presenting" onclick={press(stopPresenting)}>
 			<span class="i-bi-x-lg" aria-hidden="true"></span>
 		</button>
 	</div>
