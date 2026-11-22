@@ -251,6 +251,15 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await deleteSlide(database, missing)).toBeUndefined();
 		});
 
+		it("keeps a deck's only slide", async () => {
+			const deck = await createDeck(database, { title: 'Talk', slides: ['# One', '# Two'] });
+			expect(await deleteSlide(database, await slideId(deck.id, 1))).toMatchObject({ markdown: '# Two' });
+			const before = await ageDeck(deck);
+			expect(await deleteSlide(database, await slideId(deck.id, 0))).toBeUndefined();
+			expect(await markdowns(deck.id)).toEqual(['# One']);
+			expect(await updatedAt(deck)).toEqual(before);
+		});
+
 		it('duplicates a slide to the place right after it', async () => {
 			const deck = await threeSlides();
 			const id = await slideId(deck.id, 1);

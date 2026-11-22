@@ -1,4 +1,5 @@
 import { sveltekit } from '@sveltejs/kit/vite';
+import UnoCSS from 'unocss/vite';
 import { fileURLToPath } from 'node:url';
 import type { Connect, Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
@@ -21,12 +22,10 @@ const crossOriginIsolation: Plugin = {
 const migrations = () => migrationsPlugin(fileURLToPath(new URL('drizzle', import.meta.url)));
 
 export default defineConfig({
-	plugins: [crossOriginIsolation, sveltekit(), migrations(), pagesRedirects()],
+	plugins: [crossOriginIsolation, UnoCSS(), sveltekit(), migrations(), pagesRedirects()],
 	// Pre-bundling breaks PGlite's relative URLs to its WebAssembly and data files, and Sätteri's URL to its thread
-	// worker. No page imports the deck queries yet, and the dev server reloads the page when it first meets a dependency
-	// it has not pre-bundled.
-	// TODO: drop `include` once a page imports `#lib/decks.ts`.
-	optimizeDeps: { exclude: ['@electric-sql/pglite', 'satteri'], include: ['drizzle-orm', 'drizzle-orm/pg-core'] },
+	// worker.
+	optimizeDeps: { exclude: ['@electric-sql/pglite', 'satteri'] },
 	worker: { format: 'es', plugins: () => [migrations()] },
 	test: { include: ['src/**/*.{test,spec}.ts'] }
 });
