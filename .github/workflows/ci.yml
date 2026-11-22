@@ -83,7 +83,7 @@ jobs:
         id: browsers
         run: |
           version=$(pnpm --filter @sld/web exec playwright --version | awk '{ print $2 }')
-          echo "cache-key=playwright-$RUNNER_OS-$version-chromium" >> "$GITHUB_OUTPUT"
+          echo "cache-key=playwright-$ImageOS-$version-chromium" >> "$GITHUB_OUTPUT"
       - name: Restore Chromium from the cache
         if: steps.filter.outputs.web == 'true'
         id: browser-cache
