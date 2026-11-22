@@ -160,9 +160,14 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
 		});
 
-		it('stores U+0000 in a title or markdown as U+FFFD, which Postgres text can hold', async () => {
-			const deck = await createDeck(database, { title: 'A\0B', slides: ['# One\0'] });
-			expect(deck.title).toBe('A\u{FFFD}B');
+		it('stores U+0000 in a title, scheme, aspect or markdown as U+FFFD, which Postgres text can hold', async () => {
+			const deck = await createDeck(database, {
+				title: 'A\0B',
+				scheme: 'a\0b',
+				aspect: '16:9\0',
+				slides: ['# One\0']
+			});
+			expect(deck).toMatchObject({ title: 'A\u{FFFD}B', scheme: 'a\u{FFFD}b', aspect: '16:9\u{FFFD}' });
 			expect(await markdowns(deck.id)).toEqual(['# One\u{FFFD}']);
 			expect(await renameDeck(database, deck.id, '\0')).toMatchObject({ title: '\u{FFFD}' });
 			expect(await insertSlide(database, deck.id, 1, '\0')).toMatchObject({ markdown: '\u{FFFD}' });
