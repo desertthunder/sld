@@ -99,6 +99,7 @@
 		font-family: var(--code-font);
 		font-size: 0.9em;
 		color: var(--heading);
+		white-space: nowrap;
 	}
 
 	textarea {

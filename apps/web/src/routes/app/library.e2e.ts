@@ -235,6 +235,40 @@ test('the library lists decks newest first, and renames, duplicates, deletes and
 	await expect(titles(page)).toHaveText(['Reading group (copy)', 'Sleep diary']);
 });
 
+for (const viewport of [
+	{ width: 1440, height: 900 },
+	{ width: 390, height: 844 }
+]) {
+	test(`an open row menu sits above the rows below it at ${viewport.width}px`, async ({ page }) => {
+		await page.setViewportSize(viewport);
+		await createDecks(page, [
+			{ title: 'Field notes', slides: ['# One'] },
+			{ title: 'Reading group', slides: ['# Two'] },
+			{ title: 'Sleep diary', slides: ['# Three'] }
+		]);
+		await menuButton(page, 'Sleep diary').click();
+		const items = page.getByRole('menu', { name: 'More actions for Sleep diary' }).getByRole('menuitem');
+		await expect(items).toHaveText(['Rename', 'Duplicate', 'Export', 'Delete']);
+		const all = await items.all();
+		for (const item of all) {
+			await item.scrollIntoViewIfNeeded();
+			// A click lands anywhere on an item, not only at its center where Playwright clicks.
+			const hits = await item.evaluate((element) => {
+				const box = element.getBoundingClientRect();
+				const y = box.top + box.height / 2;
+				return [box.left + 4, box.right - 4, box.right - 20].map(
+					(x) => document.elementFromPoint(x, y)?.closest('[role="menuitem"]') === element
+				);
+			});
+			expect(hits, (await item.textContent()) ?? '').toEqual([true, true, true]);
+		}
+
+		// The hint's code span stays on one line.
+		await expect(page.locator('#new-deck-hint code')).toHaveText('---');
+		expect(await page.locator('#new-deck-hint code').evaluate((code) => code.getClientRects().length)).toBe(1);
+	});
+}
+
 test('the list works with the keyboard alone', async ({ page }) => {
 	await createDecks(page, [
 		{ title: 'Field notes', slides: ['# One'] },

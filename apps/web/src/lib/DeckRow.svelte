@@ -146,7 +146,7 @@
 			edited
 			<time datetime={deck.updatedAt.toISOString()}>{editedWhen(deck.updatedAt, now)}</time>
 		</span>
-		<div class="actions" bind:this={actions} {onfocusout}>
+		<div class="actions" class:open={row.isMenuOpen} bind:this={actions} {onfocusout}>
 			<a
 				class="icon-button"
 				href={resolve('/app/deck/[id]/present', { id: deck.id })}
@@ -326,6 +326,11 @@
 		flex: none;
 		display: flex;
 		gap: 4px;
+	}
+
+	/* Each row's actions share one z-index, so a later row paints over an earlier row's menu unless this one rises. */
+	.actions.open {
+		z-index: 3;
 	}
 
 	.icon-button {
