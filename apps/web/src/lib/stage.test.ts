@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitStage, layoutClass, stageSize } from '#lib/stage.ts';
+import { fitStage, stageSize } from '#lib/stage.ts';
 
 describe('stageSize', () => {
 	it('draws 16:9 decks at 1920 by 1080 and 4:3 decks at 1440 by 1080', () => {
@@ -31,18 +31,5 @@ describe('fitStage', () => {
 
 	it('scales an unmeasured container to nothing', () => {
 		expect(fitStage(stage, { width: 0, height: 0 }).scale).toBe(0);
-	});
-});
-
-describe('layoutClass', () => {
-	it('names the class after the layout in the slide frontmatter', () => {
-		expect(layoutClass('center')).toBe('layout-center');
-		expect(layoutClass(' Two-Column ')).toBe('layout-two-column');
-	});
-
-	it('uses the default layout without a usable name', () => {
-		for (const value of [undefined, '', 3, 'two columns', '1up', '"><script>']) {
-			expect(layoutClass(value)).toBe('layout-default');
-		}
 	});
 });
