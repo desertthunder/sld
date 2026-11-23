@@ -102,22 +102,21 @@ describe('changesTo', () => {
 });
 
 /** A stand-in for an editor view that holds a state and applies what is dispatched, enough for the commands. */
-function fakeView(doc: string, cursor: number, number = 1) {
+function fakeView(markdown: string, cursor: number) {
 	const splits: SplitParts[] = [];
-	const changes: string[] = [];
 	const extensions = editorExtensions({
-		change: (markdown) => changes.push(markdown),
+		change: () => {},
 		blur: () => {},
-		split: (parts) => splits.push(parts),
+		split: (parts) => void splits.push(parts),
 		position: () => {}
 	});
 	const view = {
-		state: createSlideState(doc, number, extensions).update({ selection: EditorSelection.cursor(cursor) }).state,
+		state: createSlideState(markdown, 1, extensions).update({ selection: EditorSelection.cursor(cursor) }).state,
 		dispatch(...specs: TransactionSpec[]) {
 			view.state = view.state.update(...specs).state;
 		}
 	};
-	return { view: view as unknown as EditorView & typeof view, splits, changes };
+	return { view: view as unknown as EditorView & typeof view, splits };
 }
 
 describe('the split offer', () => {

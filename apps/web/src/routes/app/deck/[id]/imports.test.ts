@@ -46,5 +46,6 @@ it('loads CodeMirror in its own chunk, only once the deck editor asks for it', a
 	expect(files).not.toContain(markdownEditor);
 	expect([...packages].filter((name) => /codemirror|@lezer\//i.test(name))).toEqual([]);
 	expect(lazy).toContain(markdownEditor);
-	expect([...(await reach(markdownEditor)).packages]).toContain('@codemirror/view');
+	const editorChunk = await reach(markdownEditor);
+	expect([...editorChunk.packages]).toContain('@codemirror/view');
 });
