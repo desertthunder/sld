@@ -2,10 +2,14 @@
 	import { tick } from 'svelte';
 	import { canDeleteSlide, listCommand, listKeysHint } from '#lib/deck-editor.ts';
 	import { slideLabel } from '#lib/slide-label.ts';
+	import { readListView, writeListView, type ListView } from '#lib/slide-list-view.ts';
+	import SlideThumb from '#lib/SlideThumb.svelte';
+	import type { Aspect } from '#lib/stage.ts';
 
 	let {
 		id,
 		slides,
+		aspect,
 		selected,
 		announcement,
 		onselect,
@@ -15,6 +19,7 @@
 	}: {
 		id: string;
 		slides: readonly { id: string; markdown: string }[];
+		aspect: Aspect;
 		selected: number;
 		announcement: string;
 		/** `shouldOpen` is true when the slide was picked to edit it, not only moved to with the arrow keys. */
@@ -25,6 +30,12 @@
 	} = $props();
 
 	let items: HTMLOListElement | undefined = $state();
+	const display: { view: ListView } = $state({ view: readListView(() => localStorage) });
+
+	function show(view: ListView) {
+		display.view = view;
+		writeListView(() => localStorage, view);
+	}
 	const canDelete = $derived(canDeleteSlide(slides.length));
 
 	async function focusSelected() {
@@ -83,10 +94,29 @@
 	}
 </script>
 
-<!-- TODO: show each slide as a thumbnail, with a toggle back to headings only. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<nav class="list" {id} aria-label="Slides" {onkeydown}>
-	<div class="header"><span><b>Slides</b> · {slides.length}</span></div>
+<nav class="list" class:thumbnails={display.view === 'thumbnails'} {id} aria-label="Slides" {onkeydown}>
+	<div class="header">
+		<span><b>Slides</b> · {slides.length}</span>
+		<span class="views">
+			<button
+				class="icon-button"
+				type="button"
+				aria-label="Show thumbnails"
+				aria-pressed={display.view === 'thumbnails'}
+				onclick={() => show('thumbnails')}>
+				<span class="i-ri-layout-row-line icon" aria-hidden="true"></span>
+			</button>
+			<button
+				class="icon-button"
+				type="button"
+				aria-label="Show headings only"
+				aria-pressed={display.view === 'headings'}
+				onclick={() => show('headings')}>
+				<span class="i-ri-menu-line icon" aria-hidden="true"></span>
+			</button>
+		</span>
+	</div>
 	<ol class="items" aria-describedby="{id}-keys" bind:this={items}>
 		{#each slides as slide, index (slide.id)}
 			{@const isCurrent = index === selected}
@@ -100,6 +130,9 @@
 					onclick={() => onselect(index, true)}>
 					<span class="number"><span class="sr">Slide</span> {index + 1}</span>
 					<span class="label">{slideLabel(slide.markdown)}</span>
+					{#if display.view === 'thumbnails'}
+						<SlideThumb slideId={slide.id} markdown={slide.markdown} {aspect} />
+					{/if}
 				</button>
 				{#if isCurrent}
 					<span class="actions">
@@ -151,6 +184,16 @@
 		color: var(--muted);
 	}
 
+	.views {
+		display: flex;
+		gap: 2px;
+	}
+
+	.views .icon-button[aria-pressed='true'] {
+		background: var(--surface);
+		color: var(--heading);
+	}
+
 	.header b {
 		font-weight: 600;
 		color: var(--heading);
@@ -197,6 +240,29 @@
 		padding-right: 78px;
 		background: var(--surface);
 		border-color: var(--accent);
+	}
+
+	.thumbnails .item {
+		align-items: start;
+	}
+
+	.thumbnails .current .item {
+		padding-right: 10px;
+	}
+
+	.thumbnails .label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+
+	.thumbnails .actions {
+		top: 14px;
+		right: 14px;
+		transform: none;
 	}
 
 	.number {
@@ -307,6 +373,10 @@
 
 		.current .item {
 			padding-right: 90px;
+		}
+
+		.thumbnails .current .item {
+			padding-right: 10px;
 		}
 	}
 </style>

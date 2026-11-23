@@ -32,7 +32,11 @@
 	import PaneHandle from '#lib/PaneHandle.svelte';
 	import { hashForSlide } from '#lib/presenter-navigation.ts';
 	import SlideList from '#lib/SlideList.svelte';
+	import SlidePreview from '#lib/SlidePreview.svelte';
+	import type { Notice } from '#lib/slide-notices.ts';
 	import { createSlideSaver, saveStatusLabels, type SaveStatus, type SaverEntry } from '#lib/slide-saver.ts';
+	import SlideWarnings from '#lib/SlideWarnings.svelte';
+	import { deckAspect } from '#lib/stage.ts';
 
 	let { database, deck, onmissing }: { database: Database; deck: DeckWithSlides; onmissing: () => void } = $props();
 
@@ -62,6 +66,9 @@
 	// The deck is loaded once; from here on this state is the source, and every change is written through.
 	// svelte-ignore state_referenced_locally
 	const { id: deckId, title, slides } = deck;
+	// svelte-ignore state_referenced_locally
+	const aspect = deckAspect(deck.aspect);
+	let notices: readonly Notice[] = $state([]);
 	type SlideItem = { id: string; markdown: string };
 	const editor: {
 		title: string;
@@ -496,6 +503,7 @@
 			<SlideList
 				id={paneIds.slides}
 				slides={editor.slides}
+				{aspect}
 				selected={editor.selected}
 				announcement={editor.announcement}
 				onselect={select}
@@ -528,6 +536,7 @@
 				value={current.markdown}
 				oninput={edit}
 				onblur={() => void flush()}></textarea>
+			<SlideWarnings {notices} />
 		</section>
 		<PaneHandle
 			label="Resize editor and preview"
@@ -547,8 +556,7 @@
 			aria-label="Preview"
 			{...panel('preview')}>
 			<div class="pane-header"><span>Preview</span></div>
-			<!-- TODO: draw the selected slide here. -->
-			<div class="preview"></div>
+			<SlidePreview slideId={current.id} markdown={current.markdown} {aspect} bind:notices />
 		</section>
 	</div>
 	<LeaveDialog open={asking.isOpen} onchoose={answerLeave} />
@@ -682,11 +690,6 @@
 
 	textarea:focus {
 		outline: none;
-	}
-
-	.preview {
-		flex: 1;
-		background: var(--surface);
 	}
 
 	@media (max-width: 760px) {

@@ -43,6 +43,11 @@ const editor = (page: Page) => page.getByRole('textbox', { name: /^Markdown for 
 const saveState = (page: Page) => page.getByRole('banner').locator('.saved');
 const leaveDialog = (page: Page) => page.getByRole('dialog', { name: "Some changes weren't saved. Leave anyway?" });
 
+// These tests read each item's number and heading as its text, which a thumbnail would add to.
+test.beforeEach(async ({ page }) => {
+	await page.addInitScript(() => localStorage.setItem('sld:slide-list-view', 'headings'));
+});
+
 async function openDeck(page: Page, id: string, search = '') {
 	await page.goto(`/app/deck/${id}${search}`);
 	await expect(slideList(page)).toBeVisible({ timeout: 30_000 });

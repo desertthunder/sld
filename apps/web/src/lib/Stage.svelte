@@ -102,6 +102,7 @@
 		left: 0;
 		overflow: hidden;
 		transform-origin: 0 0;
+		background: var(--base00);
 	}
 
 	.content {
