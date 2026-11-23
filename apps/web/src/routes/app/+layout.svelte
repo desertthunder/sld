@@ -6,7 +6,7 @@
 	import '@fontsource/monaspace-neon/latin-400-italic.css';
 	import '#lib/scheme.css';
 	import Splash from '#lib/Splash.svelte';
-	import { applyAppScheme, readAppScheme, refreshedAppScheme, writeAppScheme } from '#lib/app-scheme.ts';
+	import { applyAppScheme, readAppScheme, refreshStoredAppScheme } from '#lib/app-scheme.ts';
 	import { appSchemeKey } from '#lib/scheme-choice.ts';
 	import { loadSchemes } from '#lib/schemes.ts';
 	import { boot, startBoot } from '#lib/boot.svelte.ts';
@@ -27,11 +27,8 @@
 	);
 
 	async function refreshAppScheme() {
-		const stored = readAppScheme(() => localStorage);
-		if (!stored) return;
-		const refreshed = refreshedAppScheme(await loadSchemes(), stored);
-		writeAppScheme(() => localStorage, refreshed);
-		applyAppScheme(document.documentElement, refreshed);
+		const refreshed = await refreshStoredAppScheme(() => localStorage, loadSchemes);
+		if (refreshed !== false) applyAppScheme(document.documentElement, refreshed);
 	}
 
 	function onstorage(event: StorageEvent) {

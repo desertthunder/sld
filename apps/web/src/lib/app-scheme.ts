@@ -52,3 +52,26 @@ export function refreshedAppScheme(
 	const scheme = schemes.find(({ slug }) => slug === stored.slug);
 	return scheme && storedAppScheme(scheme);
 }
+
+/**
+ * Brings the stored app scheme up to date with the schemes `load` gives, and returns the scheme to apply when that
+ * changed what is stored, or `false` when nothing changed or the schemes couldn't load.
+ */
+export async function refreshStoredAppScheme(
+	storage: () => Storage,
+	load: () => Promise<readonly Scheme[]>
+): Promise<StoredAppScheme | undefined | false> {
+	if (!readAppScheme(storage)) return false;
+	let schemes: readonly Scheme[];
+	try {
+		schemes = await load();
+	} catch {
+		return false;
+	}
+	// Read again: another tab, or settings in this one, may have chosen a scheme while the schemes loaded.
+	const stored = readAppScheme(storage);
+	const refreshed = refreshedAppScheme(schemes, stored);
+	if (JSON.stringify(refreshed) === JSON.stringify(stored)) return false;
+	writeAppScheme(storage, refreshed);
+	return refreshed;
+}

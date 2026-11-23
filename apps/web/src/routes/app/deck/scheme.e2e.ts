@@ -179,6 +179,21 @@ test('Escape keeps the scheme in use and shows it again', async ({ page }) => {
 	await expect.poll(() => background(previewStage(page))).toBe(base00.nord);
 });
 
+test('Escape works from the filters and the Close button too', async ({ page }) => {
+	const id = await createDeck(page, ['# One'], 'nord');
+	await openDeck(page, id);
+	for (const control of ['Dark', 'Close']) {
+		await schemeButton(page).click();
+		await page.keyboard.press('ArrowDown');
+		await page.getByRole('button', { name: control, exact: true }).focus();
+		await page.keyboard.press('Escape');
+		await expect(search(page)).toBeHidden();
+		await expect(schemeButton(page)).toBeFocused();
+		await expect(schemeButton(page)).toHaveAccessibleName('Scheme: Nord');
+	}
+	expect(await storedScheme(page, id)).toBe('nord');
+});
+
 test('moving through the schemes repaints the slide without rendering it again', async ({ page }) => {
 	const id = await createDeck(page, ['# One\n\nSome text and `code`.']);
 	await openDeck(page, id);

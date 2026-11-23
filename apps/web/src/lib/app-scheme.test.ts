@@ -1,12 +1,19 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
-import { readAppScheme, refreshedAppScheme, storedAppScheme, writeAppScheme } from '#lib/app-scheme.ts';
+import { describe, expect, it, vi } from 'vitest';
+import {
+	readAppScheme,
+	refreshedAppScheme,
+	refreshStoredAppScheme,
+	storedAppScheme,
+	writeAppScheme
+} from '#lib/app-scheme.ts';
 import { appSchemeKey } from '#lib/scheme-choice.ts';
 import type { SchemeFile } from '#lib/scheme-compiler.ts';
 import { schemeProperties } from '#lib/scheme-style.ts';
 
 const { schemes } = JSON.parse(readFileSync(new URL('schemes/base16.json', import.meta.url), 'utf8')) as SchemeFile;
 const nord = schemes.find(({ slug }) => slug === 'nord')!;
+const gruvbox = schemes.find(({ slug }) => slug === 'gruvbox-dark-hard')!;
 
 function memoryStorage() {
 	const items = new Map<string, string>();
@@ -44,5 +51,54 @@ describe('the stored app scheme', () => {
 		expect(refreshedAppScheme(schemes, stale)).toEqual(storedAppScheme(nord));
 		expect(refreshedAppScheme(schemes, { ...stale, slug: 'gone' })).toBeUndefined();
 		expect(refreshedAppScheme(schemes, undefined)).toBeUndefined();
+	});
+});
+
+const offline = () => Promise.reject(new Error('offline'));
+
+describe('refreshing the stored app scheme', () => {
+	const stale = { ...storedAppScheme(nord), properties: { '--base00': '#000000' } };
+
+	it('stores and returns the compiled colors when they changed', async () => {
+		const storage = memoryStorage();
+		writeAppScheme(() => storage, stale);
+		expect(
+			await refreshStoredAppScheme(
+				() => storage,
+				async () => schemes
+			)
+		).toEqual(storedAppScheme(nord));
+		expect(readAppScheme(() => storage)).toEqual(storedAppScheme(nord));
+	});
+
+	it('writes nothing when the stored scheme is up to date', async () => {
+		const storage = memoryStorage();
+		writeAppScheme(() => storage, storedAppScheme(nord));
+		const setItem = vi.spyOn(storage, 'setItem');
+		expect(
+			await refreshStoredAppScheme(
+				() => storage,
+				async () => schemes
+			)
+		).toBe(false);
+		expect(setItem).not.toHaveBeenCalled();
+	});
+
+	it('keeps a scheme chosen while the schemes load', async () => {
+		const storage = memoryStorage();
+		writeAppScheme(() => storage, stale);
+		const load = async () => {
+			writeAppScheme(() => storage, storedAppScheme(gruvbox));
+			return schemes;
+		};
+		expect(await refreshStoredAppScheme(() => storage, load)).toBe(false);
+		expect(readAppScheme(() => storage)?.slug).toBe('gruvbox-dark-hard');
+	});
+
+	it('keeps what is stored when the schemes fail to load', async () => {
+		const storage = memoryStorage();
+		writeAppScheme(() => storage, stale);
+		expect(await refreshStoredAppScheme(() => storage, offline)).toBe(false);
+		expect(readAppScheme(() => storage)).toEqual(stale);
 	});
 });

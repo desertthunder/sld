@@ -127,9 +127,7 @@
 	/** Handles the keys the search box and the list share, moving the focus with `moves`. */
 	function handleKey(event: KeyboardEvent, moves: readonly string[]) {
 		if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
-		if (event.key === 'Escape') {
-			keep();
-		} else if (event.key === 'Enter') {
+		if (event.key === 'Enter') {
 			const row = shown[activeIndex];
 			if (!row) return;
 			use(row);
@@ -141,6 +139,13 @@
 			void showActive();
 		}
 		event.preventDefault();
+	}
+
+	/** Escape works from anywhere in the panel, the filters and the Close button included. */
+	function onpanelkeydown(event: KeyboardEvent) {
+		if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+		event.preventDefault();
+		keep();
 	}
 
 	function onsearchkeydown(event: KeyboardEvent) {
@@ -163,7 +168,9 @@
 </script>
 
 <div class="picker">
-	<aside class="panel" aria-labelledby="{id}-heading">
+	<!-- The panel only catches Escape as it bubbles up from the controls inside it. -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<aside class="panel" aria-labelledby="{id}-heading" onkeydown={onpanelkeydown}>
 		<div class="heading">
 			<h2 id="{id}-heading">{label}</h2>
 			{#if onclose}

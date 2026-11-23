@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { contrast, slideRoles, textFloor, tokenSlots } from '#lib/color-roles.ts';
+import { contrast, roleCss, slideRoles, textFloor, tokenSlots } from '#lib/color-roles.ts';
 import type { SchemeFile } from '#lib/scheme-compiler.ts';
 import { schemeProperties, schemeStyle } from '#lib/scheme-style.ts';
 
@@ -56,8 +56,12 @@ describe('the default schemes, Oxocarbon Dark and Oxocarbon Light', () => {
 	it.each(['oxocarbon-dark', 'oxocarbon-light'])(
 		'give %s body text WCAG AA contrast on the slide background',
 		(slug) => {
-			const { colors } = compiled(slug);
+			const scheme = compiled(slug);
+			const { colors } = scheme;
 			const roles = slideRoles(colors);
+			// The roles measured here must be the ones the compiled scheme paints, not a repaired copy.
+			expect(roleCss(roles.body)).toBe(scheme.roles.body);
+			expect(roleCss(roles.bg)).toBe(scheme.roles.bg);
 			expect(roles.bg.hex).toBe(colors.base00);
 			expect(contrast(roles.body.hex, roles.bg.hex)).toBeGreaterThanOrEqual(textFloor);
 			expect(compiled(slug).lowContrast).toBe(false);
