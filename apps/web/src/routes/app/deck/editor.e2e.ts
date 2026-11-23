@@ -375,6 +375,59 @@ test('closing the tab right after typing and splitting keeps every typed and sto
 	expect(await storedSlides(next, id)).toEqual(['# Agenda\n\nkeep me EXTRA\n\n---\n\nmove me', '# Tail']);
 });
 
+/** Puts a `---` line under the end of the slide in the editor and splits there. */
+async function splitAtEnd(page: Page) {
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.press('Enter');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('---');
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('group', { name: 'Split slide' })).toBeVisible();
+	await page.keyboard.press('Enter');
+}
+
+test('closing the tab right after typing into a split made on the last line keeps the rule', async ({
+	page,
+	context
+}) => {
+	const id = await createDeck(page, 'Talk', ['# Solo\n\nlast line', '# Other']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await holdWrites(page);
+	await splitAtEnd(page);
+	await page.keyboard.type('Next');
+	await expect(slideItems(page)).toHaveText(['Slide 1 Solo', 'Slide 2 Next', 'Slide 3 Other']);
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(slideItems(next)).toHaveText(['Slide 1 Solo', 'Slide 2 Other']);
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# Solo\n\nlast line\n\n---\n\nNext', '# Other']);
+	const preview = next.getByRole('region', { name: 'Preview' }).locator('article.slide');
+	await expect(preview.locator('hr')).toHaveCount(1, { timeout: 30_000 });
+	await expect(preview.locator('p').last()).toHaveText('Next');
+});
+
+test('closing the tab after a second split on the last line of a new slide keeps both rules', async ({
+	page,
+	context
+}) => {
+	const id = await createDeck(page, 'Talk', ['# Solo', '# Other']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await holdWrites(page);
+	await splitAtEnd(page);
+	await page.keyboard.type('move me');
+	await splitAtEnd(page);
+	await page.keyboard.type('THIRD');
+	await expect(slideItems(page)).toHaveText(['Slide 1 Solo', 'Slide 2 move me', 'Slide 3 THIRD', 'Slide 4 Other']);
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# Solo\n\n---\n\nmove me\n\n---\n\nTHIRD', '# Other']);
+});
+
 test('typing in a split before and after it is stored survives closing the tab', async ({ page, context }) => {
 	const id = await createDeck(page, 'Talk', ['# Agenda\n\n---\n\nmove me', '# Tail']);
 	await openDeck(page, id);

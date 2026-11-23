@@ -93,6 +93,54 @@ describe('joinSplit', () => {
 		);
 		expect(join({ before: '', after: '' })).toBe('\n\n---\n\n');
 	});
+
+	it('gives the rule a line of its own above text typed into a new slide that started empty', () => {
+		const markdown = '# Solo\n\nlast line\n\n---';
+		const parts = splitAtRule(markdown, 5)!;
+		expect(parts).toEqual({ before: '# Solo\n\nlast line', after: '' });
+		const join = joinSplit(markdown, parts);
+		expect(join(parts)).toBe(markdown);
+		expect(join({ before: parts.before, after: 'Next' })).toBe('# Solo\n\nlast line\n\n---\n\nNext');
+		expect(join({ before: '# Solo', after: '' })).toBe('# Solo\n\n---');
+	});
+
+	it('keeps the blank lines after a rule on the last line below the typed text', () => {
+		const markdown = '\n# One\n---\n\n';
+		const join = joinSplit(markdown, splitAtRule(markdown, 3)!);
+		expect(join({ before: '# One', after: 'Next' })).toBe('\n# One\n---\n\nNext\n\n');
+	});
+
+	it('keeps the rule on its own line, never the first, when the part above is emptied', () => {
+		const markdown = '# One\n---\nNext';
+		const join = joinSplit(markdown, splitAtRule(markdown, 2)!);
+		expect(join({ before: '', after: 'Next' })).toBe('\n\n---\nNext');
+		expect(join({ before: '', after: '' })).toBe('\n\n---\n');
+		const last = '# One\n\n---';
+		expect(joinSplit(last, splitAtRule(last, 3)!)({ before: '', after: 'Next' })).toBe('\n\n---\n\nNext');
+	});
+
+	it('puts a blank line under edited text above a rule, so it never becomes a setext underline', () => {
+		const markdown = '# One\n---\nNext';
+		const join = joinSplit(markdown, splitAtRule(markdown, 2)!);
+		expect(join({ before: '# One\nmore', after: 'Next' })).toBe('# One\nmore\n\n---\nNext');
+	});
+
+	it('puts the rule back when the YAML block that carried it is cut from the new slide', () => {
+		const markdown = '# One\n\n---\nlayout: center\n---\n# Two';
+		const join = joinSplit(markdown, splitAtRule(markdown, 3)!);
+		expect(join({ before: '# One', after: '# Two' })).toBe('# One\n\n---\n\n# Two');
+		expect(join({ before: '# One', after: '' })).toBe('# One\n\n---');
+	});
+
+	it('joins a second split made on the last line of the slide the first split made', () => {
+		const root = '# Solo\n\n---';
+		const first = joinSplit(root, splitAtRule(root, 3)!);
+		const copy = 'move me\n\n---';
+		const second = joinSplit(copy, splitAtRule(copy, 3)!);
+		const after = second({ before: 'move me', after: 'THIRD' });
+		expect(after).toBe('move me\n\n---\n\nTHIRD');
+		expect(first({ before: '# Solo', after })).toBe('# Solo\n\n---\n\nmove me\n\n---\n\nTHIRD');
+	});
 });
 
 describe('cursorLabel', () => {
