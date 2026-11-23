@@ -143,8 +143,12 @@
 	const saver = createSlideSaver<QueuedChange>({
 		commit: didStoreBatch,
 		onStatus: (status) => (editor.status = status),
-		delay: 400
+		delay: 300
 	});
+
+	// CodeMirror loads only once a deck opens, in its own chunk.
+	const markdownEditor = import('#lib/MarkdownEditor.svelte');
+	const cursor = $state({ label: '' });
 
 	const phone = new MediaQuery(`max-width: ${phoneWidth}px`);
 	let body: HTMLElement | undefined = $state();
@@ -270,10 +274,28 @@
 		await saver.change({ change: { kind: 'rename', title: next } });
 	}
 
-	function edit(event: Event & { currentTarget: HTMLTextAreaElement }) {
-		const { value } = event.currentTarget;
-		current.markdown = value;
-		saver.edit(current.id, value);
+	function edit(id: string, markdown: string) {
+		const slide = editor.slides.find((slide) => slide.id === id);
+		if (slide) slide.markdown = markdown;
+		saver.edit(id, markdown);
+	}
+
+	function choose(index: number, shouldOpen: boolean) {
+		if (index !== editor.selected) void flush();
+		select(index, shouldOpen);
+	}
+
+	function split(id: string, { after }: { after: string }) {
+		const from = editor.slides.findIndex((slide) => slide.id === id);
+		if (from === -1) return;
+		const at = from + 1;
+		const copy = crypto.randomUUID();
+		return change(
+			editor.slides.toSpliced(at, 0, { id: copy, markdown: after }),
+			at,
+			`Split slide ${at} into slides ${at} and ${at + 1}.`,
+			{ kind: 'insert', id: copy, position: at, markdown: after }
+		);
 	}
 
 	function flush() {
@@ -498,7 +520,7 @@
 				slides={editor.slides}
 				selected={editor.selected}
 				announcement={editor.announcement}
-				onselect={select}
+				onselect={choose}
 				onadd={addSlide}
 				onduplicate={duplicateSelected}
 				ondelete={deleteSelected} />
@@ -520,14 +542,23 @@
 			id={paneIds.edit}
 			aria-label="Markdown"
 			{...panel('edit')}>
-			<div class="pane-header"><span>Slide {editor.selected + 1} · markdown</span></div>
-			<!-- TODO: replace the text area with the CodeMirror editor. -->
-			<textarea
-				spellcheck="false"
-				aria-label="Markdown for slide {editor.selected + 1}"
-				value={current.markdown}
-				oninput={edit}
-				onblur={() => void flush()}></textarea>
+			<div class="pane-header">
+				<span>Slide {editor.selected + 1} · markdown</span><span>{cursor.label}</span>
+			</div>
+			{#await markdownEditor}
+				<div class="editor-loading" aria-busy="true"></div>
+			{:then { default: MarkdownEditor }}
+				<MarkdownEditor
+					slideId={current.id}
+					markdown={current.markdown}
+					slideNumber={editor.selected + 1}
+					onchange={edit}
+					onblur={() => void flush()}
+					onsplit={split}
+					onposition={(label) => (cursor.label = label)} />
+			{:catch}
+				<p class="editor-failed" role="alert">The editor didn't load. Reload the page to try again.</p>
+			{/await}
 		</section>
 		<PaneHandle
 			label="Resize editor and preview"
@@ -615,8 +646,7 @@
 	}
 
 	.present:focus-visible,
-	.tab:focus-visible,
-	textarea:focus-visible {
+	.tab:focus-visible {
 		outline: 3px solid var(--accent);
 		outline-offset: -3px;
 	}
@@ -658,6 +688,8 @@
 		flex: none;
 		display: flex;
 		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
 		height: 40px;
 		padding: 0 16px;
 		font-size: 13px;
@@ -665,23 +697,14 @@
 		border-bottom: 1px solid var(--border);
 	}
 
-	textarea {
+	.editor-loading {
 		flex: 1;
-		min-height: 0;
-		margin: 0;
-		padding: 20px 24px;
-		border: 0;
-		resize: none;
-		background: var(--background);
-		color: var(--text);
-		font-family: var(--code-font);
-		font-size: 14px;
-		line-height: 1.75;
-		tab-size: 4;
 	}
 
-	textarea:focus {
-		outline: none;
+	.editor-failed {
+		margin: 0;
+		padding: 20px 24px;
+		color: var(--heading);
 	}
 
 	.preview {
@@ -733,10 +756,6 @@
 		.body > :global([role='separator']),
 		.away {
 			display: none;
-		}
-
-		textarea {
-			padding: 16px;
 		}
 	}
 </style>
