@@ -291,7 +291,7 @@ test('the preview draws a slide as the presenter does at the same size', async (
 	const presenterShot = await presenterStage.screenshot();
 
 	expect(preview).toEqual(presenter);
-	expect(await differentPixels(page, previewShot, presenterShot)).toBeLessThan(0.001);
+	expect(await changedBlocks(page, previewShot, presenterShot)).toBe(0);
 });
 
 test('typing in a 100-slide deck renders only the edited slide again', async ({ page }) => {
@@ -353,34 +353,56 @@ async function describeStage(page: Page, stage: ReturnType<Page['locator']>) {
 	});
 }
 
-/** The share of pixels whose color differs by more than a little between two screenshots of the same size. */
-async function differentPixels(page: Page, first: Buffer, second: Buffer): Promise<number> {
+/**
+ * The share of 4 by 4 pixel blocks, among those where either screenshot shows more than the background, whose mean
+ * brightness differs by more than a quarter of its range. Text laid out, sized or spaced differently changes blocks,
+ * while Chromium antialiasing the same glyphs differently, as it does when it draws a stage in a composited layer of its
+ * own, keeps every block within that range, so the result doesn't depend on how the browser layers either page.
+ */
+async function changedBlocks(page: Page, first: Buffer, second: Buffer): Promise<number> {
 	return page.evaluate(
 		async ([a, b]) => {
 			// Playwright runs this function in the page as source text, so it can't call functions outside it.
 			// eslint-disable-next-line unicorn/consistent-function-scoping
-			const pixels = async (base64: string) => {
+			const brightness = async (base64: string) => {
 				const response = await fetch(`data:image/png;base64,${base64}`);
 				const bitmap = await createImageBitmap(await response.blob());
 				const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
 				const context = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
 				context.drawImage(bitmap, 0, 0);
-				return context.getImageData(0, 0, bitmap.width, bitmap.height);
+				const { data, width, height } = context.getImageData(0, 0, bitmap.width, bitmap.height);
+				const values = Float32Array.from(
+					{ length: width * height },
+					(_, pixel) => 0.299 * data[pixel * 4] + 0.587 * data[pixel * 4 + 1] + 0.114 * data[pixel * 4 + 2]
+				);
+				return { values, width, height };
 			};
-			const [one, two] = await Promise.all([pixels(a), pixels(b)]);
+			const [one, two] = await Promise.all([brightness(a), brightness(b)]);
 			if (one.width !== two.width || one.height !== two.height) {
 				throw new Error(`The screenshots are ${one.width}×${one.height} and ${two.width}×${two.height}`);
 			}
-			let different = 0;
-			for (let index = 0; index < one.data.length; index += 4) {
-				const distance = Math.max(
-					Math.abs(one.data[index] - two.data[index]),
-					Math.abs(one.data[index + 1] - two.data[index + 1]),
-					Math.abs(one.data[index + 2] - two.data[index + 2])
-				);
-				if (distance > 16) different++;
+			const { width, height } = one;
+			const background = one.values[0];
+			const isDrawn = (value: number) => Math.abs(value - background) > 8;
+			const block = 4;
+			const blockMean = (values: Float32Array, left: number, top: number) => {
+				let sum = 0;
+				for (let y = top; y < top + block; y++) {
+					for (let x = left; x < left + block; x++) sum += values[y * width + x];
+				}
+				return sum / block ** 2;
+			};
+			let drawn = 0;
+			let changed = 0;
+			for (let top = 0; top + block <= height; top += block) {
+				for (let left = 0; left + block <= width; left += block) {
+					const [mine, theirs] = [blockMean(one.values, left, top), blockMean(two.values, left, top)];
+					if (!isDrawn(mine) && !isDrawn(theirs)) continue;
+					drawn++;
+					if (Math.abs(mine - theirs) > 64) changed++;
+				}
 			}
-			return different / (one.width * one.height);
+			return changed / drawn;
 		},
 		[first.toString('base64'), second.toString('base64')]
 	);
