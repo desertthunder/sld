@@ -7,12 +7,16 @@ import {
 	createDeck,
 	deleteDeck,
 	deleteSlide,
+	duplicateDeck,
 	duplicateSlide,
 	getDeck,
 	insertSlide,
+	listDeckSummaries,
 	listDecks,
 	moveSlide,
+	removeDeck,
 	renameDeck,
+	restoreDecks,
 	updateSlide,
 	type Deck
 } from '#lib/decks.ts';
@@ -484,6 +488,131 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			).rejects.toMatchObject({ cause: { message: expect.stringMatching(/slides_deck_id_position_unique/) } });
 			await database.execute(sql`update slides set position = 2 - position where deck_id = ${deck.id}`);
 			expect(await markdowns(deck.id)).toEqual(['# Three', '# Two', '# One']);
+		});
+	});
+
+	describe('the library', () => {
+		it('lists decks with their slide counts, the most recently changed first', async () => {
+			const talk = await threeSlides();
+			const empty = await createDeck(database, { title: 'Empty' });
+			const notes = await createDeck(database, { title: 'Notes', slides: ['# One'] });
+			await ageDeck(talk);
+			await database.execute(
+				sql`update decks set updated_at = now() - interval '2 hours' where id = ${empty.id}`
+			);
+			const listed = await listDeckSummaries(database);
+			expect(listed.map(({ title, slideCount }) => [title, slideCount])).toEqual([
+				['Notes', 1],
+				['Talk', 3],
+				['Empty', 0]
+			]);
+			expect(listed[0]).toEqual({ ...notes, slideCount: 1 });
+		});
+
+		it('duplicates a deck with its settings and slides in order, as a new deck changed now', async () => {
+			const deck = await createDeck(database, {
+				title: 'Talk',
+				scheme: 'oxocarbon-dark',
+				aspect: '4:3',
+				slides: ['# One', '# Two', '# Three']
+			});
+			const aged = await ageDeck(deck);
+			const copy = await duplicateDeck(database, deck.id, 'Talk (copy)');
+			expect(copy).toMatchObject({ title: 'Talk (copy)', scheme: 'oxocarbon-dark', aspect: '4:3' });
+			expect(copy!.id).not.toBe(deck.id);
+			expect(copy!.updatedAt.getTime()).toBeGreaterThan(aged);
+			expect(await markdowns(copy!.id)).toEqual(['# One', '# Two', '# Three']);
+			expect(await positions(copy!.id)).toEqual([0, 1, 2]);
+			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
+			expect(await updatedAt(deck)).toBe(aged);
+			expect(await titles()).toEqual(['Talk (copy)', 'Talk']);
+		});
+
+		it('duplicates nothing for a missing deck or an id that is not a UUID', async () => {
+			expect(await duplicateDeck(database, missing, 'Copy')).toBeUndefined();
+			expect(await duplicateDeck(database, 'not-a-uuid', 'Copy')).toBeUndefined();
+			expect(await titles()).toEqual([]);
+		});
+
+		it('removes a deck and its slides, and restores it exactly, with the same ids, times and order', async () => {
+			const deck = await threeSlides();
+			await moveSlide(database, await slideId(deck.id, 2), 0);
+			await ageDeck(deck);
+			const before = await getDeck(database, deck.id);
+			const removed = await removeDeck(database, deck.id);
+			expect(removed).toEqual(before);
+			expect(await getDeck(database, deck.id)).toBeUndefined();
+			const left = await database.execute(sql`select id from slides`);
+			expect(left.rows).toEqual([]);
+			const [restored] = await restoreDecks(database, [removed!]);
+			expect({ ...restored, slides: before!.slides }).toEqual(before);
+			expect(await getDeck(database, deck.id)).toEqual(before);
+			expect(await markdowns(deck.id)).toEqual(['# Three', '# One', '# Two']);
+		});
+
+		it('restores several removed decks exactly, each with its own ids, times, settings and slides', async () => {
+			const first = await threeSlides();
+			await ageDeck(first);
+			const second = await createDeck(database, {
+				title: 'Second',
+				settings: { slideNumber: true },
+				slides: ['# A', '# B']
+			});
+			const before = [await getDeck(database, first.id), await getDeck(database, second.id)];
+			const removed = [await removeDeck(database, first.id), await removeDeck(database, second.id)];
+			expect(await titles()).toEqual([]);
+			const restored = await restoreDecks(
+				database,
+				removed.map((deck) => deck!)
+			);
+			expect(restored.map(({ id }) => id)).toEqual([first.id, second.id]);
+			expect([await getDeck(database, first.id), await getDeck(database, second.id)]).toEqual(before);
+		});
+
+		it('restores nothing over a deck with the same id, not even the other decks', async () => {
+			const deck = await threeSlides();
+			const other = await createDeck(database, { title: 'Second', slides: ['# A'] });
+			const removed = [await removeDeck(database, other.id), await removeDeck(database, deck.id)];
+			await createDeck(database, { id: deck.id, title: 'Other', slides: ['# Other'] });
+			await expect(
+				restoreDecks(
+					database,
+					removed.map((deck) => deck!)
+				)
+			).rejects.toThrow();
+			expect(await markdowns(deck.id)).toEqual(['# Other']);
+			expect(await getDeck(database, other.id)).toBeUndefined();
+		});
+
+		it('removes nothing for a missing deck or an id that is not a UUID', async () => {
+			await threeSlides();
+			expect(await removeDeck(database, missing)).toBeUndefined();
+			expect(await removeDeck(database, 'not-a-uuid')).toBeUndefined();
+			expect(await titles()).toEqual(['Talk']);
+		});
+
+		it('syncs each library write to storage after it commits, before resolving', async () => {
+			const deck = await threeSlides();
+			const events: string[] = [];
+			const transaction = client.transaction.bind(client);
+			vi.spyOn(client, 'transaction').mockImplementation(async (callback) => {
+				const result = await transaction(callback);
+				events.push('commit');
+				return result;
+			});
+			const sync = client.syncToFs.bind(client);
+			vi.spyOn(client, 'syncToFs').mockImplementation(async () => {
+				events.push('sync');
+				await sync();
+			});
+			const copy = await duplicateDeck(database, deck.id, 'Copy');
+			expect(events.slice(-2)).toEqual(['commit', 'sync']);
+			events.length = 0;
+			const removed = await removeDeck(database, copy!.id);
+			expect(events.slice(-2)).toEqual(['commit', 'sync']);
+			events.length = 0;
+			await restoreDecks(database, [removed!]);
+			expect(events.slice(-2)).toEqual(['commit', 'sync']);
 		});
 	});
 });

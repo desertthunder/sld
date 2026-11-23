@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type BrowserType, type Page } from '@playwright/test';
 import type * as SlideRenderModule from '#lib/slide-render.ts';
+import type * as StageFixtureModule from '#lib/stage-fixture.ts';
 
 type Screen = { width: number; height: number; deviceScaleFactor: number };
 type Browsers = { browser: Browser; browserName: string; firefox: BrowserType };
@@ -7,6 +8,17 @@ type Showing = { page: Page; close: () => Promise<void> };
 
 // The dev server serves the app's modules at their source paths.
 const slideRenderModule = '/src/lib/slide-render.ts';
+const stageFixtureModule = '/src/lib/stage-fixture.ts';
+
+/** Opens `/app` and draws the sample slide in place of the page. */
+async function openSample(page: Page) {
+	await page.goto('/app');
+	await expect(page.getByRole('heading', { level: 1, name: 'sld', exact: true })).toBeVisible({ timeout: 30_000 });
+	await page.evaluate(async (url) => {
+		const { showSampleSlide } = (await import(url)) as typeof StageFixtureModule;
+		showSampleSlide();
+	}, stageFixtureModule);
+}
 
 /**
  * Opens a page on a screen `width` by `height` with `deviceScaleFactor`. Firefox drops an emulated scale factor when it
@@ -23,11 +35,11 @@ async function openScreen({ browser, browserName, firefox }: Browsers, screen: S
 	return { page, close: () => own.close() };
 }
 
-/** Opens the sample slide on `/app`, with the preview filling a screen `width` by `height`. */
+/** Opens the sample slide, with the preview filling a screen `width` by `height`. */
 async function showSlide(browsers: Browsers, screen: Screen): Promise<Showing> {
 	const showing = await openScreen(browsers, screen);
 	const { page } = showing;
-	await page.goto('/app');
+	await openSample(page);
 	await expect(page.locator('article.slide')).toBeVisible({ timeout: 30_000 });
 	await page.locator('.preview').evaluate((preview, { width, height }) => {
 		preview.style.cssText = `position: fixed; top: 0; left: 0; width: ${width}px; height: ${height}px; max-width: none`;
@@ -166,7 +178,7 @@ for (const [scale, deviceScaleFactor] of [
 
 test('resizing the window rescales the slide without drawing its HTML again', async ({ page }) => {
 	await page.setViewportSize({ width: 1280, height: 800 });
-	await page.goto('/app');
+	await openSample(page);
 	const slide = page.locator('article.slide');
 	await expect(slide).toBeVisible({ timeout: 30_000 });
 	const before = await stageWidth(page);
@@ -219,7 +231,7 @@ test('a slide taller than the stage is clipped and flagged as overflowing', asyn
 });
 
 test('a slide that fits is not flagged for the margin under its last block', async ({ page }) => {
-	await page.goto('/app');
+	await openSample(page);
 	const article = page.locator('article.slide');
 	await expect(article).toBeVisible({ timeout: 30_000 });
 
@@ -267,7 +279,7 @@ test('the sample slide is not flagged at the sizes people use', async ({ browser
 			{ browser, browserName, firefox: playwright.firefox },
 			{ width, height, deviceScaleFactor: 1 }
 		);
-		await page.goto('/app');
+		await openSample(page);
 		await expect(page.locator('article.slide')).toBeVisible({ timeout: 30_000 });
 		await expect
 			.poll(() => page.locator('.slide img').evaluate((image: HTMLImageElement) => image.complete))
@@ -280,7 +292,7 @@ test('the sample slide is not flagged at the sizes people use', async ({ browser
 });
 
 test('a slide wider than the stage wraps what it can and is flagged for what it cannot', async ({ page }) => {
-	await page.goto('/app');
+	await openSample(page);
 	const article = page.locator('article.slide');
 	await expect(article).toBeVisible({ timeout: 30_000 });
 	const frame = page.locator('.frame');
@@ -314,7 +326,7 @@ function fence(...lines: string[]): string {
 }
 
 test('a code block that clips a line too long for the stage flags the slide', async ({ page }) => {
-	await page.goto('/app');
+	await openSample(page);
 	const article = page.locator('article.slide');
 	await expect(article).toBeVisible({ timeout: 30_000 });
 	const frame = page.locator('.frame');
