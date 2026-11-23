@@ -33,12 +33,16 @@
 	// Each slide keeps its own state while the deck is open, so its undo history survives switching slides.
 	const shown: { view?: EditorView; id: string; states: Map<string, EditorState> } = { id: '', states: new Map() };
 
-	const extensions = editorExtensions({
-		change: (text) => onchange(shown.id, text),
-		blur: () => onblur(),
-		split: (parts) => onsplit(shown.id, parts),
-		position: (label) => onposition(label)
-	});
+	const hintId = $props.id();
+	const extensions = [
+		editorExtensions({
+			change: (text) => onchange(shown.id, text),
+			blur: () => onblur(),
+			split: (parts) => onsplit(shown.id, parts),
+			position: (label) => onposition(label)
+		}),
+		EditorView.contentAttributes.of({ 'aria-describedby': hintId })
+	];
 
 	function show(id: string, text: string, number: number) {
 		const { view } = shown;
@@ -75,6 +79,7 @@
 </script>
 
 <div class="markdown-editor" bind:this={host}></div>
+<p class="hint" id={hintId}>Esc then Tab leaves the editor</p>
 
 <style>
 	.markdown-editor {
@@ -90,6 +95,15 @@
 	.markdown-editor > :global(.cm-editor) {
 		flex: 1;
 		min-height: 0;
+	}
+
+	.hint {
+		flex: none;
+		margin: 0;
+		padding: 8px 16px;
+		border-top: 1px solid var(--border);
+		font-size: 12px;
+		color: var(--muted);
 	}
 
 	.markdown-editor > :global(.cm-editor:has(.cm-content:focus-visible)) {

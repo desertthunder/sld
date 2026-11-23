@@ -221,6 +221,66 @@ test('switching slides and coming back keeps the text and its undo history', asy
 	expect(await storedSlides(page, id)).toEqual(['# One', '# Two!']);
 });
 
+test('closing the tab right after typing loses nothing', async ({ page, context }) => {
+	const id = await createDeck(page, 'Talk', ['# One', '# Two']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+End');
+	// With writes held, the database can't store the typing before the tab is gone.
+	await holdWrites(page);
+	await page.keyboard.type(' and more');
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(editor(next)).toHaveText('# One and more');
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# One and more', '# Two']);
+	expect(await next.evaluate((key) => localStorage.getItem(key), `sld:journal:${id}`)).toBeNull();
+});
+
+test('typing a closed tab left unsaved never writes over newer text from another tab', async ({ page, context }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+End');
+	await holdWrites(page);
+	await page.keyboard.type(' and more');
+	await page.close();
+	const next = await context.newPage();
+	await next.goto('/app');
+	await waitForApp(next);
+	await next.evaluate(
+		async ({ urls, id }) => {
+			const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
+			const { applyDeckChanges, getDeck } = (await import(urls.decks)) as typeof DecksModule;
+			const database = await openDatabase();
+			const [slide] = (await getDeck(database, id))!.slides;
+			await applyDeckChanges(database, id, [{ kind: 'update', id: slide!.id, markdown: '# One, elsewhere' }]);
+		},
+		{ urls: modules, id }
+	);
+	await openDeck(next, id);
+	await expect(editor(next)).toHaveText('# One, elsewhere');
+	expect(await next.evaluate((key) => localStorage.getItem(key), `sld:journal:${id}`)).toBeNull();
+	expect(await storedSlides(next, id)).toEqual(['# One, elsewhere']);
+});
+
+test('Tab indents, and Esc then Tab leaves the editor, as the hint says', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await expect(editor(page)).toHaveAccessibleDescription('Esc then Tab leaves the editor');
+	await expect(page.getByText('Esc then Tab leaves the editor')).toBeVisible();
+	await editor(page).click();
+	await page.keyboard.press('Home');
+	await page.keyboard.press('Tab');
+	await expect(editor(page)).toBeFocused();
+	await expect(saveState(page)).toHaveText('Saved');
+	expect(await storedSlides(page, id)).toEqual([expect.stringMatching(/^\s+# One$/)]);
+	await page.keyboard.press('Escape');
+	await page.keyboard.press('Tab');
+	await expect(editor(page)).not.toBeFocused();
+});
+
 test('hiding the page writes the typing at once, without waiting for a pause', async ({ page }) => {
 	const id = await createDeck(page, 'Talk', ['# One']);
 	await openDeck(page, id);

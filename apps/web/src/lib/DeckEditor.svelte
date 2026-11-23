@@ -32,6 +32,7 @@
 	import PaneHandle from '#lib/PaneHandle.svelte';
 	import { hashForSlide } from '#lib/presenter-navigation.ts';
 	import SlideList from '#lib/SlideList.svelte';
+	import { createSlideJournal, journaledEdits } from '#lib/slide-journal.ts';
 	import { createSlideSaver, saveStatusLabels, type SaveStatus, type SaverEntry } from '#lib/slide-saver.ts';
 
 	let { database, deck, onmissing }: { database: Database; deck: DeckWithSlides; onmissing: () => void } = $props();
@@ -63,6 +64,9 @@
 	// svelte-ignore state_referenced_locally
 	const { id: deckId, title, slides } = deck;
 	type SlideItem = { id: string; markdown: string };
+	const journal = createSlideJournal(() => localStorage, deckId);
+	// Typing that a closed tab hadn't stored yet shows at once, and is saved once the editor mounts.
+	const journaled = journaledEdits(() => localStorage, deckId, slides);
 	const editor: {
 		title: string;
 		slides: SlideItem[];
@@ -73,7 +77,7 @@
 		tab: EditorTab;
 	} = $state({
 		title,
-		slides: slides.map(({ id, markdown }) => ({ id, markdown })),
+		slides: slides.map(({ id, markdown }) => ({ id, markdown: journaled.get(id) ?? markdown })),
 		selected: selectedIndex(page.url.searchParams.get(slideParameter) ?? undefined, slides.length),
 		status: 'saved',
 		announcement: '',
@@ -113,6 +117,7 @@
 			}
 		}
 		if (batch.length === 0) return !isDropped;
+		for (const { change } of batch) if (change.kind === 'update') journal.writing(change.id, change.markdown);
 		let applied: boolean[];
 		try {
 			applied = await applyDeckChanges(
@@ -127,6 +132,11 @@
 				if (entry.kind === 'edit' && !shown.has(entry.id)) changes.takenBack.set(entry.id, entry.markdown);
 			}
 			throw error;
+		}
+		for (const [index, { change }] of batch.entries()) {
+			if (change.kind !== 'update') continue;
+			if (applied[index]) journal.stored(change.id, change.markdown);
+			else journal.drop(change.id);
 		}
 		const first = applied.indexOf(false);
 		if (first === -1) {
@@ -276,7 +286,10 @@
 
 	function edit(id: string, markdown: string) {
 		const slide = editor.slides.find((slide) => slide.id === id);
-		if (slide) slide.markdown = markdown;
+		if (slide) {
+			journal.record(id, markdown, slide.markdown);
+			slide.markdown = markdown;
+		}
 		saver.edit(id, markdown);
 	}
 
@@ -459,6 +472,8 @@
 
 	onMount(() => {
 		showSelectedInUrl();
+		for (const [id, markdown] of journaled) saver.edit(id, markdown);
+		if (journaled.size > 0) void flush();
 		const onVisibilityChange = () => {
 			if (document.visibilityState === 'hidden') void flush();
 		};

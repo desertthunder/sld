@@ -124,6 +124,8 @@ const slideNumber = Facet.define<number, number>({ combine: (numbers) => numbers
 
 const slideSettings = new Compartment();
 
+const undoHistory = new Compartment();
+
 function settingsFor(number: number): Extension {
 	return [slideNumber.of(number), EditorView.contentAttributes.of({ 'aria-label': `Markdown for slide ${number}` })];
 }
@@ -224,12 +226,13 @@ export const acceptSplit: Command = (view) => {
 		view.dispatch({ effects: setSplitOffer.of(0) });
 		return false;
 	}
-	// Undo would bring back text the new slide now holds, so the cut stays out of the history.
+	// Undo would bring the new slide's text back, or text deleted from it, so the slide starts a new history.
 	view.dispatch({
 		changes: changesTo(state.doc, parts.before),
-		effects: setSplitOffer.of(0),
+		effects: [setSplitOffer.of(0), undoHistory.reconfigure([])],
 		annotations: Transaction.addToHistory.of(false)
 	});
+	view.dispatch({ effects: undoHistory.reconfigure(history()) });
 	state.facet(splitHandler)(parts);
 	return true;
 };
@@ -366,7 +369,6 @@ export function editorExtensions(handlers: EditorHandlers): Extension {
 		highlightActiveLine(),
 		highlightActiveLineGutter(),
 		drawSelection(),
-		history(),
 		EditorView.lineWrapping,
 		EditorState.tabSize.of(4),
 		yamlFrontmatter({ content: markdown({ base: markdownLanguage, completeHTMLTags: false }) }),
@@ -395,7 +397,10 @@ export function editorExtensions(handlers: EditorHandlers): Extension {
 
 /** A new editor state for a slide, with its own undo history. */
 export function createSlideState(markdown: string, number: number, extensions: Extension): EditorState {
-	return EditorState.create({ doc: markdown, extensions: [extensions, slideSettings.of(settingsFor(number))] });
+	return EditorState.create({
+		doc: markdown,
+		extensions: [extensions, undoHistory.of(history()), slideSettings.of(settingsFor(number))]
+	});
 }
 
 /**

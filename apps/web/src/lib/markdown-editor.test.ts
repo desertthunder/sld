@@ -1,3 +1,4 @@
+import { undo } from '@codemirror/commands';
 import { EditorSelection, EditorState, Text, type TransactionSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { describe, expect, it } from 'vitest';
@@ -142,6 +143,20 @@ describe('the split offer', () => {
 		expect(splits).toEqual([{ before: '# One', after: '# Two' }]);
 		expect(view.state.doc.toString()).toBe('# One');
 		expect(view.state.field(splitOffer)).toBe(0);
+	});
+
+	it('starts a new undo history on a split, so undo brings back nothing from below the line', () => {
+		const { view } = fakeView('# One\n\n---\n# Two, more', 10);
+		view.dispatch({ changes: { from: 16, to: 22 } });
+		view.dispatch({ selection: EditorSelection.cursor(10) });
+		offerSplit(view);
+		offerSplit(view);
+		expect(view.state.doc.toString()).toBe('# One');
+		expect(undo(view)).toBe(false);
+		expect(view.state.doc.toString()).toBe('# One');
+		view.dispatch({ changes: { from: 5, insert: '!' } });
+		expect(undo(view)).toBe(true);
+		expect(view.state.doc.toString()).toBe('# One');
 	});
 
 	it('closes on Escape and adds the new line, keeping the rule', () => {
