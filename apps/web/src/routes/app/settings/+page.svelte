@@ -5,7 +5,7 @@
 	import { applyAppScheme, readAppScheme, storedAppScheme, writeAppScheme } from '#lib/app-scheme.ts';
 	import AppPreview from '#lib/AppPreview.svelte';
 	import EditorFrame from '#lib/EditorFrame.svelte';
-	import { resolveScheme } from '#lib/scheme-choice.ts';
+	import { appSchemeKey, resolveScheme } from '#lib/scheme-choice.ts';
 	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import SchemePicker from '#lib/SchemePicker.svelte';
 	import { loadSchemes } from '#lib/schemes.ts';
@@ -15,15 +15,25 @@
 		slug: readAppScheme(() => localStorage)?.slug
 	});
 	const prefersLight = new MediaQuery('prefers-color-scheme: light');
-	const inUse = $derived(
-		settings.schemes && resolveScheme(settings.schemes, settings.slug, prefersLight.current ? 'light' : 'dark')
+	const preferred = $derived(prefersLight.current ? 'light' : 'dark');
+	const inUse = $derived(settings.schemes && resolveScheme(settings.schemes, settings.slug, preferred));
+	const system = $derived(
+		settings.schemes && {
+			scheme: resolveScheme(settings.schemes, undefined, preferred),
+			isInUse: settings.schemes.every(({ slug }) => slug !== settings.slug)
+		}
 	);
 
-	function use(scheme: Scheme) {
-		const stored = storedAppScheme(scheme);
-		settings.slug = scheme.slug;
+	/** Uses `scheme` as the app's scheme, or follows the system again when it is undefined. */
+	function use(scheme: Scheme | undefined) {
+		const stored = scheme && storedAppScheme(scheme);
+		settings.slug = scheme?.slug;
 		writeAppScheme(() => localStorage, stored);
 		applyAppScheme(document.documentElement, stored);
+	}
+
+	function onstorage(event: StorageEvent) {
+		if (event.key === appSchemeKey || event.key === null) settings.slug = readAppScheme(() => localStorage)?.slug;
 	}
 
 	onMount(() => {
@@ -37,6 +47,8 @@
 	<title>Settings · {appName}</title>
 </svelte:head>
 
+<svelte:window {onstorage} />
+
 {#snippet toolbar()}
 	<h1>Settings</h1>
 {/snippet}
@@ -46,6 +58,7 @@
 		<SchemePicker
 			schemes={settings.schemes}
 			{inUse}
+			{system}
 			label="App scheme"
 			previewLabel="Previewing the app"
 			onuse={use}>

@@ -6,6 +6,7 @@ import {
 	filterSchemes,
 	lowContrastTip,
 	moveFocus,
+	ownSchemeNote,
 	parseStoredAppScheme,
 	resolveScheme,
 	searchPlaceholder,
@@ -78,6 +79,10 @@ describe('the list', () => {
 		expect(lowContrastTip('Tango')).toBe(
 			"Body text, muted text or links in Tango can't reach 4.5:1 on its backgrounds. Fine for a quick look, hard to read on a projector."
 		);
+	});
+
+	it('names the scheme a slide keeps for itself', () => {
+		expect(ownSchemeNote('Gruvbox Dark Hard')).toBe('This slide sets its own scheme, Gruvbox Dark Hard');
 	});
 });
 

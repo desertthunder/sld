@@ -73,7 +73,9 @@ async function tabTo(page: Page, target: Locator) {
 	throw new Error('Tab never reached the target');
 }
 
-test('the picker works with the keyboard alone: search, preview with the arrows, use with Enter', async ({ page }) => {
+test('the picker works with the keyboard alone: search, preview with the arrows, use with Enter and close', async ({
+	page
+}) => {
 	const id = await createDeck(page, ['# One']);
 	await openDeck(page, id);
 	await expect(schemeButton(page)).toHaveAccessibleName('Scheme: Oxocarbon Light');
@@ -95,13 +97,53 @@ test('the picker works with the keyboard alone: search, preview with the arrows,
 	await expect(search(page)).toHaveAttribute('aria-activedescendant', /nord-light$/);
 	await expect.poll(() => background(previewStage(page))).toBe(base00['nord-light']);
 	await page.keyboard.press('Enter');
-	await expect.poll(() => storedScheme(page, id)).toBe('nord-light');
-	await expect(focusedOption(page)).toContainText('In use');
-
-	await page.keyboard.press('Escape');
 	await expect(search(page)).toBeHidden();
 	await expect(schemeButton(page)).toBeFocused();
+	await expect(schemeButton(page)).toHaveAttribute('aria-expanded', 'false');
 	await expect(schemeButton(page)).toHaveAccessibleName('Scheme: Nord Light');
+	await expect.poll(() => storedScheme(page, id)).toBe('nord-light');
+
+	await page.keyboard.press('Enter');
+	await expect(search(page)).toBeFocused();
+	await expect(focusedOption(page)).toContainText('Nord Light');
+	await expect(focusedOption(page)).toContainText('In use');
+});
+
+test('a click uses the scheme and leaves the picker open', async ({ page }) => {
+	const id = await createDeck(page, ['# One']);
+	await openDeck(page, id);
+	await schemeButton(page).click();
+	await search(page).fill('nord');
+	await options(page).filter({ hasText: 'Nord Light' }).click();
+	await expect.poll(() => storedScheme(page, id)).toBe('nord-light');
+	await expect(schemeButton(page)).toHaveAccessibleName('Scheme: Nord Light');
+	await expect(search(page)).toBeVisible();
+	await expect(focusedOption(page)).toContainText('In use');
+	await expect.poll(() => background(previewStage(page)), { timeout: 30_000 }).toBe(base00['nord-light']);
+});
+
+test('a slide that sets its own scheme keeps it while the picker previews others, and the header says so', async ({
+	page
+}) => {
+	const id = await createDeck(page, ['---\nscheme: gruvbox-dark-hard\n---\n# One', '# Two'], 'nord');
+	await openDeck(page, id);
+	await schemeButton(page).click();
+	const note = page.getByText('This slide sets its own scheme, Gruvbox dark, hard');
+	await expect(note).toBeVisible();
+	await expect.poll(() => background(previewStage(page)), { timeout: 30_000 }).toBe(base00['gruvbox-dark-hard']);
+	await page.keyboard.press('ArrowDown');
+	await expect(focusedOption(page)).not.toContainText('In use');
+	await expect.poll(() => background(previewStage(page))).toBe(base00['gruvbox-dark-hard']);
+	await page.keyboard.press('Escape');
+
+	await page
+		.getByRole('navigation', { name: 'Slides' })
+		.getByRole('button', { name: /^Slide 2/ })
+		.click();
+	await schemeButton(page).click();
+	await expect(page.getByText(/^Previewing on slide 2/)).toBeVisible();
+	await expect(note).toBeHidden();
+	await expect.poll(() => background(previewStage(page)), { timeout: 30_000 }).toBe(base00.nord);
 });
 
 test('the dark and light filter, and the list itself, work from the keyboard', async ({ page }) => {
@@ -209,18 +251,42 @@ test.describe('the app scheme', () => {
 		expect(await rootBackground(page)).toBe(base00['oxocarbon-dark']);
 		await page.getByRole('link', { name: 'Settings' }).click();
 		await expect(page.getByRole('heading', { name: 'App scheme' })).toBeVisible({ timeout: 30_000 });
-		await expect(page.getByText('Previewing the app · Oxocarbon Dark')).toBeVisible();
+		await expect(page.getByText('Previewing the app · Match system')).toBeVisible();
+		await expect(focusedOption(page)).toContainText('Match system');
+		await expect(focusedOption(page)).toContainText('In use');
 		await search(page).fill('nord');
 		await search(page).press('ArrowDown');
 		await expect(page.getByText('Previewing the app · Nord Light')).toBeVisible();
 		expect(await rootBackground(page)).toBe(base00['oxocarbon-dark']);
 		await search(page).press('Enter');
 		await expect.poll(() => rootBackground(page)).toBe(base00['nord-light']);
+		await expect(search(page)).toBeVisible();
 
 		await openDeck(page, id);
 		await expect.poll(() => rootBackground(page)).toBe(base00['nord-light']);
 		await schemeButton(page).click();
 		await expect.poll(() => background(previewStage(page)), { timeout: 30_000 }).toBe(base00['gruvbox-dark-hard']);
+	});
+
+	test('Match system clears the chosen scheme and follows the system preference again', async ({ page }) => {
+		await page.emulateMedia({ colorScheme: 'dark' });
+		await page.goto('/app/settings');
+		await expect(page.getByRole('heading', { name: 'App scheme' })).toBeVisible({ timeout: 30_000 });
+		await search(page).fill('nord light');
+		await search(page).press('Enter');
+		await expect.poll(() => rootBackground(page)).toBe(base00['nord-light']);
+		await search(page).fill('');
+		await expect(options(page).first()).toContainText('Match system');
+		await expect(options(page).first()).not.toContainText('In use');
+		await options(page).first().click();
+		await expect(options(page).first()).toContainText('In use');
+		await expect.poll(() => rootBackground(page)).toBe(base00['oxocarbon-dark']);
+		expect(await page.evaluate(() => localStorage.getItem('sld:app-scheme'))).toBeNull();
+		await page.emulateMedia({ colorScheme: 'light' });
+		await expect.poll(() => rootBackground(page)).toBe(base00['oxocarbon-light']);
+		await page.reload();
+		await expect(page.getByRole('heading', { name: 'App scheme' })).toBeVisible({ timeout: 30_000 });
+		await expect(focusedOption(page)).toContainText('Match system');
 	});
 
 	test('follows the system preference until one is chosen', async ({ page }) => {

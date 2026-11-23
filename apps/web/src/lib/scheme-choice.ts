@@ -61,6 +61,14 @@ export function lowContrastTip(name: string): string {
 
 export const lowContrastNote = 'Low contrast: some text falls below 4.5:1';
 
+/** The app scheme list's first row, which follows the system's light or dark preference with the default schemes. */
+export const matchSystemLabel = 'Match system';
+
+/** What the picker's preview header says on a slide whose frontmatter sets `name`, which the preview keeps. */
+export function ownSchemeNote(name: string): string {
+	return `This slide sets its own scheme, ${name}`;
+}
+
 const pageSize = 10;
 
 /** Where a key moves the focus in a list of `length` options from `index`, or undefined for a key that doesn't. */

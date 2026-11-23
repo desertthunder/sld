@@ -25,6 +25,7 @@
 		type EditorTab,
 		type PaneWidths
 	} from '#lib/deck-editor.ts';
+	import { slideParts } from '#lib/deck-markdown.ts';
 	import {
 		deleteSlide,
 		duplicateSlide,
@@ -39,11 +40,12 @@
 	import EditorFrame from '#lib/EditorFrame.svelte';
 	import PaneHandle from '#lib/PaneHandle.svelte';
 	import { hashForSlide } from '#lib/presenter-navigation.ts';
-	import { resolveScheme } from '#lib/scheme-choice.ts';
+	import { ownSchemeNote, resolveScheme } from '#lib/scheme-choice.ts';
 	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import SchemePicker from '#lib/SchemePicker.svelte';
 	import Slide from '#lib/Slide.svelte';
 	import SlideList from '#lib/SlideList.svelte';
+	import { readSlideMeta } from '#lib/slide-meta.ts';
 	import { createSlideSaver, saveStatusLabels, type SaveStatus } from '#lib/slide-saver.ts';
 	import { defaultAspect } from '#lib/stage.ts';
 
@@ -104,6 +106,11 @@
 	const current = $derived(editor.slides[editor.selected]!);
 	const prefersLight = new MediaQuery('prefers-color-scheme: light');
 	const inUse = $derived(resolveScheme(schemes, editor.scheme, prefersLight.current ? 'light' : 'dark'));
+	// A slide whose frontmatter names a scheme keeps it while the picker previews the deck's.
+	const ownScheme = $derived.by(() => {
+		const { scheme } = readSlideMeta(slideParts(current.markdown).frontmatter).meta;
+		return schemes.find(({ slug }) => slug === scheme);
+	});
 	const aspect = $derived(deck.aspect === '4:3' ? '4:3' : defaultAspect);
 	const changing = { isBusy: false };
 
@@ -376,8 +383,9 @@
 			{inUse}
 			label="Deck scheme"
 			previewLabel="Previewing on slide {editor.selected + 1}"
+			previewNote={ownScheme && ownSchemeNote(ownScheme.name)}
 			focusOnMount
-			onuse={useScheme}
+			onuse={(next) => next && useScheme(next)}
 			onclose={closePicker}>
 			{#snippet preview(scheme)}
 				<Slide markdown={current.markdown} {aspect} {scheme} {schemes} />

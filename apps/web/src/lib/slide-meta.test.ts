@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { slideFrontmatter, type Frontmatter } from '#lib/deck-markdown.ts';
-import { layoutClass, layouts, readSlideMeta, slideClasses, unknownScheme } from '#lib/slide-meta.ts';
+import { layoutClass, layouts, readSlideMeta, slideClasses } from '#lib/slide-meta.ts';
 
-const isScheme = (slug: string) => slug === 'nord';
 const yaml = (data: Record<string, unknown>): Frontmatter => ({ format: 'yaml', raw: '', data });
 
 describe('layoutClass', () => {
@@ -149,15 +148,8 @@ describe('scheme', () => {
 	it.each([3, ['nord'], { slug: 'nord' }, true])('drops scheme %j that is not a string and warns', (value) => {
 		expect(readSlideMeta(yaml({ scheme: value }))).toEqual({
 			meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
-			warnings: [{ kind: 'unknown-scheme', value }]
+			warnings: [{ kind: 'invalid-scheme', value }]
 		});
-	});
-
-	it('warns once the schemes load when the slug names none of them', () => {
-		const meta = (scheme: string | undefined) => ({ ...readSlideMeta(undefined).meta, scheme });
-		expect(unknownScheme(meta('nord'), isScheme)).toBeUndefined();
-		expect(unknownScheme(meta(undefined), isScheme)).toBeUndefined();
-		expect(unknownScheme(meta('mystery'), isScheme)).toEqual({ kind: 'unknown-scheme', value: 'mystery' });
 	});
 });
 

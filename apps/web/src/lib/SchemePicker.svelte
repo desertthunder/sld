@@ -6,6 +6,7 @@
 		filterSchemes,
 		lowContrastNote,
 		lowContrastTip,
+		matchSystemLabel,
 		moveFocus,
 		schemeFilters,
 		searchPlaceholder,
@@ -21,6 +22,8 @@
 		inUse,
 		label,
 		previewLabel,
+		system,
+		previewNote,
 		focusOnMount = false,
 		onuse,
 		onclose,
@@ -32,9 +35,20 @@
 		label: string;
 		/** What the preview shows, such as "Previewing on slide 3". */
 		previewLabel: string;
+		/**
+		 * When given, the list starts with a "Match system" row that previews `scheme`, the default the system's preference
+		 * picks, and calls `onuse` with undefined. `isInUse` says no scheme is chosen.
+		 */
+		system?: { scheme: Scheme; isInUse: boolean };
+		/** What the preview header adds, such as why the preview keeps a scheme of its own. */
+		previewNote?: string;
 		focusOnMount?: boolean;
-		onuse: (scheme: Scheme) => void;
-		/** Closes the panel, after Escape has put the scheme in use back. Without it the panel has no Close button. */
+		/** Uses `scheme`, or follows the system again when it is undefined. */
+		onuse: (scheme: Scheme | undefined) => void;
+		/**
+		 * Closes the panel, after Escape has put the scheme in use back or Enter has used one. Without it the panel has no
+		 * Close button.
+		 */
 		onclose?: () => void;
 		/** Draws the preview in the focused scheme. */
 		preview: Snippet<[Scheme]>;
@@ -42,19 +56,42 @@
 
 	const id = $props.id();
 	const listId = `${id}-list`;
-	const optionId = (scheme: Scheme) => `${id}-${scheme.slug}`;
+	/** A row of the list: a scheme, or the "Match system" row, whose key no slug can take. */
+	type Row = { key: string; name: string; scheme: Scheme; isSystem: boolean };
+	const systemKey = ':system';
+	const optionId = (row: Row) => `${id}-${row.key}`;
 
+	const inUseKey = $derived(system?.isInUse ? systemKey : inUse.slug);
+	const inUseName = $derived(system?.isInUse ? matchSystemLabel : inUse.name);
 	const sorted = $derived(sortSchemes(schemes));
 	// svelte-ignore state_referenced_locally
 	const picker: { query: string; filter: SchemeFilter; active: string | undefined } = $state({
 		query: '',
 		filter: 'all',
-		active: inUse.slug
+		active: inUseKey
 	});
-	const shown = $derived(filterSchemes(sorted, picker.query, picker.filter));
-	const activeIndex = $derived(shown.findIndex(({ slug }) => slug === picker.active));
-	const focused = $derived(schemes.find(({ slug }) => slug === picker.active) ?? inUse);
 	const isNarrowed = $derived(picker.query.trim() !== '' || picker.filter !== 'all');
+	const shown: Row[] = $derived([
+		...(system && !isNarrowed
+			? [{ key: systemKey, name: matchSystemLabel, scheme: system.scheme, isSystem: true }]
+			: []),
+		...filterSchemes(sorted, picker.query, picker.filter).map((scheme) => ({
+			key: scheme.slug,
+			name: scheme.name,
+			scheme,
+			isSystem: false
+		}))
+	]);
+	const schemeCount = $derived(shown.filter(({ isSystem }) => !isSystem).length);
+	const activeIndex = $derived(shown.findIndex(({ key }) => key === picker.active));
+	const focused = $derived(
+		shown[activeIndex] ?? {
+			key: inUseKey,
+			name: inUseName,
+			scheme: system?.isInUse ? system.scheme : inUse,
+			isSystem: false
+		}
+	);
 
 	let search: HTMLInputElement | undefined = $state();
 
@@ -66,7 +103,7 @@
 
 	/** Keeps the focused scheme when the list still shows it, and otherwise focuses the first one shown. */
 	function narrow() {
-		if (activeIndex === -1) picker.active = shown[0]?.slug;
+		if (activeIndex === -1) picker.active = shown[0]?.key;
 		void showActive();
 	}
 
@@ -76,15 +113,15 @@
 	}
 
 	function keep() {
-		picker.active = inUse.slug;
+		picker.active = inUseKey;
 		if (onclose) onclose();
 		else void showActive();
 	}
 
-	function use(scheme: Scheme | undefined) {
-		if (!scheme) return;
-		picker.active = scheme.slug;
-		onuse(scheme);
+	function use(row: Row | undefined) {
+		if (!row) return;
+		picker.active = row.key;
+		onuse(row.isSystem ? undefined : row.scheme);
 	}
 
 	/** Handles the keys the search box and the list share, moving the focus with `moves`. */
@@ -93,11 +130,14 @@
 		if (event.key === 'Escape') {
 			keep();
 		} else if (event.key === 'Enter') {
-			use(shown[activeIndex]);
+			const row = shown[activeIndex];
+			if (!row) return;
+			use(row);
+			onclose?.();
 		} else {
 			const next = moves.includes(event.key) ? moveFocus(event.key, activeIndex, shown.length) : undefined;
 			if (next === undefined) return;
-			picker.active = shown[next]!.slug;
+			picker.active = shown[next]!.key;
 			void showActive();
 		}
 		event.preventDefault();
@@ -157,7 +197,7 @@
 				</button>
 			{/each}
 		</div>
-		<p class="count" aria-live="polite">{countText(shown.length, schemes.length, isNarrowed)}</p>
+		<p class="count" aria-live="polite">{countText(schemeCount, schemes.length, isNarrowed)}</p>
 		<ul
 			class="list"
 			id={listId}
@@ -166,19 +206,15 @@
 			tabindex="0"
 			aria-activedescendant={activeIndex === -1 ? undefined : optionId(shown[activeIndex]!)}
 			onkeydown={onlistkeydown}>
-			{#each shown as scheme, index (scheme.slug)}
+			{#each shown as row, index (row.key)}
+				{@const { scheme } = row}
 				{@const isActive = index === activeIndex}
 				<!-- The list handles the keys for its options, which take no focus of their own. -->
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<li
-					class="option"
-					id={optionId(scheme)}
-					role="option"
-					aria-selected={isActive}
-					onclick={() => use(scheme)}>
+				<li class="option" id={optionId(row)} role="option" aria-selected={isActive} onclick={() => use(row)}>
 					<span class="name">
-						<span class="label">{scheme.name}</span>
-						{#if scheme.slug === inUse.slug}
+						<span class="label">{row.name}</span>
+						{#if row.key === inUseKey}
 							<span class="in-use">
 								<span class="i-ri-check-line icon" aria-hidden="true"></span><span class="sr">
 									In use
@@ -187,7 +223,7 @@
 						{/if}
 					</span>
 					<span class="marks">
-						{#if scheme.lowContrast}
+						{#if scheme.lowContrast && !row.isSystem}
 							<span class="weak">
 								<span class="i-ri-alert-line icon" aria-hidden="true"></span>Low contrast
 							</span>
@@ -199,7 +235,7 @@
 							<i style:background={scheme.colors[`base${slot}`]}></i>
 						{/each}
 					</span>
-					{#if isActive && scheme.lowContrast}
+					{#if isActive && scheme.lowContrast && !row.isSystem}
 						<span class="tip">{lowContrastTip(scheme.name)}</span>
 					{/if}
 				</li>
@@ -208,17 +244,19 @@
 		<p class="keys">
 			<span><kbd>↑</kbd> <kbd>↓</kbd> preview</span>
 			<span><kbd>Enter</kbd> use</span>
-			<span><kbd>Esc</kbd> keep {inUse.name}</span>
+			<span><kbd>Esc</kbd> keep {inUseName}</span>
 		</p>
 	</aside>
 	<section class="preview" aria-label="Preview">
-		<div class="preview-header">
-			<span>{previewLabel} · {focused.name}</span>
-			{#if focused.lowContrast}
+		<div class="preview-header" class:noted={previewNote}>
+			<span class="previewing">{previewLabel} · {focused.name}</span>
+			{#if previewNote}
+				<span class="note">{previewNote}</span>
+			{:else if focused.scheme.lowContrast}
 				<span class="note"><span class="i-ri-alert-line icon" aria-hidden="true"></span>{lowContrastNote}</span>
 			{/if}
 		</div>
-		<div class="preview-body">{@render preview(focused)}</div>
+		<div class="preview-body">{@render preview(focused.scheme)}</div>
 	</section>
 </div>
 
@@ -550,7 +588,8 @@
 			order: -1;
 		}
 
-		.preview-header,
+		.preview-header:not(.noted),
+		.preview-header .previewing,
 		.keys {
 			display: none;
 		}

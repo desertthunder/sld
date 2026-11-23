@@ -14,8 +14,8 @@ export type Layout = (typeof layouts)[number];
  * - `notes` are the speaker's notes, which only the speaker view shows.
  * - `classes` are the extra class names from `class`, valid class tokens only, and never `slide`, a `layout-` or
  *   `svelte-` name, or one of the stage's own classes.
- * - `scheme` is the slug of the scheme the slide takes in place of the deck's, lowercased. Whether it names a scheme is
- *   known only once the schemes load, so `unknownScheme` checks it then.
+ * - `scheme` is the slug of the scheme the slide takes in place of the deck's, lowercased. A slug that names no scheme
+ *   leaves the slide on the deck's.
  *
  * Keys sld doesn't read, and keys left empty or holding only spaces, stay out of it, with no warning.
  */
@@ -29,7 +29,7 @@ export type SlideMeta = { layout: Layout; notes: string | undefined; classes: st
  * - `invalid-notes`: `notes` isn't a string, so the slide has none.
  * - `invalid-class`: `class` isn't a string or a list of strings, or `value` isn't a valid class token.
  * - `reserved-class`: `value` would clash with the slide's own classes.
- * - `unknown-scheme`: `scheme` isn't a string, or names no scheme, so the slide uses the deck's.
+ * - `invalid-scheme`: `scheme` isn't a string, so the slide uses the deck's.
  */
 export type SlideWarning =
 	| ({ kind: 'invalid-frontmatter' } & FrontmatterError)
@@ -37,7 +37,7 @@ export type SlideWarning =
 	| { kind: 'invalid-notes'; value: unknown }
 	| { kind: 'invalid-class'; value: unknown }
 	| { kind: 'reserved-class'; value: string }
-	| { kind: 'unknown-scheme'; value: unknown };
+	| { kind: 'invalid-scheme'; value: unknown };
 
 /** A slide's validated meta and the warnings reading it raised. */
 export type ReadSlideMeta = { meta: SlideMeta; warnings: SlideWarning[] };
@@ -87,15 +87,8 @@ function readLayout(value: unknown, warnings: SlideWarning[]): Layout {
 function readScheme(value: unknown, warnings: SlideWarning[]): string | undefined {
 	if (value === undefined) return undefined;
 	if (typeof value === 'string') return value.trim().toLowerCase();
-	warnings.push({ kind: 'unknown-scheme', value });
+	warnings.push({ kind: 'invalid-scheme', value });
 	return undefined;
-}
-
-/** The warning for a slide whose `scheme` names none of the schemes `isScheme` knows, or undefined. */
-export function unknownScheme(meta: SlideMeta, isScheme: (slug: string) => boolean): SlideWarning | undefined {
-	return meta.scheme === undefined || isScheme(meta.scheme)
-		? undefined
-		: { kind: 'unknown-scheme', value: meta.scheme };
 }
 
 function readNotes(value: unknown, warnings: SlideWarning[]): string | undefined {
