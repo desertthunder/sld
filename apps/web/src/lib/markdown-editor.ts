@@ -173,7 +173,12 @@ class SplitOfferWidget extends WidgetType {
 		};
 		button(splitOfferCopy.split, 'Enter', acceptSplit, true);
 		button(splitOfferCopy.keep, 'Esc', keepRule, false);
-		return offer;
+		// CodeMirror measures a block widget without its margins, and a margin would push the line numbers below it out
+		// of line with their text, so the space around the offer is the padding of a box around it.
+		const row = document.createElement('div');
+		row.className = 'cm-split-row';
+		row.append(offer);
+		return row;
 	}
 }
 
@@ -318,12 +323,12 @@ const theme = EditorView.theme({
 	'.cm-frontmatter': { backgroundColor: 'var(--fmband)' },
 	'.cm-frontmatter-key': { color: 'var(--accent)' },
 	'.cm-frontmatter-mark': { color: 'var(--marks)' },
+	'.cm-split-row': { padding: '4px 0 6px' },
 	'.cm-split-offer': {
 		display: 'flex',
 		flexWrap: 'wrap',
 		alignItems: 'center',
 		gap: '10px 12px',
-		margin: '4px 0 6px',
 		padding: '10px 10px 10px 14px',
 		border: '1px solid var(--border)',
 		borderRadius: '10px',

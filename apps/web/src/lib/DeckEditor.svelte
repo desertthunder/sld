@@ -13,6 +13,8 @@
 		editorTabKey,
 		editorTabs,
 		indexAfterDelete,
+		joinSplit,
+		type SlideParts,
 		paneLimits,
 		paneWidthsKey,
 		parseEditorTab,
@@ -107,6 +109,73 @@
 		isTyped?: boolean;
 	};
 
+	// The splits not yet stored, in the order they were made. Until a split is stored, the journal holds the text its
+	// slide had before the cut, with what is typed into either part since put back in, so a tab closed first keeps every
+	// line in the one slide that is stored.
+	type PendingSplit = SlideParts & { id: string; copy: string; join: (parts: SlideParts) => string };
+	const splits: PendingSplit[] = [];
+
+	const textOf = (id: string) => editor.slides.find((slide) => slide.id === id)?.markdown ?? '';
+	const isSplitting = (id: string) => splits.some((split) => split.id === id || split.copy === id);
+
+	/** The stored slide that `id` was cut from by splits not yet stored, or `id` itself. */
+	function splitRoot(id: string): string {
+		let root = id;
+		for (let split = splits.findLast(({ copy }) => copy === root); split;) {
+			root = split.id;
+			split = splits.findLast(({ copy }) => copy === root);
+		}
+		return root;
+	}
+
+	/** The text of `id` with the parts that splits not yet stored cut from it put back, the latest split first. */
+	function joined(id: string): string {
+		let text = textOf(id);
+		for (const split of splits.toReversed()) {
+			if (split.id === id) text = split.join({ before: text, after: joined(split.copy) });
+		}
+		return text;
+	}
+
+	/** Journals the text of slide `id`, or of the slide a split not yet stored cut it from, as it now shows. */
+	function journalSlide(id: string, previous: string) {
+		if (!isSplitting(id)) {
+			journal.record(id, textOf(id), previous);
+			return;
+		}
+		const root = splitRoot(id);
+		const text = joined(root);
+		journal.record(root, text, text);
+	}
+
+	/**
+	 * Journals both parts of each split stored in `batch` on their own, typed over the text the batch stored for them,
+	 * and forgets the split.
+	 */
+	function settleSplits(batch: readonly QueuedChange[], applied: readonly boolean[]) {
+		const storedText = (id: string, otherwise: string) => {
+			const index = batch.findLastIndex(
+				({ change }, index) => applied[index] && change.kind === 'update' && change.id === id
+			);
+			const change = batch[index]?.change;
+			return change?.kind === 'update' ? change.markdown : otherwise;
+		};
+		for (const [index, { change }] of batch.entries()) {
+			if (change.kind !== 'insert' || !applied[index]) continue;
+			const at = splits.findIndex(({ copy }) => copy === change.id);
+			if (at === -1) continue;
+			const [split] = splits.splice(at, 1);
+			for (const [id, base] of [
+				[split!.id, storedText(split!.id, split!.before)],
+				[split!.copy, storedText(split!.copy, split!.after)]
+			] as const) {
+				journal.drop(id);
+				const text = joined(id);
+				if (text !== base) journal.record(id, text, base);
+			}
+		}
+	}
+
 	/** Writes a batch of edits and changes in one transaction, resolving to whether nothing in it was lost. */
 	async function didStoreBatch(entries: SaverEntry<QueuedChange>[]): Promise<boolean> {
 		const batch: QueuedChange[] = [];
@@ -127,7 +196,8 @@
 		}
 		if (batch.length === 0) return !isDropped;
 		for (const { change, isTyped } of batch) {
-			if (isTyped && change.kind === 'update') journal.writing(change.id, change.markdown);
+			if (isTyped && change.kind === 'update' && !isSplitting(change.id))
+				journal.writing(change.id, change.markdown);
 		}
 		let applied: boolean[];
 		try {
@@ -149,6 +219,7 @@
 			if (applied[index]) journal.stored(change.id, change.markdown);
 			else journal.drop(change.id);
 		}
+		settleSplits(batch, applied);
 		const first = applied.indexOf(false);
 		if (first === -1) {
 			const list = batch.findLast(({ list }) => list)?.list;
@@ -212,6 +283,8 @@
 	function show(list: readonly SlideItem[], isRead: boolean) {
 		const selectedId = current.id;
 		const shown = new Map(editor.slides.map(({ id, markdown }) => [id, markdown]));
+		// The changes still waiting are dropped with the list they were made to, splits among them.
+		splits.length = 0;
 		editor.slides = list.map(({ id, markdown }) => ({
 			id,
 			markdown: saver.pending(id) ?? (isRead ? undefined : shown.get(id)) ?? markdown
@@ -303,8 +376,9 @@
 	function edit(id: string, markdown: string) {
 		const slide = editor.slides.find((slide) => slide.id === id);
 		if (slide) {
-			journal.record(id, markdown, slide.markdown);
+			const previous = slide.markdown;
 			slide.markdown = markdown;
+			journalSlide(id, previous);
 		}
 		saver.edit(id, markdown);
 	}
@@ -323,8 +397,10 @@
 		if (from === -1) return;
 		const at = from + 1;
 		const copy = crypto.randomUUID();
-		// Typing journaled over the slide before the cut would be replayed over it, so typing after the cut starts afresh.
-		journal.drop(id);
+		const root = splitRoot(id);
+		const whole = joined(root);
+		splits.push({ id, copy, before, after, join: joinSplit(editor.slides[from]!.markdown, { before, after }) });
+		journal.record(root, whole, whole);
 		return change(
 			editor.slides.toSpliced(from, 1, { id, markdown: before }, { id: copy, markdown: after }),
 			at,

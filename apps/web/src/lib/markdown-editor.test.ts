@@ -16,6 +16,7 @@ import {
 	syncSlideState,
 	type SplitParts
 } from '#lib/markdown-editor.ts';
+import { joinSplit } from '#lib/deck-editor.ts';
 
 describe('splitAtRule', () => {
 	it('splits at a `---` after a blank line, dropping the blank lines around it', () => {
@@ -63,6 +64,33 @@ describe('splitAtRule', () => {
 			before: '# One',
 			after: '---\nlayout: center\n---\n# Two'
 		});
+	});
+});
+
+describe('joinSplit', () => {
+	const cases: [string, number][] = [
+		['# One\n\nText\n\n---\n\n# Two\n', 5],
+		['\n# One\n---', 3],
+		['# One\n---\nNext', 2],
+		['---\nlayout: center\n---\n# One\n\n---', 6],
+		['# One\n\n---\nlayout: center\n---\n# Two\n\n', 3],
+		['# One\n  \n---\n\t\n# Two', 3]
+	];
+
+	it('gives back the markdown from the parts it was cut into', () => {
+		for (const [markdown, line] of cases) {
+			const parts = splitAtRule(markdown, line)!;
+			expect(joinSplit(markdown, parts)(parts)).toBe(markdown);
+		}
+	});
+
+	it('keeps the lines between the parts as they were around edited parts', () => {
+		const markdown = '# Agenda\n\nkeep me EXTRA\n\n---\n\nmove me';
+		const join = joinSplit(markdown, splitAtRule(markdown, 5)!);
+		expect(join({ before: '# Agenda\n\nkeep me EXTRA!', after: 'moved' })).toBe(
+			'# Agenda\n\nkeep me EXTRA!\n\n---\n\nmoved'
+		);
+		expect(join({ before: '', after: '' })).toBe('\n\n---\n\n');
 	});
 });
 

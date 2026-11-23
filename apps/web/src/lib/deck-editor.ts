@@ -110,3 +110,20 @@ export function listCommand({ key, altKey, ctrlKey, metaKey }: Key): ListCommand
 /** Describes the slide list's keys, for its accessible description. */
 export const listKeysHint =
 	'Up and Down arrows choose a slide. N adds a slide after it, D duplicates it, and Delete removes it.';
+
+/** The two parts a split cuts a slide's markdown into. */
+export type SlideParts = { before: string; after: string };
+
+/**
+ * Puts back together the parts `splitAtRule` cut `markdown` into, as they have been edited since. The lines around and
+ * between the parts come back as they were, so joining the parts unedited gives `markdown` again.
+ */
+export function joinSplit(markdown: string, { before, after }: SlideParts): (parts: SlideParts) => string {
+	const start = markdown.indexOf(before);
+	const end = markdown.lastIndexOf(after);
+	if (start === -1 || end < start + before.length) return (parts) => `${parts.before}\n\n---\n\n${parts.after}`;
+	const head = markdown.slice(0, start);
+	const between = markdown.slice(start + before.length, end);
+	const tail = markdown.slice(end + after.length);
+	return (parts) => `${head}${parts.before}${between}${parts.after}${tail}`;
+}
