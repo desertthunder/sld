@@ -41,6 +41,11 @@ const slideItems = (page: Page) => slideList(page).locator('button[data-index]')
 const selectedItem = (page: Page) => slideList(page).locator('button[aria-current="true"]');
 const editor = (page: Page) => page.getByRole('textbox', { name: /^Markdown for slide/ });
 
+// These tests read each item's number and heading as its text, which a thumbnail would add to.
+test.beforeEach(async ({ page }) => {
+	await page.addInitScript(() => localStorage.setItem('sld:slide-list-view', 'headings'));
+});
+
 async function openDeck(page: Page, id: string, search = '') {
 	await page.goto(`/app/deck/${id}${search}`);
 	await expect(slideList(page)).toBeVisible({ timeout: 30_000 });

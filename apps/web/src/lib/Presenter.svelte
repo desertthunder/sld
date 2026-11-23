@@ -18,7 +18,7 @@
 	import { exitFullscreen, isFullscreen, keepScreenOn, toggleFullscreen } from '#lib/screen.ts';
 	import ShortcutsHelp from '#lib/ShortcutsHelp.svelte';
 	import Slide from '#lib/Slide.svelte';
-	import { defaultAspect, type Aspect } from '#lib/stage.ts';
+	import { deckAspect } from '#lib/stage.ts';
 
 	let { deck }: { deck: DeckWithSlides } = $props();
 
@@ -26,7 +26,7 @@
 	const markdowns = $derived(deck.slides.length > 0 ? deck.slides.map(({ markdown }) => markdown) : ['']);
 	const total = $derived(markdowns.length);
 	const settings = $derived(presentSettings(deck.settings));
-	const aspect: Aspect = $derived(deck.aspect === '4:3' ? '4:3' : defaultAspect);
+	const aspect = $derived(deckAspect(deck.aspect));
 
 	const view = $state({ index: 0, isHelpOpen: false, areControlsShown: false });
 	const number = $derived(view.index + 1);

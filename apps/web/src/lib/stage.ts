@@ -15,6 +15,11 @@ const stageSizes: Record<Aspect, Size> = {
 	'4:3': { width: 1440, height: 1080 }
 };
 
+/** The aspect a deck's stored `aspect` value names, or the default for one sld doesn't know. */
+export function deckAspect(stored: string): Aspect {
+	return stored === '4:3' ? '4:3' : defaultAspect;
+}
+
 /** The logical size slides draw at for an aspect. Slide CSS uses these pixels. */
 export function stageSize(aspect: Aspect): Size {
 	return stageSizes[aspect];

@@ -39,7 +39,9 @@
 	import PaneHandle from '#lib/PaneHandle.svelte';
 	import { hashForSlide } from '#lib/presenter-navigation.ts';
 	import SlideList from '#lib/SlideList.svelte';
+	import SlidePreview from '#lib/SlidePreview.svelte';
 	import { createSlideSaver, saveStatusLabels, type SaveStatus } from '#lib/slide-saver.ts';
+	import { deckAspect } from '#lib/stage.ts';
 
 	let { database, deck, onmissing }: { database: Database; deck: DeckWithSlides; onmissing: () => void } = $props();
 
@@ -69,6 +71,8 @@
 	// The deck is loaded once; from here on this state is the source, and every change is written through.
 	// svelte-ignore state_referenced_locally
 	const { id: deckId, title, slides } = deck;
+	// svelte-ignore state_referenced_locally
+	const aspect = deckAspect(deck.aspect);
 	const editor: {
 		title: string;
 		slides: { id: string; markdown: string }[];
@@ -351,6 +355,7 @@
 			<SlideList
 				id={paneIds.slides}
 				slides={editor.slides}
+				{aspect}
 				selected={editor.selected}
 				announcement={editor.announcement}
 				onselect={select}
@@ -402,8 +407,7 @@
 			aria-label="Preview"
 			{...panel('preview')}>
 			<div class="pane-header"><span>Preview</span></div>
-			<!-- TODO: draw the selected slide here. -->
-			<div class="preview"></div>
+			<SlidePreview slideId={current.id} markdown={current.markdown} {aspect} />
 		</section>
 	</div>
 </EditorFrame>
@@ -536,11 +540,6 @@
 
 	textarea:focus {
 		outline: none;
-	}
-
-	.preview {
-		flex: 1;
-		background: var(--surface);
 	}
 
 	@media (max-width: 760px) {

@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { fitStage, stageSize } from '#lib/stage.ts';
+import { deckAspect, fitStage, stageSize } from '#lib/stage.ts';
 
 describe('stageSize', () => {
 	it('draws 16:9 decks at 1920 by 1080 and 4:3 decks at 1440 by 1080', () => {
 		expect(stageSize('16:9')).toEqual({ width: 1920, height: 1080 });
 		expect(stageSize('4:3')).toEqual({ width: 1440, height: 1080 });
+	});
+});
+
+describe('deckAspect', () => {
+	it('reads the aspects sld knows and falls back to 16:9 for any other', () => {
+		expect(deckAspect('4:3')).toBe('4:3');
+		expect(deckAspect('16:9')).toBe('16:9');
+		expect(deckAspect('21:9')).toBe('16:9');
+		expect(deckAspect('')).toBe('16:9');
 	});
 });
 
