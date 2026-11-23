@@ -75,6 +75,7 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			const deck = await createDeck(database, { title: 'Talk' });
 			expect(deck).toMatchObject({ title: 'Talk', aspect: '16:9' });
 			expect(deck.scheme).toBeNull();
+			expect(deck.settings).toBeNull();
 			expect(deck.id).toMatch(/^[\da-f-]{36}$/);
 			expect(deck.createdAt).toBeInstanceOf(Date);
 			expect(await getDeck(database, deck.id)).toEqual({ ...deck, slides: [] });
@@ -90,6 +91,13 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(deck).toMatchObject({ scheme: 'oxocarbon-dark', aspect: '4:3' });
 			expect(await markdowns(deck.id)).toEqual(['# One', '# Two']);
 			expect(await positions(deck.id)).toEqual([0, 1]);
+		});
+
+		it('creates a deck with its settings and reads them back', async () => {
+			const deck = await createDeck(database, { title: 'Talk', settings: { slideNumber: true } });
+			expect(deck.settings).toEqual({ slideNumber: true });
+			const stored = await getDeck(database, deck.id);
+			expect(stored?.settings).toEqual({ slideNumber: true });
 		});
 
 		it('syncs every write to storage after it commits, before resolving', async () => {
