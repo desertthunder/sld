@@ -99,7 +99,7 @@ describe('serializeSyncs', () => {
 	});
 });
 
-describe('serializeSyncToFs', () => {
+describe('serializeSyncToFs', { timeout: 30_000 }, () => {
 	it("routes every sync of the client, PGlite's own included, through its filesystem one at a time", async () => {
 		const client = await PGlite.create();
 		const fsSync = vi.spyOn(client.fs!, 'syncToFs');

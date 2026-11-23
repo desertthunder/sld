@@ -94,7 +94,7 @@ jobs:
   e2e:
     needs: changes
     if: needs.changes.outputs.web == 'true'
-    name: e2e (${{ matrix.shard }}/3)
+    name: e2e (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -139,7 +139,7 @@ jobs:
       # Playwright shards a file whole unless its tests may run apart, and the editor's file holds about 40% of the
       # suite's time. The runner has 2 vCPUs, so each shard keeps one worker.
       - name: Web browser test
-        run: pnpm --filter @sld/web e2e --project=chromium --workers=1 --fully-parallel --shard=${{ matrix.shard }}/3
+        run: pnpm --filter @sld/web e2e --project=chromium --workers=1 --fully-parallel --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
   devtools:
     needs: changes
@@ -186,8 +186,16 @@ jobs:
         run: |
           status=0
           expect() {
-            local want=skipped
-            if [ "$2" = true ]; then want=success; fi
+            local want
+            case "$2" in
+              true) want=success ;;
+              false) want=skipped ;;
+              *)
+                echo "::error title=ci::The path filter gave $1 '$2', expected true or false."
+                status=1
+                return
+                ;;
+            esac
             if [ "$3" != "$want" ]; then
               echo "::error title=ci::$1 was $3, expected $want."
               status=1
