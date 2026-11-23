@@ -91,6 +91,18 @@ describe('deckFromNote', () => {
 		});
 	});
 
+	it('takes the slide number setting from the frontmatter', () => {
+		expect(deckFromNote('---\nslideNumber: true\n---\n\n# One\n')).toEqual({
+			title: 'One',
+			settings: { slideNumber: true },
+			slides: ['# One']
+		});
+		expect(deckFromNote('---\nslideNumber: yes please\n---\n\n# One\n')).toEqual({
+			title: 'One',
+			slides: ['# One']
+		});
+	});
+
 	it('leaves out an aspect the stage has no size for', () => {
 		expect(deckFromNote('---\naspect: 21:9\n---\n\n# One\n')).toEqual({ title: 'One', slides: ['# One'] });
 	});

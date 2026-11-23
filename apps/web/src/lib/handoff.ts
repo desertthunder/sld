@@ -1,4 +1,5 @@
 import { splitDeck } from '#lib/deck-markdown.ts';
+import { settingsFromFrontmatter } from '#lib/deck-settings.ts';
 import { deckTitle } from '#lib/deck-title.ts';
 import type { NewDeck } from '#lib/decks.ts';
 import { isUuid } from '#lib/uuid.ts';
@@ -58,16 +59,18 @@ export function clearHandoff(storage: HandoffStorage, id: string): void {
 const aspects = new Set(['16:9', '4:3']);
 
 /**
- * The deck a note makes on the day it is `made`: its slides as `splitDeck` splits them, its scheme and aspect from its
- * frontmatter, and its title as `deckTitle` gives it.
+ * The deck a note makes on the day it is `made`: its slides as `splitDeck` splits them, its scheme, aspect and settings
+ * from its frontmatter, and its title as `deckTitle` gives it.
  */
 export function deckFromNote(markdown: string, made: Date = new Date()): Omit<NewDeck, 'id'> & { slides: string[] } {
 	const split = splitDeck(markdown);
 	const { frontmatter, slides } = split;
+	const settings = settingsFromFrontmatter(frontmatter?.data);
 	return {
 		title: deckTitle(split, made),
 		...(frontmatter?.scheme && { scheme: frontmatter.scheme }),
 		...(frontmatter?.aspect && aspects.has(frontmatter.aspect) && { aspect: frontmatter.aspect }),
+		...(settings && { settings }),
 		slides
 	};
 }

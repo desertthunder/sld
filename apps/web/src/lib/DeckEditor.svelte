@@ -29,6 +29,7 @@
 	import DeckTitle from '#lib/DeckTitle.svelte';
 	import EditorFrame from '#lib/EditorFrame.svelte';
 	import PaneHandle from '#lib/PaneHandle.svelte';
+	import { hashForSlide } from '#lib/presenter-navigation.ts';
 	import SlideList from '#lib/SlideList.svelte';
 	import { createSlideSaver, saveStatusLabels, type SaveStatus, type SaverEntry } from '#lib/slide-saver.ts';
 
@@ -359,6 +360,23 @@
 		document.querySelector<HTMLElement>(`#tab-${tab}`)?.focus();
 	}
 
+	// The editor waits for the changes to be stored before leaving, as it does for any link in the app.
+	async function present() {
+		// `resolve` builds the path, and the rule doesn't follow it into a string with a hash.
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
+		await goto(`${resolve('/app/deck/[id]/present', { id: deckId })}${hashForSlide(editor.selected)}`);
+	}
+
+	const typing = 'input, textarea, select, [contenteditable]';
+
+	function onkeydown(event: KeyboardEvent) {
+		const isModified = event.ctrlKey || event.metaKey || event.altKey;
+		const isTyping = event.target instanceof Element && event.target.closest(typing) !== null;
+		if (isModified || isTyping || event.defaultPrevented || event.repeat || event.key.toLowerCase() !== 'p') return;
+		event.preventDefault();
+		void present();
+	}
+
 	const paneIds: Record<EditorTab, string> = { slides: 'pane-slides', edit: 'pane-edit', preview: 'pane-preview' };
 	const panelIds: Record<EditorTab, string> = { ...paneIds, slides: 'panel-slides' };
 
@@ -384,6 +402,8 @@
 	});
 </script>
 
+<svelte:window {onkeydown} />
+
 <svelte:head>
 	<title>{editor.title.trim() || 'Untitled deck'} · {appName}</title>
 </svelte:head>
@@ -394,8 +414,7 @@
 		<span class="{saveStatusIcons[editor.status]} icon" aria-hidden="true"></span>{saveStatusLabels[editor.status]}
 	</span>
 	<span class="spacer"></span>
-	<!-- TODO: open the presenter at the selected slide, from this button and the P key, once it exists. -->
-	<button class="present" type="button" disabled aria-keyshortcuts="P">
+	<button class="present" type="button" aria-keyshortcuts="P" onclick={present}>
 		<span class="i-ri-play-line icon" aria-hidden="true"></span>Present<kbd>P</kbd>
 	</button>
 {/snippet}
@@ -528,12 +547,6 @@
 		color: var(--on-primary);
 		font: 600 14px var(--ui-font);
 		cursor: pointer;
-	}
-
-	.present:disabled {
-		background: var(--surface);
-		color: var(--muted);
-		cursor: not-allowed;
 	}
 
 	.present kbd {

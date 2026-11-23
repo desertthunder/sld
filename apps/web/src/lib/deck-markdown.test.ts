@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { deckFrontmatter, joinDeck, slideFrontmatter, slideParts, splitDeck } from '#lib/deck-markdown.ts';
+import {
+	deckFrontmatter,
+	joinDeck,
+	slideFrontmatter,
+	slideFrontmatterError,
+	slideParts,
+	splitDeck
+} from '#lib/deck-markdown.ts';
 
 const lines = (...rows: string[]) => rows.join('\n');
 
@@ -323,6 +330,28 @@ describe('slideFrontmatter', () => {
 		expect(slideFrontmatter('# Two')).toBeUndefined();
 		expect(slideFrontmatter('')).toBeUndefined();
 		expect(slideFrontmatter(lines('+++', 'layout =', '+++'))).toBeUndefined();
+	});
+});
+
+describe('slideFrontmatterError', () => {
+	it("returns the parser's message for a block shaped as frontmatter that doesn't parse", () => {
+		expect(slideFrontmatterError(lines('---', 'layout: [title', '---', '# Two'))).toEqual({
+			format: 'yaml',
+			message: expect.stringMatching(/\S/) as string
+		});
+		expect(slideFrontmatterError(lines('+++', 'layout =', '+++'))).toEqual({
+			format: 'toml',
+			message: expect.stringMatching(/\S/) as string
+		});
+		expect(slideFrontmatterError(lines('---', 'a: *missing', '---'))?.format).toBe('yaml');
+	});
+
+	it('finds no error in a block that parses, or in markdown that holds no block', () => {
+		expect(slideFrontmatterError(lines('---', 'layout: center', '---', '# Two'))).toBeUndefined();
+		expect(slideFrontmatterError('# Two')).toBeUndefined();
+		expect(slideFrontmatterError(lines('---', '# heading', '---'))).toBeUndefined();
+		expect(slideFrontmatterError(lines('---', 'a: [', '', '---'))).toBeUndefined();
+		expect(slideFrontmatterError(lines('---', 'a: [', 'no closing line'))).toBeUndefined();
 	});
 });
 

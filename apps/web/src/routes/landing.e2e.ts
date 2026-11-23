@@ -106,13 +106,13 @@ test('a database one migration behind is migrated from the landing page, leaving
 			const { rows } = await $client.query<{ tag: string }>(
 				'select tag from migrations order by tag desc limit 1'
 			);
-			await $client.exec('drop table slides; drop table decks;');
+			await $client.exec('alter table decks drop column settings;');
 			await $client.query('delete from migrations where tag = $1', [rows[0]!.tag]);
 			return rows[0]!.tag;
 		});
 	}, modules.database);
 	// The SQL above undoes only this migration, so a newer one needs its own.
-	expect(undone).toBe('0001_create_decks');
+	expect(undone).toBe('0002_add_deck_settings');
 	progress.length = 0;
 	await page.goto('/');
 	await expect(page.getByRole('status').filter({ hasText: 'Decks ready' })).toBeVisible({ timeout: 30_000 });
@@ -127,4 +127,20 @@ test('a database one migration behind is migrated from the landing page, leaving
 	await waitForApp(page);
 	expect(progress).toEqual([]);
 	expect(await savedDecks(page)).toEqual([]);
+});
+
+test('a slide takes the layout and classes its frontmatter names, and keeps its notes off the slide', async ({
+	page
+}) => {
+	await page.goto('/');
+	const preview = page.getByRole('textbox', { name: 'Live Preview' });
+	const slide = page.locator('.preview-card article.slide');
+	for (const layout of ['default', 'title', 'center', 'section']) {
+		await preview.fill(`---\nlayout: ${layout}\nclass: wide\nnotes: Only for the speaker\n---\n# Hi`);
+		await expect(slide).toHaveClass(new RegExp(String.raw`^slide layout-${layout} wide\b`), { timeout: 30_000 });
+		await expect(slide.getByRole('heading', { level: 1, name: 'Hi' })).toBeVisible();
+		await expect(slide).not.toContainText('Only for the speaker');
+	}
+	await preview.fill('---\nlayout: two-column\n---\n# Hi');
+	await expect(slide).toHaveClass(/^slide layout-default\b/);
 });

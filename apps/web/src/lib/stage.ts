@@ -32,9 +32,3 @@ export function fitStage(stage: Size, container: Size): Fit {
 		y: Math.round((container.height - stage.height * scale) / 2)
 	};
 }
-
-/** A slide's layout class, from the `layout` field of its frontmatter, or `layout-default` without a usable one. */
-export function layoutClass(layout: unknown): string {
-	const name = typeof layout === 'string' ? layout.trim().toLowerCase() : '';
-	return /^[a-z][\w-]*$/.test(name) ? `layout-${name}` : 'layout-default';
-}
