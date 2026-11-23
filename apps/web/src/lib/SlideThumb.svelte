@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { renderSlide, type RenderedSlide } from '#lib/slide-render.ts';
+	import { renderSlide } from '#lib/slide-render.ts';
+	import { nextPreview, type PreviewState, type RenderOutcome } from '#lib/slide-preview.ts';
 	import SlideStage from '#lib/SlideStage.svelte';
 	import type { Aspect } from '#lib/stage.ts';
 
-	let { markdown, aspect }: { markdown: string; aspect: Aspect } = $props();
+	let { slideId, markdown, aspect }: { slideId: string; markdown: string; aspect: Aspect } = $props();
 
-	const view: { isNear: boolean; slide: RenderedSlide | undefined } = $state({ isNear: false, slide: undefined });
+	const view: { isNear: boolean; state: PreviewState | undefined } = $state({ isNear: false, state: undefined });
 	let box: HTMLElement | undefined = $state();
 
 	// A thumbnail renders once it scrolls near the list's view, and stays rendered after.
@@ -21,28 +22,41 @@
 		return () => observer.disconnect();
 	});
 
+	// Like the preview, a thumbnail keeps the slide's last good render while it fails or its frontmatter doesn't parse.
 	$effect(() => {
 		if (!view.isNear) return;
+		const id = slideId;
 		const text = markdown;
 		let isCurrent = true;
 		void (async () => {
+			let outcome: RenderOutcome;
 			try {
-				const slide = await renderSlide(text);
-				if (isCurrent) view.slide = slide;
-			} catch {
-				// A render that fails keeps the last thumbnail, and the preview says what went wrong.
+				outcome = { slide: await renderSlide(text) };
+			} catch (error) {
+				outcome = { error };
 			}
+			if (isCurrent) view.state = nextPreview(view.state, id, outcome);
 		})();
 		return () => {
 			isCurrent = false;
 		};
 	});
+
+	// Autoplay waits for media data, so it hasn't started when this runs after the slide is drawn.
+	$effect(() => {
+		if (!box || !view.state?.shown) return;
+		for (const media of box.querySelectorAll<HTMLMediaElement>('audio, video')) {
+			media.autoplay = false;
+			media.muted = true;
+			media.pause();
+		}
+	});
 </script>
 
-<!-- A slide's own links and controls stay out of the list: the thumbnail is a picture of the slide. -->
+<!-- A slide's own links, controls and sound stay out of the list: the thumbnail is a picture of the slide. -->
 <span class="thumb" style:aspect-ratio={aspect.replace(':', ' / ')} inert aria-hidden="true" bind:this={box}>
-	{#if view.slide}
-		<span class="fill"><SlideStage slide={view.slide} {aspect} /></span>
+	{#if view.state?.shown}
+		<span class="fill"><SlideStage slide={view.state.shown} {aspect} /></span>
 	{/if}
 </span>
 

@@ -97,6 +97,8 @@ test('broken frontmatter shows a warning under the editor and keeps the last goo
 	await expect(previewPane(page).getByText("The frontmatter couldn't be read")).toHaveCount(0);
 	await expect(previewSlide(page).locator('h1')).toHaveText('Good');
 	await expect(previewSlide(page)).toHaveClass(/layout-center/);
+	await expect(thumbnails(page).first().locator('article.slide h1')).toHaveText('Good');
+	await expect(thumbnails(page).first().locator('article.slide')).toHaveClass(/layout-center/);
 
 	await editor(page).fill('---\nlayout: hero\n---\n# Fixed');
 	await expect(previewSlide(page).locator('h1')).toHaveText('Fixed');
@@ -139,6 +141,57 @@ test('the slide list shows a thumbnail of each slide, rendered once it scrolls n
 
 	await editor(page).fill('# Renamed');
 	await expect(thumbnails(page).first().locator('article.slide h1')).toHaveText('Renamed');
+});
+
+test("a thumbnail keeps a slide's audio and video still", async ({ page }) => {
+	const id = await createDeck(page, ['# Sound\n\n<audio autoplay></audio><video autoplay></video>']);
+	await openDeck(page, id);
+	const thumbnail = thumbnails(page).first();
+	await expect(thumbnail.locator('article.slide h1')).toHaveText('Sound', { timeout: 30_000 });
+	const states = () =>
+		thumbnail
+			.locator('audio, video')
+			.evaluateAll((media) =>
+				(media as HTMLMediaElement[]).map(({ autoplay, muted, paused }) => ({ autoplay, muted, paused }))
+			);
+	await expect.poll(states).toEqual([
+		{ autoplay: false, muted: true, paused: true },
+		{ autoplay: false, muted: true, paused: true }
+	]);
+	// The preview draws the slide as it presents.
+	await expect(previewSlide(page).locator('audio')).toHaveJSProperty('autoplay', true);
+
+	await editor(page).press('ControlOrMeta+End');
+	await editor(page).press('Enter');
+	await expect.poll(states).toEqual([
+		{ autoplay: false, muted: true, paused: true },
+		{ autoplay: false, muted: true, paused: true }
+	]);
+});
+
+test('in the thumbnail view, adding, duplicating and deleting a slide move the thumbnails with their slides', async ({
+	page
+}) => {
+	const id = await createDeck(page, ['# One', '# Two', '# Three']);
+	await openDeck(page, id);
+	const headings = () => thumbnails(page).locator('article.slide h1');
+	await expect(headings()).toHaveText(['One', 'Two', 'Three'], { timeout: 30_000 });
+
+	await slideList(page).getByRole('button', { name: 'Slide 2 Two', exact: true }).click();
+	await slideList(page).getByRole('button', { name: 'Duplicate slide 2' }).click();
+	await expect(headings()).toHaveText(['One', 'Two', 'Two', 'Three']);
+
+	await slideList(page).getByRole('button', { name: 'Delete slide 3' }).click();
+	await expect(headings()).toHaveText(['One', 'Two', 'Three']);
+	await slideList(page).getByRole('button', { name: 'Slide 1 One', exact: true }).click();
+	await slideList(page).getByRole('button', { name: 'Delete slide 1' }).click();
+	await expect(headings()).toHaveText(['Two', 'Three']);
+
+	await slideList(page).getByRole('button', { name: 'New slide' }).click();
+	await expect(thumbnails(page)).toHaveCount(3);
+	await expect(editor(page)).toHaveValue('');
+	await editor(page).fill('# Four');
+	await expect(headings()).toHaveText(['Two', 'Four', 'Three']);
 });
 
 test('the list view toggle switches to headings only, and a reload keeps it', async ({ page }) => {

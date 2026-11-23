@@ -131,7 +131,7 @@
 					<span class="number"><span class="sr">Slide</span> {index + 1}</span>
 					<span class="label">{slideLabel(slide.markdown)}</span>
 					{#if display.view === 'thumbnails'}
-						<SlideThumb markdown={slide.markdown} {aspect} />
+						<SlideThumb slideId={slide.id} markdown={slide.markdown} {aspect} />
 					{/if}
 				</button>
 				{#if isCurrent}
