@@ -43,6 +43,12 @@
 			<p class="waiting" role="status">Getting slides ready…</p>
 		{:else if view.state.shown}
 			<SlideStage slide={view.state.shown} {aspect} />
+		{:else if view.state.failure}
+			<p class="waiting" role="alert">
+				{#each view.state.failure as part, at (at)}
+					{#if typeof part === 'string'}{part}{:else}<code>{part.code}</code>{/if}
+				{/each}
+			</p>
 		{/if}
 	</div>
 </div>

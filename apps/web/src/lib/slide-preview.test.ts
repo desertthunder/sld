@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { nextPreview } from '#lib/slide-preview.ts';
-import type { RenderedSlide } from '#lib/slide-render.ts';
+import { RendererLoadError, type RenderedSlide } from '#lib/slide-render.ts';
 import type { SlideWarning } from '#lib/slide-meta.ts';
 
 function rendered(html: string, warnings: SlideWarning[] = []): RenderedSlide {
@@ -33,6 +33,17 @@ describe('nextPreview', () => {
 		const state = nextPreview(nextPreview(undefined, 'a', { slide: good }), 'a', { error: new Error('Boom') });
 		expect(state.shown).toBe(good);
 		expect(state.notices).toEqual([["This slide couldn't be shown: Boom"]]);
+	});
+
+	it("says in the stage's place that slides couldn't be loaded, only while there is no good render", () => {
+		const loadError = new RendererLoadError(new Error('Offline'));
+		const message = ["Slides couldn't be loaded. Reload the page to try again: Offline"];
+		const failed = nextPreview(undefined, 'a', { error: loadError });
+		expect(failed).toMatchObject({ shown: undefined, failure: message, notices: [message] });
+
+		const good = nextPreview(undefined, 'a', { slide: rendered('<h1>Good</h1>') });
+		expect(nextPreview(good, 'a', { error: loadError }).failure).toBeUndefined();
+		expect(nextPreview(undefined, 'a', { error: new Error('Boom') }).failure).toBeUndefined();
 	});
 
 	it('shows a slide whose frontmatter never parsed as it presents, with the block as text', () => {

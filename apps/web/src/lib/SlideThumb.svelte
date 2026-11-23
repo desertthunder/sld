@@ -3,6 +3,7 @@
 	import { nextPreview, type PreviewState, type RenderOutcome } from '#lib/slide-preview.ts';
 	import SlideStage from '#lib/SlideStage.svelte';
 	import type { Aspect } from '#lib/stage.ts';
+	import { thumbnailHtml } from '#lib/thumbnail-html.ts';
 
 	let { slideId, markdown, aspect }: { slideId: string; markdown: string; aspect: Aspect } = $props();
 
@@ -31,7 +32,8 @@
 		void (async () => {
 			let outcome: RenderOutcome;
 			try {
-				outcome = { slide: await renderSlide(text) };
+				const slide = await renderSlide(text);
+				outcome = { slide: { ...slide, html: thumbnailHtml(slide.html) } };
 			} catch (error) {
 				outcome = { error };
 			}
@@ -71,6 +73,15 @@
 		box-sizing: border-box;
 		background: var(--base00);
 		pointer-events: none;
+	}
+
+	.thumb :global([data-frame]) {
+		/* An iframe's own box: content-box sizing, with a 2px border. */
+		display: inline-block;
+		box-sizing: content-box;
+		border: 2px solid var(--base02);
+		background: var(--base01);
+		vertical-align: middle;
 	}
 
 	.fill {

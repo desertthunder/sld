@@ -169,6 +169,48 @@ test("a thumbnail keeps a slide's audio and video still", async ({ page }) => {
 	]);
 });
 
+test('a thumbnail draws an empty box in place of each iframe, and the preview keeps the iframe', async ({ page }) => {
+	const id = await createDeck(page, [
+		'# Embed\n\n<iframe src="/app/embedded" width="640" height="360"></iframe><iframe src="/app/embedded"></iframe>'
+	]);
+	const requests: string[] = [];
+	page.on('request', (request) => {
+		if (request.url().endsWith('/app/embedded')) requests.push(request.url());
+	});
+	// Opens in headings view, so only the preview's iframes load before the thumbnails show.
+	await page.addInitScript(() => localStorage.setItem('sld:slide-list-view', 'headings'));
+	await openDeck(page, id);
+	await expect(previewSlide(page).locator('iframe')).toHaveCount(2, { timeout: 30_000 });
+	await expect.poll(() => requests.length).toBe(2);
+
+	await slideList(page).getByRole('button', { name: 'Show thumbnails' }).click();
+	const thumbnail = thumbnails(page).first();
+	await expect(thumbnail.locator('article.slide h1')).toHaveText('Embed', { timeout: 30_000 });
+	await expect(thumbnail.locator('iframe')).toHaveCount(0);
+	const boxes = thumbnail.locator('[data-frame]');
+	await expect(boxes).toHaveCount(2);
+	const sizes = await boxes.evaluateAll(boxSizes);
+	const frameSizes = await previewSlide(page).locator('iframe').evaluateAll(boxSizes);
+	expect(sizes).toEqual(frameSizes);
+	expect(frameSizes).toEqual([
+		[644, 364],
+		[304, 154]
+	]);
+	expect(requests).toHaveLength(2);
+});
+
+test("before any slide renders, a renderer that couldn't load says so in the preview and under the editor", async ({
+	page
+}) => {
+	const id = await createDeck(page, ['# One']);
+	await page.route('**/satteri/**', (route) => route.abort());
+	await openDeck(page, id);
+	const message = "Slides couldn't be loaded. Reload the page to try again:";
+	await expect(previewPane(page).getByRole('alert')).toContainText(message, { timeout: 30_000 });
+	await expect(warnings(page)).toContainText(message);
+	await expect(previewSlide(page)).toHaveCount(0);
+});
+
 test('in the thumbnail view, adding, duplicating and deleting a slide move the thumbnails with their slides', async ({
 	page
 }) => {
@@ -285,6 +327,11 @@ test('typing in a 100-slide deck renders only the edited slide again', async ({ 
 	expect(redrawn.every((text) => text?.startsWith(`Slide 3${typed}`))).toBe(true);
 	await expect(thumbnails(page).nth(3).locator('article.slide')).toHaveAttribute('data-before', '');
 });
+
+/** Each element's laid-out width and height, before the stage scales them. */
+function boxSizes(elements: (HTMLElement | SVGElement)[]): number[][] {
+	return elements.map((element) => [(element as HTMLElement).offsetWidth, (element as HTMLElement).offsetHeight]);
+}
 
 /** The stage's size, its slide's HTML and classes, and the computed style of each element on it. */
 async function describeStage(page: Page, stage: ReturnType<Page['locator']>) {
