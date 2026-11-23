@@ -200,10 +200,48 @@ test('the deck title edits in place', async ({ page }) => {
 	await expect(page.getByRole('button', { name: 'Rename deck: Field notes on sleep' })).toBeVisible();
 });
 
-test('Present shows disabled until the presenter exists', async ({ page }) => {
+test('Present and the P key open the presenter on the selected slide, with the latest edit', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One', '# Two', '# Three']);
+	await openDeck(page, id, '?slide=2');
+	await page.getByRole('textbox', { name: /Markdown for slide/ }).fill('# Two, edited');
+	await page.getByRole('button', { name: /Present/ }).click();
+	await expect(page).toHaveURL(new RegExp(`/app/deck/${id}/present#2$`));
+	await expect(page.locator('article.slide h1')).toHaveText('Two, edited', { timeout: 30_000 });
+	await page.keyboard.press('Escape');
+	await expect(page).toHaveURL(/\?slide=2$/);
+	await slideList(page)
+		.getByRole('button', { name: /Slide 3/ })
+		.click();
+	await page.keyboard.press('p');
+	await expect(page).toHaveURL(new RegExp(`/app/deck/${id}/present#3$`));
+});
+
+test('Present waits for the latest edit to be stored before it leaves the editor', async ({ page }) => {
 	const id = await createDeck(page, 'Talk', ['# One']);
 	await openDeck(page, id);
-	await expect(page.getByRole('button', { name: /Present/ })).toBeDisabled();
+	await page.evaluate(async (url) => {
+		const { openDatabase } = (await import(url)) as typeof DatabaseModule;
+		const { $client } = await openDatabase();
+		// Holds the database, so the edit's write waits until the transaction ends.
+		void $client.transaction(() => new Promise((resolve) => setTimeout(resolve, 3000)));
+	}, modules.database);
+	await editor(page).fill('# One, edited');
+	await page.getByRole('button', { name: /Present/ }).click();
+	await page.waitForTimeout(1500);
+	await expect(page).toHaveURL(/\?slide=1$/);
+	await expect(page).toHaveURL(new RegExp(`/app/deck/${id}/present#1$`), { timeout: 30_000 });
+	await expect(page.locator('article.slide h1')).toHaveText('One, edited', { timeout: 30_000 });
+});
+
+test('P typed in the markdown stays text', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	const markdown = page.getByRole('textbox', { name: /Markdown for slide/ });
+	await markdown.fill('# One');
+	await markdown.press('End');
+	await markdown.press('p');
+	await expect(markdown).toHaveValue('# Onep');
+	await expect(page).toHaveURL(/\?slide=1$/);
 });
 
 test('toolbar icons sit beside their text and stay hidden from assistive technology', async ({ page }) => {

@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gt, gte, sql } from 'drizzle-orm';
 import { writeDurably, type Database } from '#lib/database.ts';
+import type { DeckSettings } from '#lib/deck-settings.ts';
 import { decks, slides } from '#lib/schema.ts';
 import { isUuid } from '#lib/uuid.ts';
 
@@ -10,14 +11,15 @@ export type Slide = typeof slides.$inferSelect;
 export type DeckWithSlides = Deck & { slides: Slide[] };
 
 /**
- * What a new deck needs: its title, and optionally its id, scheme, aspect and the markdown of its slides in order. Give
- * an id to make the write safe to repeat: a second deck with the same id fails to insert.
+ * What a new deck needs: its title, and optionally its id, scheme, aspect, settings and the markdown of its slides in
+ * order. Give an id to make the write safe to repeat: a second deck with the same id fails to insert.
  */
 export type NewDeck = {
 	id?: string;
 	title: string;
 	scheme?: string | null;
 	aspect?: string;
+	settings?: DeckSettings | null;
 	slides?: readonly string[];
 };
 

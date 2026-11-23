@@ -1,4 +1,4 @@
-import { integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 
 /** The migrations already applied to this database, by the tag drizzle-kit gave each one. */
 export const appliedMigrations = pgTable('migrations', {
@@ -6,12 +6,16 @@ export const appliedMigrations = pgTable('migrations', {
 	appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow()
 });
 
-/** A deck. `scheme` is the slug of its Base16 scheme, or null for the app's default schemes. */
+/**
+ * A deck. `scheme` is the slug of its Base16 scheme, or null for the app's default schemes. `settings` holds how it
+ * presents, as `#lib/deck-settings.ts` reads it, or null for the defaults.
+ */
 export const decks = pgTable('decks', {
 	id: uuid().primaryKey().defaultRandom(),
 	title: text().notNull(),
 	scheme: text(),
 	aspect: text().notNull().default('16:9'),
+	settings: jsonb(),
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 });
