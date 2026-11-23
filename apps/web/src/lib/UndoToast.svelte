@@ -70,7 +70,7 @@
 		padding: 8px 8px 8px 20px;
 		box-sizing: border-box;
 		background: var(--heading);
-		color: var(--background);
+		color: var(--bg);
 		border-radius: 12px;
 		box-shadow:
 			0 4px 8px var(--shadow),
@@ -95,7 +95,7 @@
 		border: 0;
 		border-radius: 8px;
 		background: transparent;
-		color: var(--background);
+		color: var(--bg);
 		font: 700 15px var(--ui-font);
 		text-decoration: underline;
 		text-underline-offset: 4px;
@@ -103,12 +103,12 @@
 	}
 
 	button:hover {
-		background: color-mix(in oklab, var(--background) 14%, transparent);
+		background: color-mix(in oklab, var(--bg) 14%, transparent);
 	}
 
 	/* The toast inverts the page's colors, so the page background is what stands out on it. */
 	button:focus-visible {
-		outline: 3px solid var(--background);
+		outline: 3px solid var(--bg);
 		outline-offset: 1px;
 	}
 

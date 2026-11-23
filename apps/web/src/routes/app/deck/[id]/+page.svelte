@@ -5,16 +5,21 @@
 	import DeckEditor from '#lib/DeckEditor.svelte';
 	import DeckNotFound from '#lib/DeckNotFound.svelte';
 	import EditorFrame from '#lib/EditorFrame.svelte';
+	import type { Scheme } from '#lib/scheme-compiler.ts';
+	import { loadSchemes } from '#lib/schemes.ts';
 
 	type Loaded =
-		{ status: 'loading' } | { status: 'missing' } | { status: 'found'; database: Database; deck: DeckWithSlides };
+		| { status: 'loading' }
+		| { status: 'missing' }
+		| { status: 'found'; database: Database; deck: DeckWithSlides; schemes: Scheme[] };
 
 	const view: { loaded: Loaded } = $state({ loaded: { status: 'loading' } });
 
 	async function load(id: string): Promise<Loaded> {
-		const [{ openDatabase }, { getDeck, insertSlide }] = await Promise.all([
+		const [{ openDatabase }, { getDeck, insertSlide }, schemes] = await Promise.all([
 			import('#lib/database.ts'),
-			import('#lib/decks.ts')
+			import('#lib/decks.ts'),
+			loadSchemes()
 		]);
 		const database = await openDatabase();
 		let deck = await getDeck(database, id);
@@ -22,7 +27,7 @@
 			await insertSlide(database, deck.id, 0, '');
 			deck = await getDeck(database, id);
 		}
-		return deck ? { status: 'found', database, deck } : { status: 'missing' };
+		return deck ? { status: 'found', database, deck, schemes } : { status: 'missing' };
 	}
 
 	$effect(() => {
@@ -44,6 +49,7 @@
 		<DeckEditor
 			database={view.loaded.database}
 			deck={view.loaded.deck}
+			schemes={view.loaded.schemes}
 			onmissing={() => (view.loaded = { status: 'missing' })} />
 	{/key}
 {:else if view.loaded.status === 'missing'}

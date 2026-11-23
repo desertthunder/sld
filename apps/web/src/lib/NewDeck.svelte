@@ -109,7 +109,7 @@
 		box-sizing: border-box;
 		padding: 14px 16px;
 		resize: vertical;
-		background: var(--background);
+		background: var(--bg);
 		color: var(--text);
 		border: 1px solid var(--border);
 		border-radius: 10px;

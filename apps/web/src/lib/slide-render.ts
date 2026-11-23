@@ -32,6 +32,9 @@ export class RendererLoadError extends Error {
 	}
 }
 
+/** How many times `renderSlide` was called in this page, cached calls included, so a test can count renders. */
+export const renderCount = { calls: 0 };
+
 const cache = new Map<string, RenderedSlide>();
 const renderer: { loading?: Promise<Renderer> } = {};
 
@@ -48,6 +51,7 @@ function loadRenderer(): Promise<Renderer> {
  * on, and raw HTML passes through, since the markdown is the person's own. Results are cached by markdown and options.
  */
 export async function renderSlide(markdown: string, options: SlideOptions = defaultOptions): Promise<RenderedSlide> {
+	renderCount.calls++;
 	const key = `${options.lineNumbers ? 'numbered' : 'plain'}\n${markdown}`;
 	const cached = cache.get(key);
 	if (cached) {

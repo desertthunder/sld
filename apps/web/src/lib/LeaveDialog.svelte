@@ -42,7 +42,7 @@
 		margin: 0;
 		padding: 24px;
 		border: 0;
-		background: color-mix(in oklab, var(--background) 72%, transparent);
+		background: color-mix(in oklab, var(--bg) 72%, transparent);
 		color: var(--text);
 		font-family: var(--ui-font);
 	}
@@ -96,7 +96,7 @@
 	}
 
 	.leave:hover {
-		background: var(--background);
+		background: var(--bg);
 	}
 
 	.stay {

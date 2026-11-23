@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { goto, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -16,17 +17,21 @@
 		type PresenterAction
 	} from '#lib/presenter-navigation.ts';
 	import { exitFullscreen, isFullscreen, keepScreenOn, toggleFullscreen } from '#lib/screen.ts';
+	import { resolveScheme } from '#lib/scheme-choice.ts';
+	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import ShortcutsHelp from '#lib/ShortcutsHelp.svelte';
 	import Slide from '#lib/Slide.svelte';
-	import { defaultAspect, type Aspect } from '#lib/stage.ts';
+	import { deckAspect } from '#lib/stage.ts';
 
-	let { deck }: { deck: DeckWithSlides } = $props();
+	let { deck, schemes }: { deck: DeckWithSlides; schemes: readonly Scheme[] } = $props();
 
 	// A deck with no slides presents one blank slide, as the editor gives it one.
 	const markdowns = $derived(deck.slides.length > 0 ? deck.slides.map(({ markdown }) => markdown) : ['']);
 	const total = $derived(markdowns.length);
 	const settings = $derived(presentSettings(deck.settings));
-	const aspect: Aspect = $derived(deck.aspect === '4:3' ? '4:3' : defaultAspect);
+	const aspect = $derived(deckAspect(deck.aspect));
+	const prefersLight = new MediaQuery('prefers-color-scheme: light');
+	const scheme = $derived(resolveScheme(schemes, deck.scheme, prefersLight.current ? 'light' : 'dark'));
 
 	const view = $state({ index: 0, isHelpOpen: false, areControlsShown: false });
 	const number = $derived(view.index + 1);
@@ -138,7 +143,7 @@
 <!-- Keys work anywhere on the page, so the tap zones need no key handler of their own. -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="presenter" class:idle={!view.areControlsShown} onpointermove={showControls} {onclick}>
-	<Slide markdown={markdowns[view.index] ?? ''} {aspect}>
+	<Slide markdown={markdowns[view.index] ?? ''} {aspect} {scheme} {schemes}>
 		{#snippet overlay()}
 			{#if settings.slideNumber}
 				<span class="number" aria-hidden="true">{number} / {total}</span>
@@ -197,7 +202,7 @@
 		position: fixed;
 		inset: 0;
 		overflow: hidden;
-		background: var(--background);
+		background: var(--bg);
 		font-family: var(--ui-font);
 		-webkit-font-smoothing: antialiased;
 		user-select: none;
@@ -223,7 +228,7 @@
 		right: 0;
 		bottom: 0;
 		height: 4px;
-		background: color-mix(in oklab, var(--border) 70%, var(--background));
+		background: color-mix(in oklab, var(--border) 70%, var(--bg));
 	}
 
 	.filled {
@@ -290,7 +295,7 @@
 		font-family: var(--code-font);
 		font-size: 13px;
 		text-align: center;
-		color: var(--text);
+		color: var(--body);
 	}
 
 	.separator {

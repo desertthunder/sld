@@ -244,8 +244,8 @@
 
 		min-height: 100vh;
 		overflow-x: clip;
-		background: var(--background);
-		color: var(--text);
+		background: var(--bg);
+		color: var(--body);
 		font-family: var(--ui-font);
 		font-size: 18px;
 		line-height: 1.55;
@@ -347,7 +347,7 @@
 	.ghost {
 		padding: 0 20px;
 		border: 1px solid var(--border);
-		color: var(--text);
+		color: var(--body);
 	}
 
 	.ghost:hover {
@@ -407,7 +407,7 @@
 		border: 1px solid var(--border);
 		border-radius: 12px;
 		background: var(--surface);
-		color: var(--text);
+		color: var(--body);
 		caret-color: var(--accent);
 		font-family: var(--code-font);
 		font-size: 14.5px;
@@ -491,7 +491,7 @@
 		);
 	}
 
-	.face :global(.frame) {
+	.face :global(:is(.frame, .stage)) {
 		background: transparent;
 	}
 
@@ -502,7 +502,7 @@
 		font-family: var(--code-font);
 		font-size: 13px;
 		line-height: 1.6;
-		color: var(--text);
+		color: var(--body);
 		white-space: pre-wrap;
 	}
 
@@ -567,7 +567,7 @@
 		border: 1px solid var(--border);
 		border-top: 0;
 		border-radius: 0 0 18px 18px;
-		background: var(--background);
+		background: var(--bg);
 		box-shadow: 0 18px 40px var(--shadow);
 	}
 
@@ -655,8 +655,8 @@
 		overflow: hidden;
 		border: 1px solid var(--border);
 		border-radius: 10px;
-		background: var(--background);
-		color: var(--text);
+		background: var(--bg);
+		color: var(--body);
 	}
 
 	.swatches {

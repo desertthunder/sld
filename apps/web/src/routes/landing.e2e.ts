@@ -60,6 +60,17 @@ test('a note pasted on the landing page opens in /app as one new deck with the s
 	expect(await savedDecks(page)).toEqual(expected);
 });
 
+test('the index cards keep their ruled lines under the slide', async ({ page }) => {
+	await page.goto('/');
+	const stage = page.locator('.fan .face .stage').first();
+	await expect(stage.locator('article.slide')).toBeVisible({ timeout: 30_000 });
+	const transparent = 'rgba(0, 0, 0, 0)';
+	expect(await stage.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(transparent);
+	expect(await stage.evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor)).toBe(
+		transparent
+	);
+});
+
 test('the landing page draws and responds before PGlite has downloaded', async ({ page }) => {
 	const { promise: released, resolve: release } = Promise.withResolvers<void>();
 	const { promise: held, resolve: hold } = Promise.withResolvers<void>();
@@ -143,4 +154,11 @@ test('a slide takes the layout and classes its frontmatter names, and keeps its 
 	}
 	await preview.fill('---\nlayout: two-column\n---\n# Hi');
 	await expect(slide).toHaveClass(/^slide layout-default\b/);
+});
+
+test("the slides on the index cards let the card's ruled lines show through", async ({ page }) => {
+	await page.goto('/');
+	const stage = page.locator('.card .face .stage').first();
+	await expect(stage.locator('article.slide')).toBeVisible({ timeout: 30_000 });
+	await expect(stage).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 });

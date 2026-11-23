@@ -277,7 +277,7 @@
 		--display-font: 'Hubot Sans Variable', 'Mona Sans Variable', system-ui, sans-serif;
 		--code-font: 'Monaspace Neon', ui-monospace, monospace;
 
-		background: var(--background);
+		background: var(--bg);
 		color: var(--text);
 		font-family: var(--ui-font);
 		font-size: 16px;
@@ -416,7 +416,7 @@
 		padding: 0 20px;
 		border: 1px solid var(--border);
 		border-radius: 10px;
-		background: var(--background);
+		background: var(--bg);
 		color: var(--heading);
 		font: 600 15px var(--ui-font);
 		cursor: pointer;
