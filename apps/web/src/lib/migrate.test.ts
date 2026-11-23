@@ -4,12 +4,19 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { migrations } from 'virtual:migrations';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrate, missingMigrations, openMigrated, type Migration } from '#lib/migrate.ts';
 import { openInWorker, type WorkerScope } from '#lib/open-in-worker.ts';
 import * as schema from '#lib/schema.ts';
+import { resetTestDatabase } from '#lib/test-database.ts';
 
 const folder = fileURLToPath(new URL('../../drizzle', import.meta.url));
+
+const client = new PGlite();
+
+afterAll(async () => {
+	await client.close();
+});
 
 async function tableNames(client: PGlite): Promise<string[]> {
 	const result = await client.query<{ name: string }>(
@@ -18,7 +25,7 @@ async function tableNames(client: PGlite): Promise<string[]> {
 	return result.rows.map(({ name }) => name);
 }
 
-async function appliedTags(client: PGlite): Promise<string[]> {
+async function appliedTags(): Promise<string[]> {
 	const result = await client.query<{ tag: string }>('select tag from migrations order by tag');
 	return result.rows.map(({ tag }) => tag);
 }
@@ -52,34 +59,33 @@ async function withoutReorderedUniques(client: PGlite, statements: string[]): Pr
 	);
 }
 
-// Each case starts PGlite and introspects it, which takes a few seconds when every suite runs at once.
+// Each case introspects the database, which takes a few seconds when every suite runs at once.
 describe('the migrations drizzle-kit wrote', { timeout: 30_000 }, () => {
+	beforeEach(async () => {
+		await resetTestDatabase(client, []);
+	});
+
 	it.for([...migrations.keys(), migrations.length])(
 		'bring a database after %i of them to the schema',
 		async (start) => {
-			const client = new PGlite();
 			await migrate(client, migrations.slice(0, start));
 			await migrate(client, migrations);
 			const { statementsToExecute } = await pushSchema(schema, drizzle({ client }));
 			expect(await withoutReorderedUniques(client, statementsToExecute)).toEqual([]);
-			expect(await appliedTags(client)).toEqual(migrations.map(({ tag }) => tag));
-			await client.close();
+			expect(await appliedTags()).toEqual(migrations.map(({ tag }) => tag));
 		}
 	);
 
 	it('keep the rows of a database migrated before the decks tables existed', async () => {
-		const client = new PGlite();
 		await migrate(client, migrations.slice(0, 1));
 		const before = await client.query('select tag, applied_at from migrations');
 		await migrate(client, migrations);
 		const after = await client.query('select tag, applied_at from migrations order by tag');
 		expect(after.rows.slice(0, 1)).toEqual(before.rows);
 		expect(await tableNames(client)).toEqual(['decks', 'migrations', 'slides']);
-		await client.close();
 	});
 
 	it('keep the decks and slides of a database migrated before decks had settings', async () => {
-		const client = new PGlite();
 		const before = migrations.findIndex(({ tag }) => tag === '0002_add_deck_settings');
 		await migrate(client, migrations.slice(0, before));
 		const inserted = await client.query<{ id: string }>(
@@ -98,18 +104,15 @@ describe('the migrations drizzle-kit wrote', { timeout: 30_000 }, () => {
 		expect(migratedDecks.rows).toEqual(decks.rows.map((row) => expect.objectContaining(row)));
 		expect(withoutSettings.rows).toHaveLength(decks.rows.length);
 		expect(migratedSlides.rows).toEqual(slides.rows);
-		await client.close();
 	});
 
 	it('make the unique slide position per deck deferrable, so one statement can renumber slides', async () => {
-		const client = new PGlite();
 		await migrate(client, migrations);
 		const result = await client.query<{ deferrable: boolean; deferred: boolean }>(
 			`select condeferrable as deferrable, condeferred as deferred from pg_constraint
 			where conname = 'slides_deck_id_position_unique'`
 		);
 		expect(result.rows).toEqual([{ deferrable: true, deferred: false }]);
-		await client.close();
 	});
 
 	it('end with a snapshot that matches the schema, so the next generate writes only new changes', async () => {
@@ -124,20 +127,18 @@ const notes: Migration = { tag: '0001_notes', sql: 'create table notes (id seria
 const titles: Migration = { tag: '0002_titles', sql: `alter table notes add column title text not null default '';` };
 
 describe('migrate', () => {
-	let client: PGlite;
-
-	beforeEach(() => {
-		client = new PGlite();
+	beforeEach(async () => {
+		await resetTestDatabase(client, []);
 	});
 
-	afterEach(async () => {
-		if (!client.closed) await client.close();
+	afterEach(() => {
+		vi.restoreAllMocks();
 	});
 
 	it('applies every migration to a fresh database', async () => {
 		await migrate(client, [create, notes, titles]);
 		expect(await tableNames(client)).toEqual(['migrations', 'notes']);
-		expect(await appliedTags(client)).toEqual([create.tag, notes.tag, titles.tag]);
+		expect(await appliedTags()).toEqual([create.tag, notes.tag, titles.tag]);
 	});
 
 	it('applies only the missing migration to a database one behind, keeping its decks', async () => {
@@ -149,7 +150,7 @@ describe('migrate', () => {
 			{ body: 'first slide', title: '' },
 			{ body: 'second slide', title: '' }
 		]);
-		expect(await appliedTags(client)).toEqual([create.tag, notes.tag, titles.tag]);
+		expect(await appliedTags()).toEqual([create.tag, notes.tag, titles.tag]);
 	});
 
 	it('does nothing when every migration is applied', async () => {
@@ -157,7 +158,7 @@ describe('migrate', () => {
 		const onProgress = vi.fn();
 		await migrate(client, [create, notes], onProgress);
 		expect(onProgress).not.toHaveBeenCalled();
-		expect(await appliedTags(client)).toEqual([create.tag, notes.tag]);
+		expect(await appliedTags()).toEqual([create.tag, notes.tag]);
 	});
 
 	it('reports progress through the migrations it applies', async () => {
@@ -203,7 +204,7 @@ describe('migrate', () => {
 			'Migration 0001_broken failed: relation "missing" does not exist'
 		);
 		expect(await tableNames(client)).toEqual(['migrations']);
-		expect(await appliedTags(client)).toEqual([create.tag]);
+		expect(await appliedTags()).toEqual([create.tag]);
 	});
 
 	it('rolls back a migration whose SQL ran when recording it fails', async () => {
@@ -211,19 +212,17 @@ describe('migrate', () => {
 		const reused: Migration = { tag: notes.tag, sql: 'create table others (id serial primary key);' };
 		await expect(migrate(client, [create, notes, reused])).rejects.toThrow(`Migration ${notes.tag} failed`);
 		expect(await tableNames(client)).toEqual(['migrations', 'notes']);
-		expect(await appliedTags(client)).toEqual([create.tag, notes.tag]);
+		expect(await appliedTags()).toEqual([create.tag, notes.tag]);
 	});
 });
 
 describe('missingMigrations', () => {
-	let client: PGlite;
-
-	beforeEach(() => {
-		client = new PGlite();
+	beforeEach(async () => {
+		await resetTestDatabase(client, []);
 	});
 
-	afterEach(async () => {
-		await client.close();
+	afterEach(() => {
+		vi.restoreAllMocks();
 	});
 
 	it('lists the migration a database one behind lacks, and changes nothing', async () => {
@@ -234,7 +233,7 @@ describe('missingMigrations', () => {
 		expect(await missingMigrations(client, [create, notes, titles])).toEqual([titles.tag]);
 		expect(exec).not.toHaveBeenCalled();
 		expect(transaction).not.toHaveBeenCalled();
-		expect(await appliedTags(client)).toEqual([create.tag, notes.tag]);
+		expect(await appliedTags()).toEqual([create.tag, notes.tag]);
 		const decks = await client.query('select * from notes');
 		expect(decks.rows).toEqual([{ id: 1, body: 'first slide' }]);
 	});
