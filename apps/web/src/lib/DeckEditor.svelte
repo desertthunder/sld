@@ -28,6 +28,7 @@
 	import { applyDeckChanges, getDeck, type DeckChange, type DeckWithSlides } from '#lib/decks.ts';
 	import DeckTitle from '#lib/DeckTitle.svelte';
 	import EditorFrame from '#lib/EditorFrame.svelte';
+	import LeaveDialog from '#lib/LeaveDialog.svelte';
 	import PaneHandle from '#lib/PaneHandle.svelte';
 	import { hashForSlide } from '#lib/presenter-navigation.ts';
 	import SlideList from '#lib/SlideList.svelte';
@@ -293,21 +294,56 @@
 		return () => removeEventListener('beforeunload', warnBeforeUnload);
 	});
 
-	// Going elsewhere in the app keeps the page, so instead of asking, it waits for the changes to be stored, and the
-	// page it goes to reads them. Back and forward go at once; the writes still finish in the background.
-	const leaving: { to?: string; isFlushing: boolean; isFlushed: boolean } = { isFlushing: false, isFlushed: false };
+	// Going elsewhere in the app keeps the page, so it first waits for the changes to be stored, and the page it goes to
+	// reads them; only when that fails does it ask. Back and forward go at once; the writes still finish in the
+	// background.
+	const leaving: {
+		to?: string;
+		opener?: Element;
+		isFlushing: boolean;
+		isFlushed: boolean;
+		answer?: (shouldLeave: boolean) => void;
+	} = { isFlushing: false, isFlushed: false };
+	const asking = $state({ isOpen: false });
+
+	function shouldLeave(): Promise<boolean> {
+		asking.isOpen = true;
+		return new Promise((resolve) => (leaving.answer = resolve));
+	}
+
+	function answerLeave(shouldLeave: boolean) {
+		const { answer, opener } = leaving;
+		leaving.answer = undefined;
+		asking.isOpen = false;
+		if (!shouldLeave && opener instanceof HTMLElement && opener.isConnected) opener.focus();
+		answer?.(shouldLeave);
+	}
+
 	beforeNavigate((navigation) => {
-		if (navigation.type === 'popstate') leaving.to = undefined;
+		if (navigation.type === 'popstate') {
+			leaving.to = undefined;
+			if (asking.isOpen) answerLeave(false);
+		}
 		if (navigation.willUnload || !navigation.to || navigation.type === 'popstate') return;
 		if (leaving.isFlushed && leaving.to === navigation.to.url.href) return;
+		if (asking.isOpen) {
+			navigation.cancel();
+			return;
+		}
 		if (!leaving.isFlushing && editor.status === 'saved') return;
 		navigation.cancel();
 		leaving.to = navigation.to.url.href;
 		if (leaving.isFlushing) return;
 		leaving.isFlushing = true;
+		leaving.opener = document.activeElement ?? undefined;
 		void flush().then(async () => {
 			leaving.isFlushing = false;
 			// Back or forward since the link, or the editor already gone, means the person went elsewhere meanwhile.
+			if (leaving.to === undefined || changes.isDestroyed) return;
+			if (editor.status === 'failed' && !(await shouldLeave())) {
+				leaving.to = undefined;
+				return;
+			}
 			if (leaving.to === undefined || changes.isDestroyed) return;
 			leaving.isFlushed = true;
 			try {
@@ -383,6 +419,7 @@
 	const typing = 'input, textarea, select, [contenteditable]';
 
 	function onkeydown(event: KeyboardEvent) {
+		if (asking.isOpen) return;
 		const isModified = event.ctrlKey || event.metaKey || event.altKey;
 		const isTyping = event.target instanceof Element && event.target.closest(typing) !== null;
 		if (isModified || isTyping || event.defaultPrevented || event.repeat || event.key.toLowerCase() !== 'p') return;
@@ -514,6 +551,7 @@
 			<div class="preview"></div>
 		</section>
 	</div>
+	<LeaveDialog open={asking.isOpen} onchoose={answerLeave} />
 </EditorFrame>
 
 <style>

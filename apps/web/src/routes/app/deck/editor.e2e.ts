@@ -41,6 +41,7 @@ const slideItems = (page: Page) => slideList(page).locator('button[data-index]')
 const selectedItem = (page: Page) => slideList(page).locator('button[aria-current="true"]');
 const editor = (page: Page) => page.getByRole('textbox', { name: /^Markdown for slide/ });
 const saveState = (page: Page) => page.getByRole('banner').locator('.saved');
+const leaveDialog = (page: Page) => page.getByRole('dialog', { name: "Some changes weren't saved. Leave anyway?" });
 
 async function openDeck(page: Page, id: string, search = '') {
 	await page.goto(`/app/deck/${id}${search}`);
@@ -312,6 +313,7 @@ test('a change that fails while leaving the deck leaves the URL alone', async ({
 	await page.waitForTimeout(300);
 	await expect(page).toHaveURL(/\/app\/deck\//);
 	await release();
+	await leaveDialog(page).getByRole('button', { name: 'Leave' }).click();
 	await expect(page).toHaveURL(/\/app$/);
 	// Each read waits behind the failed insert and the read-back it would start.
 	await storedSlides(page, id);
@@ -380,6 +382,51 @@ test('going to the deck list waits for the changes to be stored first', async ({
 	await release();
 	await expect(page).toHaveURL(/\/app$/);
 	expect(await storedSlides(page, id)).toEqual(['# One', '', '']);
+});
+
+test('a link that cannot store the changes first asks, and Stay keeps the editor as it is', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await failSlideWrites(page, 'UPDATE');
+	await editor(page).fill('# One, edited');
+	const decks = page.getByRole('link', { name: /Decks/ });
+	await decks.click();
+	await expect(leaveDialog(page)).toBeVisible();
+	await expect(leaveDialog(page)).toHaveText(/^\s*Some changes weren't saved\. Leave anyway\?\s*Leave\s*Stay\s*$/);
+	await expect(leaveDialog(page).getByRole('button', { name: 'Stay' })).toBeFocused();
+	await leaveDialog(page).getByRole('button', { name: 'Stay' }).click();
+	await expect(leaveDialog(page)).toBeHidden();
+	await expect(decks).toBeFocused();
+	await expect(page).toHaveURL(new RegExp(`/app/deck/${id}`));
+	await expect(saveState(page)).toHaveText('Not saved');
+	await expect(editor(page)).toHaveValue('# One, edited');
+	await decks.click();
+	await expect(leaveDialog(page)).toBeVisible();
+	await leaveDialog(page).getByRole('button', { name: 'Leave' }).click();
+	await expect(page).toHaveURL(/\/app$/);
+	expect(await storedSlides(page, id)).toEqual(['# One']);
+});
+
+test('Present and P ask the same when the changes cannot be stored, and Escape stays', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await failSlideWrites(page, 'UPDATE');
+	await editor(page).fill('# One, edited');
+	const present = page.getByRole('button', { name: /Present/ });
+	await present.click();
+	await expect(leaveDialog(page)).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(leaveDialog(page)).toBeHidden();
+	await expect(present).toBeFocused();
+	await expect(page).toHaveURL(/\?slide=1$/);
+	await expect(saveState(page)).toHaveText('Not saved');
+	await selectedItem(page).focus();
+	await page.keyboard.press('p');
+	await expect(leaveDialog(page)).toBeVisible();
+	await page.keyboard.press('p');
+	await expect(page).toHaveURL(/\?slide=1$/);
+	await leaveDialog(page).getByRole('button', { name: 'Leave' }).click();
+	await expect(page).toHaveURL(new RegExp(`/app/deck/${id}/present#1$`));
 });
 
 test('twenty quick presses of N save within seconds, and a reload shows them all', async ({ page }) => {
