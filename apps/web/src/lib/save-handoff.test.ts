@@ -1,11 +1,10 @@
 import { PGlite } from '@electric-sql/pglite';
-import { migrations } from 'virtual:migrations';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createDatabase, type Database } from '#lib/database.ts';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createDatabase } from '#lib/database.ts';
 import * as decks from '#lib/decks.ts';
 import { handOff, handoffKey } from '#lib/handoff.ts';
-import { migrate } from '#lib/migrate.ts';
 import { saveHandoff } from '#lib/save-handoff.ts';
+import { resetTestDatabase } from '#lib/test-database.ts';
 
 const id = '1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b';
 const note = '# Field notes on sleep\n\nWhat I learned.\n\n---\n\n## The pattern\n\n- Late coffee\n';
@@ -21,17 +20,18 @@ function memoryStorage() {
 }
 
 describe('saveHandoff', { timeout: 30_000 }, () => {
-	let client: PGlite;
-	let database: Database;
+	const client = new PGlite();
+	const database = createDatabase(client);
 
 	beforeEach(async () => {
-		client = new PGlite();
-		await migrate(client, migrations);
-		database = createDatabase(client);
+		await resetTestDatabase(client);
 	});
 
-	afterEach(async () => {
+	afterEach(() => {
 		vi.restoreAllMocks();
+	});
+
+	afterAll(async () => {
 		await client.close();
 	});
 

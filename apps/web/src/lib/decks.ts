@@ -42,9 +42,10 @@ async function slideCount(tx: Transaction, deckId: string): Promise<number> {
 	return row?.total ?? 0;
 }
 
-// Postgres text cannot hold U+0000. CommonMark replaces it with U+FFFD, so markdown means the same either way.
+// Postgres text cannot hold U+0000, and JSON cast to `jsonb` refuses a lone surrogate. CommonMark replaces U+0000 with
+// U+FFFD, and so does encoding text as UTF-8 a lone surrogate, so markdown means the same either way.
 function storable(text: string): string {
-	return text.replaceAll('\0', '\u{FFFD}');
+	return text.replaceAll('\0', '\u{FFFD}').toWellFormed();
 }
 
 // Postgres binds at most 65,535 parameters to one statement, and each slide row takes three.
@@ -291,4 +292,158 @@ export function restoreDecks(database: Database, removed: readonly DeckWithSlide
 		}
 		return restored;
 	});
+}
+
+/**
+ * One change to a deck, as `applyDeckChanges` takes it: an edit to a slide's markdown, a new slide at a position, a
+ * copy of a slide right after it, a slide to delete, or a new title.
+ */
+export type DeckChange =
+	| { kind: 'update'; id: string; markdown: string }
+	| { kind: 'insert'; id: string; position: number; markdown: string }
+	| { kind: 'duplicate'; of: string; id: string; markdown: string }
+	| { kind: 'delete'; id: string }
+	| { kind: 'rename'; title: string };
+
+// A slide as a batch leaves it: whether the batch inserts it, and its markdown when the batch sets that.
+type BatchSlide = { id: string; isNew: boolean; markdown?: string };
+
+/**
+ * Applies `changes` to a deck in order, in one transaction made durable once, and resolves to whether each one applied.
+ * A change doesn't apply when its slide is gone, when it would delete the deck's last slide, or when the deck is gone,
+ * which applies none. After a change that doesn't apply, the inserts, copies and deletes are skipped too, since they
+ * were asked for on a list that no longer matches; edits and renames still apply. A failure rolls back every change.
+ */
+export function applyDeckChanges(
+	database: Database,
+	deckId: string,
+	changes: readonly DeckChange[]
+): Promise<boolean[]> {
+	return write(database, async (tx) => {
+		const applied: boolean[] = changes.map(() => false);
+		if (!isUuid(deckId) || changes.length === 0) return applied;
+		const title = changes.findLast((change) => change.kind === 'rename')?.title;
+		const touched = await tx
+			.update(decks)
+			.set({ updatedAt: sql`now()`, ...(title !== undefined && { title: storable(title) }) })
+			.where(eq(decks.id, deckId))
+			.returning({ id: decks.id });
+		if (touched.length === 0) return applied;
+		// Each statement is several round trips to the database worker, so the batch is worked out here and written with
+		// a few statements whatever its size.
+		if (changes.every(({ kind }) => kind === 'update' || kind === 'rename')) {
+			return applyEdits(tx, deckId, changes);
+		}
+		const stored = await tx
+			.select({ id: slides.id, position: slides.position })
+			.from(slides)
+			.where(eq(slides.deckId, deckId))
+			.orderBy(asc(slides.position));
+		const list: BatchSlide[] = stored.map(({ id }) => ({ id, isNew: false }));
+		const deleted: string[] = [];
+		let isStale = false;
+		for (const [index, change] of changes.entries()) {
+			if (isStale && change.kind !== 'update' && change.kind !== 'rename') continue;
+			const isApplied = didApplyToList(list, deleted, change);
+			applied[index] = isApplied;
+			if (!isApplied) isStale = true;
+		}
+		await writeList(tx, deckId, stored, list, deleted);
+		return applied;
+	});
+}
+
+/** Applies a batch of edits and renames, which need no list of the slides. */
+async function applyEdits(tx: Transaction, deckId: string, changes: readonly DeckChange[]): Promise<boolean[]> {
+	const markdowns = new Map<string, string>();
+	for (const change of changes) {
+		if (change.kind === 'update' && isUuid(change.id)) markdowns.set(change.id, change.markdown);
+	}
+	const found = new Set(await updateMarkdowns(tx, deckId, markdowns));
+	return changes.map((change) => change.kind === 'rename' || found.has(change.id));
+}
+
+/** Applies one change to `list`, noting the stored slides it deletes, and returns whether it applied. */
+function didApplyToList(list: BatchSlide[], deleted: string[], change: DeckChange): boolean {
+	switch (change.kind) {
+		case 'rename': {
+			return true;
+		}
+		case 'update': {
+			const slide = list.find(({ id }) => id === change.id);
+			if (slide) slide.markdown = change.markdown;
+			return slide !== undefined;
+		}
+		case 'insert': {
+			const at = clampPosition(change.position, list.length);
+			list.splice(at, 0, { id: change.id, isNew: true, markdown: change.markdown });
+			return true;
+		}
+		case 'duplicate': {
+			const at = list.findIndex(({ id }) => id === change.of);
+			if (at === -1) return false;
+			list.splice(at + 1, 0, { id: change.id, isNew: true, markdown: change.markdown });
+			return true;
+		}
+		case 'delete': {
+			const at = list.findIndex(({ id }) => id === change.id);
+			if (at === -1 || list.length <= 1) return false;
+			const [slide] = list.splice(at, 1);
+			if (!slide!.isNew) deleted.push(slide!.id);
+			return true;
+		}
+	}
+}
+
+/** Writes `list` over the deck's `stored` slides: deletes, then new positions, then new slides and markdown. */
+async function writeList(
+	tx: Transaction,
+	deckId: string,
+	stored: readonly { id: string; position: number }[],
+	list: readonly BatchSlide[],
+	deleted: readonly string[]
+) {
+	const positions = new Map(stored.map(({ id, position }) => [id, position]));
+	const placed = list.map((slide, position) => ({ ...slide, position }));
+	const moved = placed
+		.filter(({ id, isNew, position }) => !isNew && positions.get(id) !== position)
+		.map(({ id, position }) => ({ id, position }));
+	const added = placed
+		.filter(({ isNew }) => isNew)
+		.map(({ id, position, markdown = '' }) => ({ id, deckId, position, markdown: storable(markdown) }));
+	if (deleted.length > 0) {
+		// The count is in the statement, so the deck ends with a slide whatever this batch believed it held.
+		const removed = await tx.execute(sql`
+			delete from ${slides}
+			where ${slides.deckId} = ${deckId}
+				and ${slides.id} in (select value::uuid from jsonb_array_elements_text(${JSON.stringify(deleted)}::jsonb))
+				and (select count(*) from ${slides} where ${slides.deckId} = ${deckId}) + ${added.length} > ${deleted.length}
+			returning ${slides.id}`);
+		if (removed.rows.length !== deleted.length) throw new Error('A batch would have deleted every slide of a deck');
+	}
+	if (moved.length > 0) {
+		// One statement, so the deferrable unique constraint sees only the final positions.
+		await tx.execute(sql`
+			update ${slides} set position = moved.position
+			from jsonb_to_recordset(${JSON.stringify(moved)}::jsonb) as moved(id uuid, position integer)
+			where ${slides.id} = moved.id and ${slides.deckId} = ${deckId}`);
+	}
+	for (let start = 0; start < added.length; start += slidesPerInsert) {
+		await tx.insert(slides).values(added.slice(start, start + slidesPerInsert));
+	}
+	const markdowns = new Map<string, string>();
+	for (const { id, isNew, markdown } of list) if (!isNew && markdown !== undefined) markdowns.set(id, markdown);
+	await updateMarkdowns(tx, deckId, markdowns);
+}
+
+/** Sets the markdown of the deck's slides by id, and returns the ids it found. */
+async function updateMarkdowns(tx: Transaction, deckId: string, markdowns: ReadonlyMap<string, string>) {
+	if (markdowns.size === 0) return [];
+	const edits = [...markdowns].map(([id, markdown]) => ({ id, markdown: storable(markdown) }));
+	const updated = await tx.execute<{ id: string }>(sql`
+		update ${slides} set markdown = edit.markdown, updated_at = now()
+		from jsonb_to_recordset(${JSON.stringify(edits)}::jsonb) as edit(id uuid, markdown text)
+		where ${slides.id} = edit.id and ${slides.deckId} = ${deckId}
+		returning ${slides.id}`);
+	return updated.rows.map(({ id }) => id);
 }

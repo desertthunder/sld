@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { goto, replaceState } from '$app/navigation';
+	import { beforeNavigate, goto, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { appName } from '#lib/app-info.ts';
@@ -25,21 +25,14 @@
 		type EditorTab,
 		type PaneWidths
 	} from '#lib/deck-editor.ts';
-	import {
-		deleteSlide,
-		duplicateSlide,
-		getDeck,
-		insertSlide,
-		renameDeck,
-		updateSlide,
-		type DeckWithSlides
-	} from '#lib/decks.ts';
+	import { applyDeckChanges, getDeck, type DeckChange, type DeckWithSlides } from '#lib/decks.ts';
 	import DeckTitle from '#lib/DeckTitle.svelte';
 	import EditorFrame from '#lib/EditorFrame.svelte';
+	import LeaveDialog from '#lib/LeaveDialog.svelte';
 	import PaneHandle from '#lib/PaneHandle.svelte';
 	import { hashForSlide } from '#lib/presenter-navigation.ts';
 	import SlideList from '#lib/SlideList.svelte';
-	import { createSlideSaver, saveStatusLabels, type SaveStatus } from '#lib/slide-saver.ts';
+	import { createSlideSaver, saveStatusLabels, type SaveStatus, type SaverEntry } from '#lib/slide-saver.ts';
 
 	let { database, deck, onmissing }: { database: Database; deck: DeckWithSlides; onmissing: () => void } = $props();
 
@@ -69,9 +62,10 @@
 	// The deck is loaded once; from here on this state is the source, and every change is written through.
 	// svelte-ignore state_referenced_locally
 	const { id: deckId, title, slides } = deck;
+	type SlideItem = { id: string; markdown: string };
 	const editor: {
 		title: string;
-		slides: { id: string; markdown: string }[];
+		slides: SlideItem[];
 		selected: number;
 		status: SaveStatus;
 		announcement: string;
@@ -87,13 +81,67 @@
 		tab: parseEditorTab(readStored(() => sessionStorage, editorTabKey))
 	});
 	const current = $derived(editor.slides[editor.selected]!);
-	const changing = { isBusy: false };
+	// The slides as last known to be stored, to go back to when a change fails and the deck can't be read. A change
+	// shows at once and waits its turn to be written; `generation` moves on whenever the list is replaced by what is
+	// stored, so the changes still waiting, made to the list that was replaced, are dropped. `takenBack` holds the edits
+	// of a failed batch to the new slides it took back: the saver queues them again, and they were reported already.
+	const changes: { stored: SlideItem[]; generation: number; isDestroyed: boolean; takenBack: Map<string, string> } = {
+		stored: slides.map(({ id, markdown }) => ({ id, markdown })),
+		generation: 0,
+		isDestroyed: false,
+		takenBack: new Map()
+	};
 
-	const saver = createSlideSaver({
-		save: async (id, markdown) => {
-			// Another tab deleted the slide or its deck, so show what is stored.
-			if (!(await updateSlide(database, id, markdown))) void refresh(editor.selected);
-		},
+	// A change to the slides carries the generation it was made in, so a refresh since drops it, and the list it leaves.
+	type QueuedChange = { change: DeckChange; generation?: number; list?: SlideItem[] };
+
+	/** Writes a batch of edits and changes in one transaction, resolving to whether nothing in it was lost. */
+	async function didStoreBatch(entries: SaverEntry<QueuedChange>[]): Promise<boolean> {
+		const batch: QueuedChange[] = [];
+		let isDropped = false;
+		for (const entry of entries) {
+			if (entry.kind === 'edit' && changes.takenBack.get(entry.id) === entry.markdown) {
+				changes.takenBack.delete(entry.id);
+				continue;
+			}
+			if (entry.kind === 'edit') {
+				batch.push({ change: { kind: 'update', id: entry.id, markdown: entry.markdown } });
+			} else if (entry.change.generation === undefined || entry.change.generation === changes.generation) {
+				batch.push(entry.change);
+			} else {
+				isDropped = true;
+			}
+		}
+		if (batch.length === 0) return !isDropped;
+		let applied: boolean[];
+		try {
+			applied = await applyDeckChanges(
+				database,
+				deckId,
+				batch.map(({ change }) => change)
+			);
+		} catch (error) {
+			if (batch.some(({ list }) => list)) await refresh();
+			const shown = new Set(editor.slides.map(({ id }) => id));
+			for (const entry of entries) {
+				if (entry.kind === 'edit' && !shown.has(entry.id)) changes.takenBack.set(entry.id, entry.markdown);
+			}
+			throw error;
+		}
+		const first = applied.indexOf(false);
+		if (first === -1) {
+			const list = batch.findLast(({ list }) => list)?.list;
+			if (list) changes.stored = list;
+			return !isDropped;
+		}
+		// Another tab changed the deck first, so show what is stored. A change that tab already made isn't lost, but an
+		// edit to a gone slide is, and so are the changes skipped after it.
+		await refresh();
+		return !isDropped && batch[first]!.change.kind !== 'update' && !applied.slice(first + 1).includes(false);
+	}
+
+	const saver = createSlideSaver<QueuedChange>({
+		commit: didStoreBatch,
 		onStatus: (status) => (editor.status = status),
 		delay: 400
 	});
@@ -132,50 +180,77 @@
 		editor.announcement = message;
 	}
 
-	async function refresh(index: number) {
-		const stored = await getDeck(database, deckId);
+	/**
+	 * Shows `list` in place of the slides, keeping the selected slide selected while it is there. Edits not yet written
+	 * stay, and so does the markdown on screen when `list` was not just read from the database.
+	 */
+	function show(list: readonly SlideItem[], isRead: boolean) {
+		const selectedId = current.id;
+		const shown = new Map(editor.slides.map(({ id, markdown }) => [id, markdown]));
+		editor.slides = list.map(({ id, markdown }) => ({
+			id,
+			markdown: saver.pending(id) ?? (isRead ? undefined : shown.get(id)) ?? markdown
+		}));
+		changes.generation++;
+		const index = editor.slides.findIndex(({ id }) => id === selectedId);
+		select(index === -1 ? editor.selected : index);
+	}
+
+	/**
+	 * Shows what is stored, or the slides last known to be stored when the deck can't be read. Call it only from a
+	 * write in the saver's queue, so no other write lands between the read and the list it shows.
+	 */
+	async function refresh() {
+		// A change can fail after the editor is gone, and showing the deck then would put it back in the URL.
+		if (changes.isDestroyed) return;
+		let stored: DeckWithSlides | undefined;
+		try {
+			stored = await getDeck(database, deckId);
+		} catch {
+			if (!changes.isDestroyed) show(changes.stored, false);
+			return;
+		}
+		if (changes.isDestroyed) return;
 		if (!stored) {
 			onmissing();
 			return;
 		}
-		editor.slides = stored.slides.map(({ id, markdown }) => ({ id, markdown: saver.pending(id) ?? markdown }));
-		select(index);
+		changes.stored = stored.slides.map(({ id, markdown }) => ({ id, markdown }));
+		show(changes.stored, true);
 	}
 
-	/** Runs one change to the deck's slides at a time, after the edits before it are written. */
-	async function change(write: () => Promise<number | undefined>, message: (index: number) => string) {
-		if (changing.isBusy) return;
-		changing.isBusy = true;
-		try {
-			const index = await saver.run(write);
-			// Another tab changed the deck first, so show what is stored.
-			if (index === undefined) {
-				await refresh(editor.selected);
-				return;
-			}
-			await refresh(index);
-			await announce(message(index));
-		} catch {
-			// The saver reports the failure as the status.
-		} finally {
-			changing.isBusy = false;
-		}
+	/**
+	 * Shows `list` with the slide at `index` selected at once, then writes the change after the writes before it. When
+	 * the write fails, or another tab changed the deck first, the list goes back to what is stored.
+	 */
+	async function change(list: SlideItem[], index: number, message: string, write: DeckChange) {
+		const { generation } = changes;
+		editor.slides = list;
+		select(index);
+		void saver.change({ change: write, generation, list: list.map(({ id, markdown }) => ({ id, markdown })) });
+		await announce(message);
 	}
 
 	function addSlide() {
 		const at = editor.selected + 1;
-		return change(
-			async () => ((await insertSlide(database, deckId, at, '')) ? at : undefined),
-			(index) => `Added slide ${index + 1}.`
-		);
+		const id = crypto.randomUUID();
+		return change(editor.slides.toSpliced(at, 0, { id, markdown: '' }), at, `Added slide ${at + 1}.`, {
+			kind: 'insert',
+			id,
+			position: at,
+			markdown: ''
+		});
 	}
 
 	function duplicateSelected() {
-		const { id } = current;
+		const { id, markdown } = current;
 		const from = editor.selected;
+		const copy = crypto.randomUUID();
 		return change(
-			async () => ((await duplicateSlide(database, id)) ? from + 1 : undefined),
-			(index) => `Duplicated slide ${from + 1} as slide ${index + 1}.`
+			editor.slides.toSpliced(from + 1, 0, { id: copy, markdown }),
+			from + 1,
+			`Duplicated slide ${from + 1} as slide ${from + 2}.`,
+			{ kind: 'duplicate', of: id, id: copy, markdown }
 		);
 	}
 
@@ -184,19 +259,15 @@
 		if (!canDeleteSlide(count)) return;
 		const { id } = current;
 		const from = editor.selected;
-		await change(
-			async () => ((await deleteSlide(database, id)) ? indexAfterDelete(from, count) : undefined),
-			() => `Deleted slide ${from + 1}.`
-		);
+		await change(editor.slides.toSpliced(from, 1), indexAfterDelete(from, count), `Deleted slide ${from + 1}.`, {
+			kind: 'delete',
+			id
+		});
 	}
 
 	async function rename(next: string) {
 		editor.title = next;
-		try {
-			if (!(await saver.run(() => renameDeck(database, deckId, next)))) await refresh(editor.selected);
-		} catch {
-			// The saver reports the failure as the status.
-		}
+		await saver.change({ change: { kind: 'rename', title: next } });
 	}
 
 	function edit(event: Event & { currentTarget: HTMLTextAreaElement }) {
@@ -205,13 +276,85 @@
 		saver.edit(current.id, value);
 	}
 
-	async function flush() {
-		try {
-			await saver.flush();
-		} catch {
-			// The saver reports the failure as the status.
-		}
+	function flush() {
+		return saver.flush();
 	}
+
+	function warnBeforeUnload(event: BeforeUnloadEvent) {
+		event.preventDefault();
+		// Older browsers ask only when `returnValue` is set.
+		event.returnValue = true;
+	}
+
+	// The browser asks before closing or reloading the page while a change isn't stored. The listener is there only
+	// then, since one that is always there keeps the page out of the back-forward cache in some browsers.
+	$effect(() => {
+		if (editor.status === 'saved') return;
+		addEventListener('beforeunload', warnBeforeUnload);
+		return () => removeEventListener('beforeunload', warnBeforeUnload);
+	});
+
+	// Going elsewhere in the app keeps the page, so it first waits for the changes to be stored, and the page it goes to
+	// reads them; only when that fails does it ask. Back and forward go at once; the writes still finish in the
+	// background.
+	const leaving: {
+		to?: string;
+		opener?: Element;
+		isFlushing: boolean;
+		isFlushed: boolean;
+		answer?: (shouldLeave: boolean) => void;
+	} = { isFlushing: false, isFlushed: false };
+	const asking = $state({ isOpen: false });
+
+	function shouldLeave(): Promise<boolean> {
+		asking.isOpen = true;
+		return new Promise((resolve) => (leaving.answer = resolve));
+	}
+
+	function answerLeave(shouldLeave: boolean) {
+		const { answer, opener } = leaving;
+		leaving.answer = undefined;
+		asking.isOpen = false;
+		if (!shouldLeave && opener instanceof HTMLElement && opener.isConnected) opener.focus();
+		answer?.(shouldLeave);
+	}
+
+	beforeNavigate((navigation) => {
+		if (navigation.type === 'popstate') {
+			leaving.to = undefined;
+			if (asking.isOpen) answerLeave(false);
+		}
+		if (navigation.willUnload || !navigation.to || navigation.type === 'popstate') return;
+		if (leaving.isFlushed && leaving.to === navigation.to.url.href) return;
+		if (asking.isOpen) {
+			navigation.cancel();
+			return;
+		}
+		if (!leaving.isFlushing && editor.status === 'saved') return;
+		navigation.cancel();
+		leaving.to = navigation.to.url.href;
+		if (leaving.isFlushing) return;
+		leaving.isFlushing = true;
+		leaving.opener = document.activeElement ?? undefined;
+		void flush().then(async () => {
+			leaving.isFlushing = false;
+			// Back or forward since the link, or the editor already gone, means the person went elsewhere meanwhile.
+			if (leaving.to === undefined || changes.isDestroyed) return;
+			if (editor.status === 'failed' && !(await shouldLeave())) {
+				leaving.to = undefined;
+				return;
+			}
+			if (leaving.to === undefined || changes.isDestroyed) return;
+			leaving.isFlushed = true;
+			try {
+				// The address is the one the navigation was going to, already resolved.
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
+				await goto(leaving.to!);
+			} finally {
+				leaving.isFlushed = false;
+			}
+		});
+	});
 
 	function saveWidths() {
 		writeStored(() => localStorage, paneWidthsKey, JSON.stringify(editor.widths));
@@ -266,8 +409,8 @@
 		document.querySelector<HTMLElement>(`#tab-${tab}`)?.focus();
 	}
 
+	// The editor waits for the changes to be stored before leaving, as it does for any link in the app.
 	async function present() {
-		await flush();
 		// `resolve` builds the path, and the rule doesn't follow it into a string with a hash.
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		await goto(`${resolve('/app/deck/[id]/present', { id: deckId })}${hashForSlide(editor.selected)}`);
@@ -276,6 +419,7 @@
 	const typing = 'input, textarea, select, [contenteditable]';
 
 	function onkeydown(event: KeyboardEvent) {
+		if (asking.isOpen) return;
 		const isModified = event.ctrlKey || event.metaKey || event.altKey;
 		const isTyping = event.target instanceof Element && event.target.closest(typing) !== null;
 		if (isModified || isTyping || event.defaultPrevented || event.repeat || event.key.toLowerCase() !== 'p') return;
@@ -299,6 +443,7 @@
 		addEventListener('pagehide', flush);
 		document.addEventListener('visibilitychange', onVisibilityChange);
 		return () => {
+			changes.isDestroyed = true;
 			removeEventListener('pagehide', flush);
 			document.removeEventListener('visibilitychange', onVisibilityChange);
 			saver.stop();
@@ -406,6 +551,7 @@
 			<div class="preview"></div>
 		</section>
 	</div>
+	<LeaveDialog open={asking.isOpen} onchoose={answerLeave} />
 </EditorFrame>
 
 <style>
