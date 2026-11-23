@@ -59,7 +59,13 @@ function write(storage: () => JournalStorage, deckId: string, entries: Entries) 
 		}
 		storage().setItem(key, JSON.stringify(entries));
 	} catch {
-		// Without storage the app still works; only typing in a tab that closes before its write lands is lost.
+		// An entry left as it was could later be replayed over newer text, so a journal that can't be written goes. Without
+		// it the app still works; only typing in a tab that closes before its write lands is lost.
+		try {
+			storage().removeItem(key);
+		} catch {
+			// Storage that can't be reached holds no journal to replay.
+		}
 	}
 }
 

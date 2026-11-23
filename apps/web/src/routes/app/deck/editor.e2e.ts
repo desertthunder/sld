@@ -321,6 +321,27 @@ test('Enter after a --- line offers to split the slide, and Enter again splits i
 	await expect(editor(page)).toHaveText('# One');
 });
 
+test('closing the tab before a split is stored keeps the lines below the rule', async ({ page, context }) => {
+	const id = await createDeck(page, 'Talk', ['# One\n\n---\n\nTail text']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+Home');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('End');
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('group', { name: 'Split slide' })).toBeVisible();
+	await holdWrites(page);
+	await page.keyboard.press('Enter');
+	await expect(slideItems(page)).toHaveText(['Slide 1 One', 'Slide 2 Tail text']);
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(editor(next)).toHaveText('# One---Tail text');
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# One\n\n---\n\nTail text']);
+});
+
 test('keeping the --- as a rule closes the offer and adds the new line', async ({ page }) => {
 	const id = await createDeck(page, 'Talk', ['# One']);
 	await openDeck(page, id);

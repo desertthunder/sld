@@ -85,6 +85,25 @@ describe('the slide journal', () => {
 		expect(entries.a!.bases).toEqual(['0', '3', '4', '5']);
 	});
 
+	it('removes a journal it cannot write, so an older entry is never replayed over newer text', () => {
+		const storage = memoryStorage();
+		const { setItem } = storage;
+		// Storage this full takes a slide's text once, but not twice.
+		storage.setItem = (key, value) => {
+			if (value.length > 1500) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+			setItem(key, value);
+		};
+		const journal = createSlideJournal(() => storage, 'deck');
+		const typed = 'o'.repeat(1000);
+		const pasted = 'p'.repeat(1000);
+		journal.record('a', 'a', typed);
+		journal.record('a', pasted, 'a');
+		expect(storage.items.has(journalKey('deck'))).toBe(false);
+		journal.writing('a', pasted);
+		journal.stored('a', pasted);
+		expect(journaledEdits(() => storage, 'deck', [{ id: 'a', markdown: pasted }])).toEqual(new Map());
+	});
+
 	it('ignores a journal it cannot read, and works without storage', () => {
 		const storage = memoryStorage();
 		storage.setItem(journalKey('deck'), '{not json');

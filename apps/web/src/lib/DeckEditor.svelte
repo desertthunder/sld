@@ -97,7 +97,15 @@
 	};
 
 	// A change to the slides carries the generation it was made in, so a refresh since drops it, and the list it leaves.
-	type QueuedChange = { change: DeckChange; generation?: number; list?: SlideItem[] };
+	// `first` is written with it in the same batch, such as the part a split leaves in the slide. `isTyped` marks an edit
+	// from the saver, which the journal holds.
+	type QueuedChange = {
+		change: DeckChange;
+		generation?: number;
+		list?: SlideItem[];
+		first?: DeckChange;
+		isTyped?: boolean;
+	};
 
 	/** Writes a batch of edits and changes in one transaction, resolving to whether nothing in it was lost. */
 	async function didStoreBatch(entries: SaverEntry<QueuedChange>[]): Promise<boolean> {
@@ -109,15 +117,18 @@
 				continue;
 			}
 			if (entry.kind === 'edit') {
-				batch.push({ change: { kind: 'update', id: entry.id, markdown: entry.markdown } });
+				batch.push({ change: { kind: 'update', id: entry.id, markdown: entry.markdown }, isTyped: true });
 			} else if (entry.change.generation === undefined || entry.change.generation === changes.generation) {
+				if (entry.change.first) batch.push({ change: entry.change.first });
 				batch.push(entry.change);
 			} else {
 				isDropped = true;
 			}
 		}
 		if (batch.length === 0) return !isDropped;
-		for (const { change } of batch) if (change.kind === 'update') journal.writing(change.id, change.markdown);
+		for (const { change, isTyped } of batch) {
+			if (isTyped && change.kind === 'update') journal.writing(change.id, change.markdown);
+		}
 		let applied: boolean[];
 		try {
 			applied = await applyDeckChanges(
@@ -237,11 +248,16 @@
 	 * Shows `list` with the slide at `index` selected at once, then writes the change after the writes before it. When
 	 * the write fails, or another tab changed the deck first, the list goes back to what is stored.
 	 */
-	async function change(list: SlideItem[], index: number, message: string, write: DeckChange) {
+	async function change(list: SlideItem[], index: number, message: string, write: DeckChange, first?: DeckChange) {
 		const { generation } = changes;
 		editor.slides = list;
 		select(index);
-		void saver.change({ change: write, generation, list: list.map(({ id, markdown }) => ({ id, markdown })) });
+		void saver.change({
+			change: write,
+			first,
+			generation,
+			list: list.map(({ id, markdown }) => ({ id, markdown }))
+		});
 		await announce(message);
 	}
 
@@ -298,16 +314,23 @@
 		select(index, shouldOpen);
 	}
 
-	function split(id: string, { after }: { after: string }) {
+	/**
+	 * Cuts a slide in two. The part it keeps is written with the new slide, never alone as an edit, so the lines below
+	 * are never lost from the slide before the new slide holds them.
+	 */
+	function split(id: string, { before, after }: { before: string; after: string }) {
 		const from = editor.slides.findIndex((slide) => slide.id === id);
 		if (from === -1) return;
 		const at = from + 1;
 		const copy = crypto.randomUUID();
+		// Typing journaled over the slide before the cut would be replayed over it, so typing after the cut starts afresh.
+		journal.drop(id);
 		return change(
-			editor.slides.toSpliced(at, 0, { id: copy, markdown: after }),
+			editor.slides.toSpliced(from, 1, { id, markdown: before }, { id: copy, markdown: after }),
 			at,
 			`Split slide ${at} into slides ${at} and ${at + 1}.`,
-			{ kind: 'insert', id: copy, position: at, markdown: after }
+			{ kind: 'insert', id: copy, position: at, markdown: after },
+			{ kind: 'update', id, markdown: before }
 		);
 	}
 

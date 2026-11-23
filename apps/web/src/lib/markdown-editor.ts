@@ -42,7 +42,7 @@ export type EditorHandlers = {
 	change: (markdown: string) => void;
 	/** The editor lost focus. */
 	blur: () => void;
-	/** The person chose to split the slide. */
+	/** The person chose to split the slide. The editor already shows `before`, and reports it through no `change`. */
 	split: (parts: SplitParts) => void;
 	/** The cursor moved, or the selection changed. */
 	position: (label: string) => void;
@@ -226,11 +226,12 @@ export const acceptSplit: Command = (view) => {
 		view.dispatch({ effects: setSplitOffer.of(0) });
 		return false;
 	}
-	// Undo would bring the new slide's text back, or text deleted from it, so the slide starts a new history.
+	// Undo would bring the new slide's text back, or text deleted from it, so the slide starts a new history. The page
+	// stores the part above with the new slide, in one write, so it hears of it through the split and not as an edit.
 	view.dispatch({
 		changes: changesTo(state.doc, parts.before),
 		effects: [setSplitOffer.of(0), undoHistory.reconfigure([])],
-		annotations: Transaction.addToHistory.of(false)
+		annotations: [fromOutside.of(true), Transaction.addToHistory.of(false)]
 	});
 	view.dispatch({ effects: undoHistory.reconfigure(history()) });
 	state.facet(splitHandler)(parts);
