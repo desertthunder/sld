@@ -65,4 +65,4 @@ A slide keeps 120 px at each side, 104 at the top and 96 at the bottom, which le
 
 A slide that runs past the bottom margin shrinks its text and spacing until it fits. Each size stops at a floor: 32 for body text, quotes and tables, and 72 for headings. Text already smaller than its floor, such as heading 3 or footnotes, keeps its size. Code blocks shrink down to 20 px, and a code block with a line too long for it shrinks its own code first, down to the same 20 px.
 
-Past the floors, the slide clips at the bottom margin. The editor's preview shows "shrunk to 82%" while a slide is shrunk, and "Too long to fit · split or trim" with the `--rule` color once it clips. Presenting never shows either note.
+Past the floors, the slide clips at the bottom margin. The editor's preview shows "Shrunk to 82%" while a slide is shrunk, and "Too long to fit, split or trim" with the `--rule` color once it clips. Presenting never shows either note.

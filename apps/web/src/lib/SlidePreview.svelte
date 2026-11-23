@@ -64,9 +64,9 @@
 				bind:overflowing={fitting.overflowing} />
 			<!-- Only the editor says how a slide fits: presenting shows the slide as it is. -->
 			{#if fitting.overflowing}
-				<p class="fit-note too-long" role="status">Too long to fit · split or trim</p>
+				<p class="fit-note too-long" role="status">Too long to fit, split or trim</p>
 			{:else if fitting.fit < 1}
-				<p class="fit-note" role="status">shrunk to {Math.floor(fitting.fit * 100)}%</p>
+				<p class="fit-note" role="status">Shrunk to {Math.floor(fitting.fit * 100)}%</p>
 			{/if}
 		{:else if view.state.failure}
 			<p class="waiting" role="alert">

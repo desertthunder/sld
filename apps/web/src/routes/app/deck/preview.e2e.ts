@@ -277,7 +277,7 @@ test('the preview draws a slide as the presenter does at the same size', async (
 	await expect.poll(() => previewStage.evaluate((stage) => stage.getBoundingClientRect().width)).toBe(size.width);
 	await page.evaluate(() => document.fonts.ready);
 	// The sample slide shrinks to fit, and the note that says so is the editor's own, drawn over the stage.
-	await expect(previewPane(page).getByText(/^shrunk to \d+%$/)).toBeVisible();
+	await expect(previewPane(page).getByText(/^Shrunk to \d+%$/)).toBeVisible();
 	await previewPane(page)
 		.locator('.fit-note')
 		.evaluate((note) => (note.style.display = 'none'));
@@ -430,13 +430,13 @@ test('the preview notes a slide that shrank to fit and one too long to fit, and 
 
 	await openDeck(page, id, '?slide=2');
 	await expect(previewSlide(page).locator('h1')).toHaveText('Long', { timeout: 30_000 });
-	await expect(note(/^shrunk to \d+%$/)).toBeVisible();
+	await expect(note(/^Shrunk to \d+%$/)).toBeVisible();
 
 	await openDeck(page, id, '?slide=3');
 	await expect(previewSlide(page).locator('h1')).toHaveText('Too long', { timeout: 30_000 });
-	await expect(note(/^Too long to fit · split or trim$/)).toBeVisible();
+	await expect(note(/^Too long to fit, split or trim$/)).toBeVisible();
 
 	await page.goto(`/app/deck/${id}/present#3`);
 	await expect(page.locator('article.slide h1')).toHaveText('Too long', { timeout: 30_000 });
-	await expect(page.getByText(/shrunk to|Too long to fit/)).toHaveCount(0);
+	await expect(page.getByText(/shrunk to|too long to fit/i)).toHaveCount(0);
 });
