@@ -48,6 +48,12 @@ function storable(text: string): string {
 // Postgres binds at most 65,535 parameters to one statement, and each slide row takes three.
 const slidesPerInsert = 1000;
 
+async function insertSlideRows(tx: Transaction, rows: (typeof slides.$inferInsert)[]) {
+	for (let start = 0; start < rows.length; start += slidesPerInsert) {
+		await tx.insert(slides).values(rows.slice(start, start + slidesPerInsert));
+	}
+}
+
 function clampPosition(position: number, last: number): number {
 	if (!Number.isSafeInteger(position)) throw new RangeError(`A slide position must be an integer, not ${position}`);
 	return Math.min(Math.max(position, 0), last);
@@ -68,14 +74,10 @@ export function createDeck(
 				aspect: aspect && storable(aspect)
 			})
 			.returning();
-		const rows = markdowns.map((markdown, position) => ({
-			deckId: deck!.id,
-			position,
-			markdown: storable(markdown)
-		}));
-		for (let start = 0; start < rows.length; start += slidesPerInsert) {
-			await tx.insert(slides).values(rows.slice(start, start + slidesPerInsert));
-		}
+		await insertSlideRows(
+			tx,
+			markdowns.map((markdown, position) => ({ deckId: deck!.id, position, markdown: storable(markdown) }))
+		);
 		return deck!;
 	});
 }
@@ -232,12 +234,6 @@ export function listDeckSummaries(database: Database): Promise<DeckSummary[]> {
 		const totals = new Map(counts.map(({ deckId, total }) => [deckId, total]));
 		return rows.map((deck) => ({ ...deck, slideCount: totals.get(deck.id) ?? 0 }));
 	});
-}
-
-async function insertSlideRows(tx: Transaction, rows: (typeof slides.$inferInsert)[]) {
-	for (let start = 0; start < rows.length; start += slidesPerInsert) {
-		await tx.insert(slides).values(rows.slice(start, start + slidesPerInsert));
-	}
 }
 
 /**
