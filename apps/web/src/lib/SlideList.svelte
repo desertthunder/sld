@@ -138,7 +138,7 @@
 		flex-direction: column;
 		min-width: 0;
 		min-height: 0;
-		background: var(--background);
+		background: var(--bg);
 	}
 
 	.header {
@@ -224,7 +224,7 @@
 		display: flex;
 		gap: 2px;
 		padding: 2px;
-		background: var(--background);
+		background: var(--bg);
 		border: 1px solid var(--border);
 		border-radius: 8px;
 	}
@@ -239,7 +239,7 @@
 		border: 0;
 		border-radius: 6px;
 		background: transparent;
-		color: var(--text);
+		color: var(--body);
 		cursor: pointer;
 	}
 
@@ -249,7 +249,7 @@
 	}
 
 	.icon-button:disabled {
-		color: color-mix(in oklab, var(--muted) 45%, var(--background));
+		color: color-mix(in oklab, var(--muted) 45%, var(--bg));
 		cursor: not-allowed;
 	}
 

@@ -111,6 +111,19 @@ export function renameDeck(database: Database, id: string, title: string): Promi
 	});
 }
 
+/** Sets the slug of a deck's scheme and returns the deck, or `undefined` when there is no such deck. */
+export function setDeckScheme(database: Database, id: string, scheme: string): Promise<Deck | undefined> {
+	return write(database, async (tx) => {
+		if (!isUuid(id)) return;
+		const [deck] = await tx
+			.update(decks)
+			.set({ scheme: storable(scheme), updatedAt: sql`now()` })
+			.where(eq(decks.id, id))
+			.returning();
+		return deck;
+	});
+}
+
 /** Deletes a deck and its slides, and returns the deck, or `undefined` when there is no such deck. */
 export function deleteDeck(database: Database, id: string): Promise<Deck | undefined> {
 	return write(database, async (tx) => {

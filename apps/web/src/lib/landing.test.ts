@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { splitDeck } from '#lib/deck-markdown.ts';
 import { fanSize, fanTransform, sampleNote, slideCount, swatch } from '#lib/landing.ts';
-import type { Scheme } from '#lib/scheme-compiler.ts';
+import type { SchemeFile } from '#lib/scheme-compiler.ts';
+import { schemeStyle } from '#lib/scheme-style.ts';
 
 describe('slideCount', () => {
 	it.each([
@@ -35,23 +37,9 @@ describe('fanTransform', () => {
 });
 
 describe('swatch', () => {
-	const scheme = {
-		slug: 'test',
-		name: 'Test',
-		colors: { base00: '#000000', base05: '#ffffff' },
-		roles: { bg: 'var(--base00)', body: 'var(--base05)' },
-		appRoles: { onPrimary: 'var(--base00)' },
-		tokens: { keyword: 'var(--base0E)' }
-	} as unknown as Scheme;
-
-	it("sets the scheme's colors and redefines the page's roles over them", () => {
-		const { slug, name, style } = swatch(scheme);
-		expect({ slug, name }).toEqual({ slug: 'test', name: 'Test' });
-		const properties = style.split('; ');
-		expect(properties).toContain('--base00: #000000');
-		expect(properties).toContain('--background: var(--base00)');
-		expect(properties).toContain('--text: var(--base05)');
-		expect(properties).toContain('--on-primary: var(--base00)');
-		expect(properties).toContain('--code-keyword: var(--base0E)');
+	it("is the scheme's name and its colors and roles as an inline style", () => {
+		const file = JSON.parse(readFileSync(new URL('schemes/base16.json', import.meta.url), 'utf8')) as SchemeFile;
+		const scheme = file.schemes.find(({ slug }) => slug === 'gruvbox-dark')!;
+		expect(swatch(scheme)).toEqual({ slug: 'gruvbox-dark', name: scheme.name, style: schemeStyle(scheme) });
 	});
 });

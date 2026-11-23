@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import '#lib/code-block.css';
 	import { errorText } from '#lib/error-text.ts';
+	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import type { SlideOptions } from '#lib/slide-plugins.ts';
 	import { slideClasses } from '#lib/slide-meta.ts';
 	import { RendererLoadError, renderSlide, type RenderedSlide } from '#lib/slide-render.ts';
@@ -11,12 +12,17 @@
 	let {
 		markdown,
 		aspect = defaultAspect,
+		scheme,
+		schemes = [],
 		lineNumbers = false,
 		overflowing = $bindable(false),
 		overlay
 	}: {
 		markdown: string;
 		aspect?: Aspect;
+		/** The deck's scheme, which a slide's own `scheme` replaces when it names one of `schemes`. */
+		scheme?: Scheme;
+		schemes?: readonly Scheme[];
 		overflowing?: boolean;
 		overlay?: Snippet;
 	} & Partial<SlideOptions> = $props();
@@ -48,7 +54,7 @@
 	<p role="status">Getting slides ready…</p>
 {:else if view.shown.status === 'shown'}
 	{@const { html, meta } = view.shown.slide}
-	<Stage {aspect} bind:overflowing>
+	<Stage {aspect} scheme={schemes.find(({ slug }) => slug === meta.scheme) ?? scheme} bind:overflowing>
 		<!-- Raw HTML in a slide passes through: the markdown is the person's own. -->
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 		<article class={slideClasses(meta)}>{@html html}</article>

@@ -65,8 +65,8 @@
 		margin: 0;
 		padding: 24px;
 		border: 0;
-		background: color-mix(in oklab, var(--background) 72%, transparent);
-		color: var(--text);
+		background: color-mix(in oklab, var(--bg) 72%, transparent);
+		color: var(--body);
 		cursor: default;
 	}
 
@@ -129,7 +129,7 @@
 
 	dd {
 		margin: 0;
-		color: var(--text);
+		color: var(--body);
 	}
 
 	@media (max-width: 480px) {
@@ -162,7 +162,7 @@
 		border: 1px solid var(--border);
 		border-bottom-width: 2px;
 		border-radius: 6px;
-		background: var(--background);
+		background: var(--bg);
 		color: var(--heading);
 		font-family: var(--code-font);
 		font-size: 12.5px;

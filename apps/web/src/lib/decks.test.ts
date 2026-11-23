@@ -13,6 +13,7 @@ import {
 	listDecks,
 	moveSlide,
 	renameDeck,
+	setDeckScheme,
 	updateSlide,
 	type Deck
 } from '#lib/decks.ts';
@@ -118,6 +119,7 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			const id = await slideId(deck.id, 0);
 			const writes = [
 				() => renameDeck(database, deck.id, 'Renamed'),
+				() => setDeckScheme(database, deck.id, 'nord'),
 				() => insertSlide(database, deck.id, 0, '# Zero'),
 				() => updateSlide(database, id, '# One, edited'),
 				() => duplicateSlide(database, id),
@@ -195,6 +197,18 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(renamed).toMatchObject({ id: deck.id, title: 'Keynote' });
 			expect(renamed!.updatedAt.getTime()).toBeGreaterThan(before);
 			expect(await renameDeck(database, missing, 'Keynote')).toBeUndefined();
+		});
+
+		it("sets a deck's scheme, leaving its slides alone", async () => {
+			const deck = await threeSlides();
+			const before = await ageDeck(deck);
+			const changed = await setDeckScheme(database, deck.id, 'gruvbox-dark');
+			expect(changed).toMatchObject({ id: deck.id, scheme: 'gruvbox-dark' });
+			expect(changed!.updatedAt.getTime()).toBeGreaterThan(before);
+			expect(await setDeckScheme(database, deck.id, 'a\0b')).toMatchObject({ scheme: 'a\u{FFFD}b' });
+			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
+			expect(await setDeckScheme(database, missing, 'nord')).toBeUndefined();
+			expect(await setDeckScheme(database, 'not-a-uuid', 'nord')).toBeUndefined();
 		});
 
 		it('deletes a deck and its slides, leaving other decks alone', async () => {

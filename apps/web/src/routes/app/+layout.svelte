@@ -6,6 +6,9 @@
 	import '@fontsource/monaspace-neon/latin-400-italic.css';
 	import '#lib/scheme.css';
 	import Splash from '#lib/Splash.svelte';
+	import { applyAppScheme, readAppScheme, refreshedAppScheme, writeAppScheme } from '#lib/app-scheme.ts';
+	import { appSchemeKey } from '#lib/scheme-choice.ts';
+	import { loadSchemes } from '#lib/schemes.ts';
 	import { boot, startBoot } from '#lib/boot.svelte.ts';
 	import { isolate, type IsolationOutcome } from '#lib/cross-origin-isolation.ts';
 	import { shouldShowSplash, splashDelay, splashView } from '#lib/splash.ts';
@@ -17,16 +20,45 @@
 	const delay = $state({ hasPassed: false });
 	const view = $derived(splashView(isolation.outcome, boot.state));
 
+	// Set before the first paint, from what the last visit stored, so the app never flashes the default scheme.
+	applyAppScheme(
+		document.documentElement,
+		readAppScheme(() => localStorage)
+	);
+
+	async function refreshAppScheme() {
+		const stored = readAppScheme(() => localStorage);
+		if (!stored) return;
+		const refreshed = refreshedAppScheme(await loadSchemes(), stored);
+		writeAppScheme(() => localStorage, refreshed);
+		applyAppScheme(document.documentElement, refreshed);
+	}
+
+	function onstorage(event: StorageEvent) {
+		if (event.key === appSchemeKey || event.key === null) {
+			applyAppScheme(
+				document.documentElement,
+				readAppScheme(() => localStorage)
+			);
+		}
+	}
+
 	onMount(() => {
+		void refreshAppScheme();
 		const timer = setTimeout(() => (delay.hasPassed = true), splashDelay);
 		void (async () => {
 			isolation.outcome = await isolate();
 			if (isolation.outcome !== 'isolated') return;
 			startBoot(openDecks);
 		})();
-		return () => clearTimeout(timer);
+		return () => {
+			clearTimeout(timer);
+			applyAppScheme(document.documentElement);
+		};
 	});
 </script>
+
+<svelte:window {onstorage} />
 
 <div class="scheme">
 	{#if !view}

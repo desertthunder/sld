@@ -81,8 +81,8 @@
 		display: flex;
 		padding: 72px 24px 24px;
 		box-sizing: border-box;
-		background: var(--background);
-		color: var(--text);
+		background: var(--bg);
+		color: var(--body);
 		font-family: var(--ui-font);
 		-webkit-font-smoothing: antialiased;
 	}
@@ -175,7 +175,7 @@
 		font-family: var(--code-font);
 		font-size: 13px;
 		line-height: 1.6;
-		background: var(--background);
+		background: var(--bg);
 		border: 1px solid var(--border);
 		border-radius: 8px;
 		color: var(--heading);
@@ -266,7 +266,7 @@
 		padding: 0 18px;
 		border: 1px solid var(--border);
 		background: transparent;
-		color: var(--text);
+		color: var(--body);
 	}
 
 	@media (prefers-reduced-motion: reduce) {

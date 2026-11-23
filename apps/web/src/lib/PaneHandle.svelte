@@ -81,7 +81,7 @@
 <style>
 	.handle {
 		position: relative;
-		background: var(--background);
+		background: var(--bg);
 		cursor: col-resize;
 		touch-action: none;
 		user-select: none;
