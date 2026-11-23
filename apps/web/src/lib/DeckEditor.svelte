@@ -40,7 +40,9 @@
 	import { hashForSlide } from '#lib/presenter-navigation.ts';
 	import SlideList from '#lib/SlideList.svelte';
 	import SlidePreview from '#lib/SlidePreview.svelte';
+	import type { Notice } from '#lib/slide-notices.ts';
 	import { createSlideSaver, saveStatusLabels, type SaveStatus } from '#lib/slide-saver.ts';
+	import SlideWarnings from '#lib/SlideWarnings.svelte';
 	import { deckAspect } from '#lib/stage.ts';
 
 	let { database, deck, onmissing }: { database: Database; deck: DeckWithSlides; onmissing: () => void } = $props();
@@ -73,6 +75,7 @@
 	const { id: deckId, title, slides } = deck;
 	// svelte-ignore state_referenced_locally
 	const aspect = deckAspect(deck.aspect);
+	let notices: readonly Notice[] = $state([]);
 	const editor: {
 		title: string;
 		slides: { id: string; markdown: string }[];
@@ -388,6 +391,7 @@
 				value={current.markdown}
 				oninput={edit}
 				onblur={() => void flush()}></textarea>
+			<SlideWarnings {notices} />
 		</section>
 		<PaneHandle
 			label="Resize editor and preview"
@@ -407,7 +411,7 @@
 			aria-label="Preview"
 			{...panel('preview')}>
 			<div class="pane-header"><span>Preview</span></div>
-			<SlidePreview slideId={current.id} markdown={current.markdown} {aspect} />
+			<SlidePreview slideId={current.id} markdown={current.markdown} {aspect} bind:notices />
 		</section>
 	</div>
 </EditorFrame>

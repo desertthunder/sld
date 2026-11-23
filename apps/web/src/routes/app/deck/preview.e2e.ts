@@ -32,7 +32,8 @@ async function createDeck(page: Page, slides: string[]): Promise<string> {
 const slideList = (page: Page) => page.getByRole('navigation', { name: 'Slides' });
 const previewPane = (page: Page) => page.getByRole('region', { name: 'Preview' });
 const previewSlide = (page: Page) => previewPane(page).locator('article.slide');
-const notices = (page: Page) => previewPane(page).locator('.notices');
+const editPane = (page: Page) => page.getByRole('region', { name: 'Markdown' });
+const warnings = (page: Page) => editPane(page).getByRole('status');
 const editor = (page: Page) => page.getByRole('textbox', { name: /^Markdown for slide/ });
 const thumbnails = (page: Page) => slideList(page).locator('.thumb');
 
@@ -83,27 +84,40 @@ test('the preview follows each keystroke without waiting for the database', asyn
 	await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 30_000 });
 });
 
-test('broken frontmatter shows a notice under the preview and keeps the last good slide', async ({ page }) => {
+test('broken frontmatter shows a warning under the editor and keeps the last good slide', async ({ page }) => {
 	const id = await createDeck(page, ['---\nlayout: center\n---\n# Good']);
 	await openDeck(page, id);
 	await expect(previewSlide(page)).toHaveClass(/layout-center/, { timeout: 30_000 });
 	await expect(previewSlide(page).locator('h1')).toHaveText('Good');
-	await expect(notices(page)).toHaveText('');
+	await expect(warnings(page)).toHaveText('');
 
 	await editor(page).fill('---\nlayout: [center\n---\n# Broken');
-	await expect(notices(page)).toContainText("The frontmatter couldn't be read, so it's ignored:");
-	await expect(notices(page)).toHaveAttribute('role', 'status');
+	await expect(warnings(page)).toContainText("The frontmatter couldn't be read, so it's ignored:");
+	// The strip sits under the text being typed, not under the preview.
+	await expect(previewPane(page).getByText("The frontmatter couldn't be read")).toHaveCount(0);
 	await expect(previewSlide(page).locator('h1')).toHaveText('Good');
 	await expect(previewSlide(page)).toHaveClass(/layout-center/);
 
 	await editor(page).fill('---\nlayout: hero\n---\n# Fixed');
 	await expect(previewSlide(page).locator('h1')).toHaveText('Fixed');
-	await expect(notices(page)).toHaveText("hero isn't a layout, so the slide uses the default.");
-	await expect(notices(page).locator('code')).toHaveText('hero');
+	await expect(warnings(page)).toHaveText("hero isn't a layout, so the slide uses the default.");
+	await expect(warnings(page).locator('code')).toHaveText('hero');
 
 	await editor(page).fill('# Fine');
-	await expect(notices(page)).toHaveText('');
-	await expect(notices(page).locator('.icon')).toHaveCount(0);
+	await expect(warnings(page)).toHaveText('');
+	await expect(warnings(page).locator('.icon')).toHaveCount(0);
+});
+
+test('at phone width the warning shows in the Edit tab', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	const id = await createDeck(page, ['---\nlayout: hero\n---\n# Hero']);
+	await page.goto(`/app/deck/${id}`);
+	await expect(page.getByRole('tab', { name: 'Edit' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 });
+	await expect(editor(page)).toBeVisible();
+	// At phone width each pane is a tab panel, named by its tab.
+	const strip = page.getByRole('tabpanel', { name: 'Edit' }).getByRole('status');
+	await expect(strip).toBeVisible({ timeout: 30_000 });
+	await expect(strip).toHaveText("hero isn't a layout, so the slide uses the default.");
 });
 
 test('the slide list shows a thumbnail of each slide, rendered once it scrolls near', async ({ page }) => {
