@@ -16,6 +16,11 @@
 	const slides = $derived(hasText ? splitDeck(box.markdown).slides.length : 0);
 	let field: HTMLTextAreaElement | undefined = $state();
 
+	/** Whether the box holds text, which a paste elsewhere on the page must not replace. */
+	export function hasDraft(): boolean {
+		return box.markdown !== '';
+	}
+
 	/** Puts `markdown` in the box, in place of what it held, and moves focus there. */
 	export async function fill(markdown: string) {
 		box.markdown = markdown;

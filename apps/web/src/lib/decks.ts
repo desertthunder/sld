@@ -262,7 +262,7 @@ export function duplicateDeck(database: Database, id: string, title: string): Pr
 }
 
 /**
- * Deletes a deck and its slides, and returns them as they were, for `restoreDeck` to put back, or `undefined` when
+ * Deletes a deck and its slides, and returns them as they were, for `restoreDecks` to put back, or `undefined` when
  * there is no such deck.
  */
 export function removeDeck(database: Database, id: string): Promise<DeckWithSlides | undefined> {
@@ -277,13 +277,18 @@ export function removeDeck(database: Database, id: string): Promise<DeckWithSlid
 }
 
 /**
- * Puts back a deck that `removeDeck` returned, exactly as it was: the same ids, title, settings, times and slides in
- * order. It returns the deck, and rejects, restoring nothing, when a deck with its id exists.
+ * Puts back decks that `removeDeck` returned, exactly as they were: the same ids, titles, settings, times and slides in
+ * order. It returns the decks in the order given, and rejects, restoring none of them, when a deck with one of their ids
+ * exists.
  */
-export function restoreDeck(database: Database, { slides: rows, ...deck }: DeckWithSlides): Promise<Deck> {
+export function restoreDecks(database: Database, removed: readonly DeckWithSlides[]): Promise<Deck[]> {
 	return write(database, async (tx) => {
-		const [restored] = await tx.insert(decks).values(deck).returning();
-		await insertSlideRows(tx, rows);
-		return restored!;
+		const restored: Deck[] = [];
+		for (const { slides: rows, ...deck } of removed) {
+			const [row] = await tx.insert(decks).values(deck).returning();
+			await insertSlideRows(tx, rows);
+			restored.push(row!);
+		}
+		return restored;
 	});
 }

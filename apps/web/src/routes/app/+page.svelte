@@ -26,7 +26,7 @@
 		isReady: boolean;
 		isCreating: boolean;
 		hasLoadFailed: boolean;
-		deleted?: { deck: DeckWithSlides; key: number };
+		deleted?: { decks: DeckWithSlides[]; key: number };
 		now: Date;
 	} = $state({ isReady: false, isCreating: false, hasLoadFailed: false, now: new Date() });
 
@@ -108,7 +108,8 @@
 	async function remove(deck: DeckSummary) {
 		const removed = await change('change', ({ database, queries }) => queries.removeDeck(database, deck.id));
 		if (!removed) return;
-		library.deleted = { deck: removed, key: (library.deleted?.key ?? 0) + 1 };
+		// A delete while the toast shows joins the decks it can undo, and the new toast starts its timer again.
+		library.deleted = { decks: [...(library.deleted?.decks ?? []), removed], key: (library.deleted?.key ?? 0) + 1 };
 		await tick();
 		toast?.focus();
 	}
@@ -117,11 +118,22 @@
 		const deleted = library.deleted;
 		library.deleted = undefined;
 		if (!deleted) return;
-		const restored = await change('change', ({ database, queries }) => queries.restoreDeck(database, deleted.deck));
-		// A restore that failed keeps the deck's only copy in the toast, so Undo can be tried again.
-		if (!restored && !library.deleted) library.deleted = { deck: deleted.deck, key: deleted.key + 1 };
+		const restored = await change('change', ({ database, queries }) =>
+			queries.restoreDecks(database, deleted.decks)
+		);
+		// A restore that failed keeps the decks' only copies in the toast, with any deleted meanwhile, so Undo can be
+		// tried again.
+		if (!restored) {
+			// A delete can finish while the restore runs, which TypeScript's narrowing above can't see.
+			const later = library.deleted as typeof deleted | undefined;
+			library.deleted = {
+				decks: [...deleted.decks, ...(later?.decks ?? [])],
+				key: Math.max(deleted.key, later?.key ?? 0) + 1
+			};
+		}
 		await tick();
-		if (restored) document.querySelector<HTMLElement>(`#deck-${restored.id}`)?.focus();
+		const last = restored?.at(-1);
+		if (last) document.querySelector<HTMLElement>(`#deck-${last.id}`)?.focus();
 		else toast?.focus();
 	}
 
@@ -133,7 +145,7 @@
 	function onpaste(event: ClipboardEvent) {
 		if (event.defaultPrevented || isTextEntry(event.target)) return;
 		const text = event.clipboardData?.getData('text/plain');
-		if (!text) return;
+		if (!text || newDeck?.hasDraft()) return;
 		event.preventDefault();
 		void newDeck?.fill(text);
 	}
@@ -242,7 +254,7 @@
 			{#key library.deleted.key}
 				<UndoToast
 					bind:this={toast}
-					message={deletedMessage(library.deleted.deck.title)}
+					message={deletedMessage(library.deleted.decks.map(({ title }) => title))}
 					onundo={() => void undo()}
 					ondismiss={dismiss} />
 			{/key}

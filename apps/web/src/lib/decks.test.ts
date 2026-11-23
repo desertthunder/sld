@@ -16,7 +16,7 @@ import {
 	moveSlide,
 	removeDeck,
 	renameDeck,
-	restoreDeck,
+	restoreDecks,
 	updateSlide,
 	type Deck
 } from '#lib/decks.ts';
@@ -413,18 +413,44 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await getDeck(database, deck.id)).toBeUndefined();
 			const left = await database.execute(sql`select id from slides`);
 			expect(left.rows).toEqual([]);
-			const restored = await restoreDeck(database, removed!);
+			const [restored] = await restoreDecks(database, [removed!]);
 			expect({ ...restored, slides: before!.slides }).toEqual(before);
 			expect(await getDeck(database, deck.id)).toEqual(before);
 			expect(await markdowns(deck.id)).toEqual(['# Three', '# One', '# Two']);
 		});
 
-		it('restores nothing over a deck with the same id', async () => {
+		it('restores several removed decks exactly, each with its own ids, times, settings and slides', async () => {
+			const first = await threeSlides();
+			await ageDeck(first);
+			const second = await createDeck(database, {
+				title: 'Second',
+				settings: { slideNumber: true },
+				slides: ['# A', '# B']
+			});
+			const before = [await getDeck(database, first.id), await getDeck(database, second.id)];
+			const removed = [await removeDeck(database, first.id), await removeDeck(database, second.id)];
+			expect(await titles()).toEqual([]);
+			const restored = await restoreDecks(
+				database,
+				removed.map((deck) => deck!)
+			);
+			expect(restored.map(({ id }) => id)).toEqual([first.id, second.id]);
+			expect([await getDeck(database, first.id), await getDeck(database, second.id)]).toEqual(before);
+		});
+
+		it('restores nothing over a deck with the same id, not even the other decks', async () => {
 			const deck = await threeSlides();
-			const removed = await removeDeck(database, deck.id);
+			const other = await createDeck(database, { title: 'Second', slides: ['# A'] });
+			const removed = [await removeDeck(database, other.id), await removeDeck(database, deck.id)];
 			await createDeck(database, { id: deck.id, title: 'Other', slides: ['# Other'] });
-			await expect(restoreDeck(database, removed!)).rejects.toThrow();
+			await expect(
+				restoreDecks(
+					database,
+					removed.map((deck) => deck!)
+				)
+			).rejects.toThrow();
 			expect(await markdowns(deck.id)).toEqual(['# Other']);
+			expect(await getDeck(database, other.id)).toBeUndefined();
 		});
 
 		it('removes nothing for a missing deck or an id that is not a UUID', async () => {
@@ -454,7 +480,7 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			const removed = await removeDeck(database, copy!.id);
 			expect(events.slice(-2)).toEqual(['commit', 'sync']);
 			events.length = 0;
-			await restoreDeck(database, removed!);
+			await restoreDecks(database, [removed!]);
 			expect(events.slice(-2)).toEqual(['commit', 'sync']);
 		});
 	});

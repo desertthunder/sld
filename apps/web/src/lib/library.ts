@@ -51,9 +51,9 @@ export function renamedTitle(title: string, draft: string): string {
 	return draft.trim() || title;
 }
 
-/** What the undo toast says after a deck is deleted. */
-export function deletedMessage(title: string): string {
-	return `Deleted “${title}”`;
+/** What the undo toast says after the decks with these `titles` are deleted. */
+export function deletedMessage(titles: readonly string[]): string {
+	return titles.length === 1 ? `Deleted “${titles[0]}”` : `Deleted ${titles.length} decks`;
 }
 
 /**

@@ -117,6 +117,59 @@ test('Create deck waits for text, and a paste into the rename field stays there'
 	await expect(pasteBox(page)).toHaveValue('');
 });
 
+test('a paste outside a box that holds a draft leaves the draft, and a paste inside goes in', async ({ page }) => {
+	await openLibrary(page);
+	await pasteBox(page).focus();
+	await page.keyboard.type('# My draft');
+	await page.getByRole('heading', { name: 'Library' }).focus();
+	await paste(page, pasted);
+	await expect(pasteBox(page)).toHaveValue('# My draft');
+	await expect(page.getByRole('heading', { name: 'Library' })).toBeFocused();
+	// The box's own undo history still holds the typing, which a script setting its value would have cleared.
+	await pasteBox(page).focus();
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(pasteBox(page)).not.toHaveValue('# My draft');
+	await page.keyboard.press('ControlOrMeta+Shift+z');
+	await expect(pasteBox(page)).toHaveValue('# My draft');
+	// A paste into the box itself is the browser's own: the library leaves it alone.
+	const isHandled = await pasteBox(page).evaluate((element) => {
+		const clipboardData = new DataTransfer();
+		clipboardData.setData('text/plain', '# Other');
+		const event = new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true });
+		element.dispatchEvent(event);
+		return event.defaultPrevented;
+	});
+	expect(isHandled).toBe(false);
+	await page.getByRole('heading', { name: 'Library' }).focus();
+	await pasteBox(page).fill('');
+	await paste(page, pasted);
+	await expect(pasteBox(page)).toHaveValue(pasted);
+});
+
+test('two deletes while the toast shows, then one Undo, put back both decks exactly', async ({ page }) => {
+	const ids = await createDecks(page, [
+		{ title: 'Field notes', slides: ['# One', '# Two', '# Three'] },
+		{ title: 'Reading group', slides: ['# Week 3', '# Week 4'] },
+		{ title: 'Standup', slides: ['# Today'] }
+	]);
+	const before = await storedDecks(page);
+	await menuButton(page, 'Field notes').click();
+	await menuItem(page, 'Delete').click();
+	await expect(page.getByRole('status')).toContainText('Deleted “Field notes”');
+	await menuButton(page, 'Reading group').click();
+	await menuItem(page, 'Delete').click();
+	await expect(titles(page)).toHaveText(['Standup']);
+	await expect(page.getByRole('status')).toContainText('Deleted 2 decks');
+	await expect(page.getByRole('button', { name: 'Undo' })).toBeFocused();
+	const left = await storedDecks(page);
+	expect(left.map(({ id }) => id)).toEqual([ids[2]]);
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect(titles(page)).toHaveText(['Standup', 'Reading group', 'Field notes']);
+	await expect(page.getByRole('button', { name: 'Undo' })).toBeHidden();
+	await expect(titles(page).nth(1)).toBeFocused();
+	expect(await storedDecks(page)).toEqual(before);
+});
+
 test('the library lists decks newest first, and renames, duplicates, deletes and undoes', async ({ page }) => {
 	const [first, second] = await createDecks(page, [
 		{ title: 'Field notes', slides: ['# One', '# Two', '# Three'] },
@@ -259,9 +312,16 @@ test('a first visit offers the sample deck, which Open creates and opens', async
 	await expect(rows(page)).toHaveText(/^\s*6 slides\s*How to write Markdown\s*edited just now\s*$/);
 });
 
-test('a failed Undo keeps the toast, and Undo works once the restore can go through', async ({ page }) => {
-	const [id] = await createDecks(page, [{ title: 'Field notes', slides: ['# One', '# Two'] }]);
+test('a failed Undo keeps the toast for every deck, and Undo works once the restore can go through', async ({
+	page
+}) => {
+	const [id, otherId] = await createDecks(page, [
+		{ title: 'Field notes', slides: ['# One', '# Two'] },
+		{ title: 'Reading group', slides: ['# Week 3'] }
+	]);
 	await menuButton(page, 'Field notes').click();
+	await menuItem(page, 'Delete').click();
+	await menuButton(page, 'Reading group').click();
 	await menuItem(page, 'Delete').click();
 	await expect(titles(page)).toHaveCount(0);
 	const blocker = async (shouldExist: boolean) =>
@@ -274,17 +334,21 @@ test('a failed Undo keeps the toast, and Undo works once the restore can go thro
 			},
 			{ urls: modules, id: id!, shouldExist }
 		);
-	// A deck with the same id makes the restore fail.
+	// A deck with the same id as one of them makes the restore fail, and restores neither.
 	await blocker(true);
 	await page.getByRole('button', { name: 'Undo' }).click();
 	await expect(page.getByRole('alert')).toContainText("That change couldn't be saved:");
+	await expect(page.getByRole('status')).toContainText('Deleted 2 decks');
 	await expect(page.getByRole('button', { name: 'Undo' })).toBeFocused();
+	expect(await storedDeck(page, otherId!)).toBeUndefined();
 	await blocker(false);
 	await page.getByRole('button', { name: 'Undo' }).click();
-	await expect(titles(page)).toHaveText(['Field notes']);
+	await expect(titles(page)).toHaveText(['Reading group', 'Field notes']);
 	await expect(page.getByRole('alert')).toBeHidden();
 	const restored = await storedDeck(page, id!);
 	expect(restored?.slides.map(({ markdown }) => markdown)).toEqual(['# One', '# Two']);
+	const other = await storedDeck(page, otherId!);
+	expect(other?.slides.map(({ markdown }) => markdown)).toEqual(['# Week 3']);
 });
 
 test('decks that fail to load say so, and the list stops waiting', async ({ page }) => {

@@ -70,7 +70,9 @@ describe('library copy', () => {
 
 	it('names a copy and a deleted deck', () => {
 		expect(copyTitle('Thesis defense')).toBe('Thesis defense (copy)');
-		expect(deletedMessage('Thesis defense')).toBe('Deleted “Thesis defense”');
+		expect(deletedMessage(['Thesis defense'])).toBe('Deleted “Thesis defense”');
+		expect(deletedMessage(['Thesis defense', 'Field notes'])).toBe('Deleted 2 decks');
+		expect(deletedMessage(['A', 'B', 'C'])).toBe('Deleted 3 decks');
 	});
 
 	it('says the decks did not load apart from a change that was not saved', () => {
