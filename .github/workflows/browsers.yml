@@ -1,7 +1,7 @@
 # Runs the web app's browser tests in Firefox or WebKit when a ready pull
-# request carries a `firefox` or `webkit` label. `ci` runs them in Chromium on
-# every pull request; this workflow adds the other engines on request, so a
-# pull request pays for them only when it needs them.
+# request carries a `firefox` or `webkit` label. CI (ci.yml) runs them in
+# Chromium on every pull request; this workflow adds the other engines on
+# request, so a pull request pays for them only when it needs them.
 #
 # Adding a label, pushing, or marking the draft ready runs every engine the pull
 # request is labeled with. GitHub can't filter label events by name, so any

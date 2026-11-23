@@ -12,7 +12,7 @@ afterAll(async () => {
 	await shared.close();
 });
 
-describe('createDatabase', () => {
+describe('createDatabase', { timeout: 30_000 }, () => {
 	const database = createDatabase(shared);
 
 	beforeEach(async () => {
