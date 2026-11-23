@@ -76,6 +76,12 @@ describe('the default schemes, Oxocarbon Dark and Oxocarbon Light', () => {
 	});
 });
 
+it('gives destructive actions the danger color the compiler gives the default schemes', () => {
+	const [dark, light] = [darkBlock, lightBlock].map((block) => declarations(block!)['--danger']);
+	expect(dark).toBe(compiled('oxocarbon-dark').appRoles.danger);
+	expect(light).toBe(compiled('oxocarbon-light').appRoles.danger);
+});
+
 describe('code token colors', () => {
 	it('match what the compiler gives the default schemes, Oxocarbon Dark and Oxocarbon Light', () => {
 		const darkTokens = tokenVariables(darkBlock);

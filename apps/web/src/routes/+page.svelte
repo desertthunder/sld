@@ -491,8 +491,7 @@
 		);
 	}
 
-	.face :global(.frame),
-	.face :global(.stage) {
+	.face :global(:is(.frame, .stage)) {
 		background: transparent;
 	}
 

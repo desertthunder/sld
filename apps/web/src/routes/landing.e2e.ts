@@ -155,3 +155,10 @@ test('a slide takes the layout and classes its frontmatter names, and keeps its 
 	await preview.fill('---\nlayout: two-column\n---\n# Hi');
 	await expect(slide).toHaveClass(/^slide layout-default\b/);
 });
+
+test("the slides on the index cards let the card's ruled lines show through", async ({ page }) => {
+	await page.goto('/');
+	const stage = page.locator('.card .face .stage').first();
+	await expect(stage.locator('article.slide')).toBeVisible({ timeout: 30_000 });
+	await expect(stage).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+});

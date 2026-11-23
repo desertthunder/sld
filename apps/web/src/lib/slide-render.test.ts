@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { sampleSlide } from '#lib/sample-slide.ts';
-import { renderSlide } from '#lib/slide-render.ts';
+import { renderCount, renderSlide } from '#lib/slide-render.ts';
 
 const lines = (...rows: string[]) => rows.join('\n');
 
@@ -104,6 +104,13 @@ describe('renderSlide', () => {
 	it('leaves directives as text', async () => {
 		const slide = await renderSlide(lines(':::note', 'One', ':::'));
 		expect(slide.html).toBe('<p>:::note\nOne\n:::</p>\n');
+	});
+
+	it('counts every call, cached ones included', async () => {
+		const before = renderCount.calls;
+		await renderSlide('# Counted');
+		await renderSlide('# Counted');
+		expect(renderCount.calls - before).toBe(2);
 	});
 
 	it('returns the cached result for markdown it has seen', async () => {

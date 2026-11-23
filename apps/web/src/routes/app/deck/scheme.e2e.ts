@@ -227,6 +227,60 @@ test('a low-contrast scheme keeps its place with a mark, and explains it when fo
 	expect(names).toEqual(names.toSorted((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })));
 });
 
+test('the editor preview and thumbnails use the deck scheme, a slide scheme in its place, and the scheme picked', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const id = await createDeck(
+		page,
+		['# One', '---\nscheme: gruvbox-dark-hard\n---\n# Two', '---\nscheme: 3\n---\n# Three'],
+		'nord'
+	);
+	await openDeck(page, id);
+	const preview = page.getByRole('region', { name: 'Preview' }).locator('.stage');
+	const thumbs = page.getByRole('navigation', { name: 'Slides' }).locator('.thumb .stage');
+	const warnings = page.getByRole('region', { name: 'Markdown' }).getByRole('status');
+	await expect(thumbs).toHaveCount(3);
+	await expect(thumbs.nth(2).locator('article.slide h1')).toHaveText('Three', { timeout: 30_000 });
+	await expect.poll(() => background(preview)).toBe(base00.nord);
+	expect(await Promise.all([0, 1, 2].map((index) => background(thumbs.nth(index))))).toEqual([
+		base00.nord,
+		base00['gruvbox-dark-hard'],
+		base00.nord
+	]);
+
+	await page
+		.getByRole('navigation', { name: 'Slides' })
+		.getByRole('button', { name: /^Slide 3/ })
+		.click();
+	await expect(warnings).toHaveText("The scheme isn't text, so the slide uses the deck's.");
+	await page
+		.getByRole('navigation', { name: 'Slides' })
+		.getByRole('button', { name: /^Slide 2/ })
+		.click();
+	await expect.poll(() => background(preview)).toBe(base00['gruvbox-dark-hard']);
+	await page
+		.getByRole('navigation', { name: 'Slides' })
+		.getByRole('button', { name: /^Slide 1/ })
+		.click();
+
+	await schemeButton(page).click();
+	await expect(page.getByRole('navigation', { name: 'Slides' })).toBeHidden();
+	await expect(warnings).toBeHidden();
+	await expect(page.locator('.preview-body article.slide h1')).toHaveText('One', { timeout: 30_000 });
+	const calls = await renderCalls(page);
+	await search(page).fill('nord light');
+	await search(page).press('Enter');
+	await expect(search(page)).toBeHidden();
+	await expect.poll(() => background(preview)).toBe(base00['nord-light']);
+	expect(await Promise.all([0, 1, 2].map((index) => background(thumbs.nth(index))))).toEqual([
+		base00['nord-light'],
+		base00['gruvbox-dark-hard'],
+		base00['nord-light']
+	]);
+	expect(await renderCalls(page)).toBe(calls);
+});
+
 test.describe('presenting', () => {
 	test('uses the deck scheme, a slide scheme in its place, and the default for an unknown slug', async ({ page }) => {
 		const id = await createDeck(

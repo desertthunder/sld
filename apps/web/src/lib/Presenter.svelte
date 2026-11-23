@@ -21,7 +21,7 @@
 	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import ShortcutsHelp from '#lib/ShortcutsHelp.svelte';
 	import Slide from '#lib/Slide.svelte';
-	import { defaultAspect, type Aspect } from '#lib/stage.ts';
+	import { deckAspect } from '#lib/stage.ts';
 
 	let { deck, schemes }: { deck: DeckWithSlides; schemes: readonly Scheme[] } = $props();
 
@@ -29,7 +29,7 @@
 	const markdowns = $derived(deck.slides.length > 0 ? deck.slides.map(({ markdown }) => markdown) : ['']);
 	const total = $derived(markdowns.length);
 	const settings = $derived(presentSettings(deck.settings));
-	const aspect: Aspect = $derived(deck.aspect === '4:3' ? '4:3' : defaultAspect);
+	const aspect = $derived(deckAspect(deck.aspect));
 	const prefersLight = new MediaQuery('prefers-color-scheme: light');
 	const scheme = $derived(resolveScheme(schemes, deck.scheme, prefersLight.current ? 'light' : 'dark'));
 

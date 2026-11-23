@@ -1,11 +1,15 @@
 # Checks pull requests once they are ready for review, and every push to main.
-# Agents run `make ci` before each push, so a draft starts no job: a skipped
-# required check counts as passing, which is safe only because a draft cannot
-# merge. One job, `ci`, the only required status check: it filters paths, then
-# runs the web steps, the devtools steps or both, and fails if any step fails.
-# One job is billed once, where a job per package was billed per job. To keep
-# that one job short, the web unit tests and browser tests run at the same time
-# in one step instead of in a job each, which would install everything twice.
+# Agents run `make ci` before each push, so a draft starts no job, `ci`
+# included: a skipped required check counts as passing, which is safe only
+# because a draft cannot merge.
+#
+# `changes` filters paths. `web` runs lint, check, the unit tests and the build,
+# `e2e` runs the Chromium browser tests in three shards at once, and `devtools`
+# runs the devtools steps; each skips when its paths didn't change. The browser
+# tests ran past the time limit in one job, so they shard. `ci`, the only
+# required status check, waits for every job and passes only if each one passed
+# or was skipped by the path filter. It runs even when a job before it fails or
+# is cancelled, because a skipped `ci` would count as passing.
 #
 # The browser tests run in Chromium only. Browsers (browsers.yml) runs them in
 # Firefox or WebKit when a pull request carries that label. `ci` never runs on
@@ -27,13 +31,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
+  changes:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      devtools: ${{ steps.filter.outputs.devtools }}
     steps:
       - uses: actions/checkout@v5
       # On a pull request this reads the pull request's files; on a push to
@@ -60,98 +67,142 @@ jobs:
               - .github/workflows/comment.yml
               - *shared_ts
 
-      - if: steps.filter.outputs.web == 'true' || steps.filter.outputs.devtools == 'true'
-        uses: pnpm/action-setup@v4
-      - if: steps.filter.outputs.web == 'true' || steps.filter.outputs.devtools == 'true'
-        uses: actions/setup-node@v5
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - if: steps.filter.outputs.web == 'true' || steps.filter.outputs.devtools == 'true'
-        id: install
-        run: pnpm install --frozen-lockfile
-
+      - run: pnpm install --frozen-lockfile
       - name: Web lint
-        if: steps.filter.outputs.web == 'true'
         run: pnpm exec prettier --check apps/web && pnpm exec eslint apps/web
       - name: Web check
-        if: steps.filter.outputs.web == 'true'
         run: pnpm --filter @sld/web check
+      - name: Web test
+        run: pnpm --filter @sld/web test
+      - name: Web build
+        run: pnpm --filter @sld/web build
+      - name: Check the build serves the app shell for every path
+        run: make app-shell
+
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    name: e2e (${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # Let every shard finish, so one run lists every failing browser test.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Key the browser cache by Playwright version
-        if: steps.filter.outputs.web == 'true'
         id: browsers
         run: |
           version=$(pnpm --filter @sld/web exec playwright --version | awk '{ print $2 }')
           echo "cache-key=playwright-$ImageOS-$version-chromium" >> "$GITHUB_OUTPUT"
       - name: Restore Chromium from the cache
-        if: steps.filter.outputs.web == 'true'
         id: browser-cache
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ steps.browsers.outputs.cache-key }}
       - name: Install Chromium and its system packages
-        if: steps.filter.outputs.web == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
+        if: steps.browser-cache.outputs.cache-hit != 'true'
         run: pnpm --filter @sld/web exec playwright install --with-deps chromium
-      # Saved before the tests run, so a failing test doesn't cost the next run the download.
+      # Saved before the tests run, so a failing test doesn't cost the next run the download. Shards that miss the cache
+      # together all try to save it, and only the first can.
       - name: Save Chromium to the cache
-        if: steps.filter.outputs.web == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
         uses: actions/cache/save@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ steps.browsers.outputs.cache-key }}
       - name: Install the system packages the cached Chromium needs
-        if: steps.filter.outputs.web == 'true' && steps.browser-cache.outputs.cache-hit == 'true'
+        if: steps.browser-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @sld/web exec playwright install-deps chromium
-      # The runner has 2 vCPUs, so each suite keeps the 1 worker it had when it ran alone: the browser tests took about
-      # 6 minutes and the unit tests 2. Sharing the CPUs slows the database tests, so their hooks get 30 seconds before
-      # a timeout instead of 10, as their tests already do, and every other test 30 instead of 5. The browser tests
-      # print as they run; the unit tests write to a log, printed once they finish, folded if they pass, or when the job
-      # timeout or a cancel stops the step. Both run in the background because bash runs a trap during `wait` at once,
-      # but only after a foreground command exits.
-      - name: Web test and browser test, at the same time
-        if: steps.filter.outputs.web == 'true'
-        env:
-          VITEST_MAX_WORKERS: '1'
-        run: |
-          unit_log="$RUNNER_TEMP/web-test.log"
-          trap 'echo "::error title=web::The step was stopped. The web test log follows."; cat "$unit_log"; exit 1' INT TERM
-          pnpm --filter @sld/web test --testTimeout=30000 --hookTimeout=30000 > "$unit_log" 2>&1 &
-          unit=$!
-          pnpm --filter @sld/web e2e --project=chromium --workers=1 &
-          browser=$!
-          browser_status=0
-          wait "$browser" || browser_status=$?
-          if [ "$browser_status" -ne 0 ]; then echo "::error title=web::Web browser test failed with exit code $browser_status."; fi
-          unit_status=0
-          wait "$unit" || unit_status=$?
-          trap - INT TERM
-          if [ "$unit_status" -eq 0 ]; then
-            echo "::group::Web test passed"
-            cat "$unit_log"
-            echo "::endgroup::"
-          else
-            echo "::error title=web::Web test failed with exit code $unit_status."
-            cat "$unit_log"
-          fi
-          [ "$unit_status" -eq 0 ] && [ "$browser_status" -eq 0 ]
-      - name: Web build
-        if: steps.filter.outputs.web == 'true'
-        run: pnpm --filter @sld/web build
-      - name: Check the build serves the app shell for every path
-        if: steps.filter.outputs.web == 'true'
-        run: make app-shell
+      # Playwright shards a file whole unless its tests may run apart, and the editor's file holds about 40% of the
+      # suite's time. The runner has 2 vCPUs, so each shard keeps one worker.
+      - name: Web browser test
+        run: pnpm --filter @sld/web e2e --project=chromium --workers=1 --fully-parallel --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
-      # Run after a failed web step too, so one run reports both packages.
+  devtools:
+    needs: changes
+    if: needs.changes.outputs.devtools == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        id: install
+      # Run after a failed devtools step too, so one run reports every failure.
       - name: Devtools lint
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
         run: pnpm exec prettier --check tools/devtools && pnpm exec eslint tools/devtools
       - name: Devtools check
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm --filter @sld/devtools check
       - name: Devtools test
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm --filter @sld/devtools test
       - name: Dry run as comment.yml does
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.filter.outputs.devtools == 'true' }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: make dry-run
+
+  ci:
+    needs: [changes, web, e2e, devtools]
+    # always() keeps a failed or cancelled job from skipping `ci`.
+    if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check every job passed, or was skipped by the path filter
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          WEB_CHANGED: ${{ needs.changes.outputs.web }}
+          DEVTOOLS_CHANGED: ${{ needs.changes.outputs.devtools }}
+          WEB: ${{ needs.web.result }}
+          E2E: ${{ needs.e2e.result }}
+          DEVTOOLS: ${{ needs.devtools.result }}
+        run: |
+          status=0
+          expect() {
+            local want
+            case "$2" in
+              true) want=success ;;
+              false) want=skipped ;;
+              *)
+                echo "::error title=ci::The path filter gave $1 '$2', expected true or false."
+                status=1
+                return
+                ;;
+            esac
+            if [ "$3" != "$want" ]; then
+              echo "::error title=ci::$1 was $3, expected $want."
+              status=1
+            fi
+          }
+          expect changes true "$CHANGES"
+          expect web "$WEB_CHANGED" "$WEB"
+          expect e2e "$WEB_CHANGED" "$E2E"
+          expect devtools "$DEVTOOLS_CHANGED" "$DEVTOOLS"
+          exit "$status"
