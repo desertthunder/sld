@@ -84,6 +84,32 @@ test('the preview follows each keystroke without waiting for the database', asyn
 	await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 30_000 });
 });
 
+test('"Go to line" puts the cursor on the line a frontmatter warning names', async ({ page }) => {
+	const body = Array.from({ length: 60 }, (_, index) => `Line ${index + 1}`).join('\n\n');
+	const id = await createDeck(page, [`# Good\n\n${body}`]);
+	await openDeck(page, id);
+	await expect(previewSlide(page).locator('h1')).toHaveText('Good', { timeout: 30_000 });
+	await expect(warnings(page).getByRole('button')).toHaveCount(0);
+
+	await editor(page).fill(`---\nlayout: center\ntitle: [Open\n---\n# Broken\n\n${body}`);
+	const goTo = warnings(page).getByRole('button', { name: 'Go to line 3' });
+	await expect(goTo).toHaveText('Go to line');
+	await editor(page).press('Control+End');
+	await expect(editPane(page).getByText(/^Ln 125, col/)).toBeVisible();
+	await expect(editPane(page).locator('.cm-line').first()).not.toBeInViewport();
+
+	await goTo.click();
+	await expect(editor(page)).toBeFocused();
+	await expect(editPane(page).getByText('Ln 3, col 1', { exact: true })).toBeVisible();
+	await expect(editPane(page).locator('.cm-activeLine')).toHaveText('title: [Open');
+	await expect(editPane(page).locator('.cm-activeLine')).toBeInViewport();
+
+	await editor(page).press('End');
+	await page.keyboard.type(']');
+	await expect(warnings(page).getByRole('button')).toHaveCount(0);
+	await expect(previewSlide(page).locator('h1')).toHaveText('Broken');
+});
+
 test('broken frontmatter shows a warning under the editor and keeps the last good slide', async ({ page }) => {
 	const id = await createDeck(page, ['---\nlayout: center\n---\n# Good']);
 	await openDeck(page, id);
@@ -102,7 +128,8 @@ test('broken frontmatter shows a warning under the editor and keeps the last goo
 
 	await editor(page).fill('---\nlayout: hero\n---\n# Fixed');
 	await expect(previewSlide(page).locator('h1')).toHaveText('Fixed');
-	await expect(warnings(page)).toHaveText("hero isn't a layout, so the slide uses the default.");
+	await expect(warnings(page)).toHaveText("hero isn't a layout, so the slide uses the default. Go to line");
+	await expect(warnings(page).getByRole('button', { name: 'Go to line 2' })).toBeVisible();
 	await expect(warnings(page).locator('code')).toHaveText('hero');
 
 	await editor(page).fill('# Fine');
@@ -119,7 +146,7 @@ test('at phone width the warning shows in the Edit tab', async ({ page }) => {
 	// At phone width each pane is a tab panel, named by its tab.
 	const strip = page.getByRole('tabpanel', { name: 'Edit' }).getByRole('status');
 	await expect(strip).toBeVisible({ timeout: 30_000 });
-	await expect(strip).toHaveText("hero isn't a layout, so the slide uses the default.");
+	await expect(strip).toHaveText("hero isn't a layout, so the slide uses the default. Go to line");
 });
 
 test('the slide list shows a thumbnail of each slide, rendered once it scrolls near', async ({ page }) => {

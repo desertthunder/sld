@@ -270,6 +270,7 @@
 	// CodeMirror loads only once a deck opens, in its own chunk.
 	const markdownEditor = import('#lib/MarkdownEditor.svelte');
 	const cursor = $state({ label: '' });
+	let markdownPane: { goToLine: (line: number) => void } | undefined = $state();
 
 	const phone = new MediaQuery(`max-width: ${phoneWidth}px`);
 	let body: HTMLElement | undefined = $state();
@@ -733,6 +734,7 @@
 				<div class="editor-loading" aria-busy="true"></div>
 			{:then { default: MarkdownEditor }}
 				<MarkdownEditor
+					bind:this={markdownPane}
 					slideId={current.id}
 					markdown={current.markdown}
 					slideNumber={editor.selected + 1}
@@ -743,7 +745,7 @@
 			{:catch}
 				<p class="editor-failed" role="alert">The editor didn't load. Reload the page to try again.</p>
 			{/await}
-			<SlideWarnings {notices} />
+			<SlideWarnings {notices} ongoto={(line) => markdownPane?.goToLine(line)} />
 		</section>
 		<PaneHandle
 			label="Resize editor and preview"

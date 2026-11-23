@@ -9,6 +9,7 @@ import {
 	cursorLabel,
 	editorExtensions,
 	frontmatterEnd,
+	goToLine,
 	keepRule,
 	offerSplit,
 	splitAtRule,
@@ -103,6 +104,25 @@ describe('cursorLabel', () => {
 	it('adds how many characters are selected', () => {
 		const state = EditorState.create({ doc: '# One\nTwo', selection: { anchor: 2, head: 9 } });
 		expect(cursorLabel(state)).toBe('Ln 2, col 4 · 7 selected');
+	});
+});
+
+describe('goToLine', () => {
+	const state = EditorState.create({ doc: '---\nlayout: [\n---\n# Title', selection: { anchor: 0 } });
+	const lineAfter = (number: number) => {
+		const next = state.update(goToLine(state, number)).state;
+		return next.doc.lineAt(next.selection.main.head).number;
+	};
+
+	it('puts the cursor at the start of the line', () => {
+		const next = state.update(goToLine(state, 2)).state;
+		expect(next.selection.main.head).toBe(state.doc.line(2).from);
+		expect(cursorLabel(next)).toBe('Ln 2, col 1');
+	});
+
+	it('keeps a line out of range within the document', () => {
+		expect(lineAfter(0)).toBe(1);
+		expect(lineAfter(99)).toBe(4);
 	});
 });
 

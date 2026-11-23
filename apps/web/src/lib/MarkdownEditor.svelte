@@ -6,6 +6,7 @@
 		createSlideState,
 		cursorLabel,
 		editorExtensions,
+		goToLine as goToLineSpec,
 		syncSlideState,
 		type SplitParts
 	} from '#lib/markdown-editor.ts';
@@ -59,7 +60,14 @@
 		onposition(cursorLabel(view.state));
 	}
 
-	// TODO: move the cursor to a warning's line when the warning strip under the editor asks to go to it.
+	/** Moves the cursor to line `number` of the slide shown, scrolls to it and focuses the editor. */
+	export function goToLine(number: number) {
+		const { view } = shown;
+		if (!view) return;
+		view.dispatch(goToLineSpec(view.state, number));
+		view.focus();
+	}
+
 	onMount(() => {
 		shown.id = slideId;
 		shown.view = new EditorView({ parent: host, state: createSlideState(markdown, slideNumber, extensions) });

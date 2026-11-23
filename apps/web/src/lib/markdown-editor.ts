@@ -14,7 +14,8 @@ import {
 	Transaction,
 	type ChangeSpec,
 	type Extension,
-	type Text
+	type Text,
+	type TransactionSpec
 } from '@codemirror/state';
 import {
 	Decoration,
@@ -85,6 +86,20 @@ export function cursorLabel(state: EditorState): string {
 	const line = state.doc.lineAt(main.head);
 	const selected = state.selection.ranges.reduce((total, { from, to }) => total + to - from, 0);
 	return `Ln ${line.number}, col ${main.head - line.from + 1}${selected > 0 ? ` · ${selected} selected` : ''}`;
+}
+
+/**
+ * Puts the cursor at the start of line `number`, counted from 1 and kept within the document, and scrolls it to the
+ * middle of the editor.
+ */
+export function goToLine(state: EditorState, number: number): TransactionSpec {
+	const kept = Math.max(Math.trunc(number), 1);
+	const line = state.doc.line(Math.min(kept, state.doc.lines));
+	return {
+		selection: { anchor: line.from },
+		effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+		userEvent: 'select'
+	};
 }
 
 /**
