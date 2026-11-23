@@ -276,6 +276,11 @@ test('the preview draws a slide as the presenter does at the same size', async (
 	const previewStage = previewPane(page).locator('.stage');
 	await expect.poll(() => previewStage.evaluate((stage) => stage.getBoundingClientRect().width)).toBe(size.width);
 	await page.evaluate(() => document.fonts.ready);
+	// The sample slide shrinks to fit, and the note that says so is the editor's own, drawn over the stage.
+	await expect(previewPane(page).getByText(/^shrunk to \d+%$/)).toBeVisible();
+	await previewPane(page)
+		.locator('.fit-note')
+		.evaluate((note) => (note.style.display = 'none'));
 	const preview = await describeStage(page, previewStage);
 	const previewShot = await previewStage.screenshot();
 
@@ -407,3 +412,31 @@ async function changedBlocks(page: Page, first: Buffer, second: Buffer): Promise
 		[first.toString('base64'), second.toString('base64')]
 	);
 }
+
+/** A list of `count` items. */
+function list(count: number): string {
+	return Array.from({ length: count }, (_, index) => `- Item ${index + 1}`).join('\n');
+}
+
+test('the preview notes a slide that shrank to fit and one too long to fit, and presenting notes neither', async ({
+	page
+}) => {
+	const id = await createDeck(page, ['# Short', `# Long\n\n${list(12)}`, `# Too long\n\n${list(30)}`]);
+	const note = (pattern: RegExp) => previewPane(page).getByRole('status').filter({ hasText: pattern });
+
+	await openDeck(page, id);
+	await expect(previewSlide(page).locator('h1')).toHaveText('Short', { timeout: 30_000 });
+	await expect(previewPane(page).locator('.fit-note')).toHaveCount(0);
+
+	await openDeck(page, id, '?slide=2');
+	await expect(previewSlide(page).locator('h1')).toHaveText('Long', { timeout: 30_000 });
+	await expect(note(/^shrunk to \d+%$/)).toBeVisible();
+
+	await openDeck(page, id, '?slide=3');
+	await expect(previewSlide(page).locator('h1')).toHaveText('Too long', { timeout: 30_000 });
+	await expect(note(/^Too long to fit · split or trim$/)).toBeVisible();
+
+	await page.goto(`/app/deck/${id}/present#3`);
+	await expect(page.locator('article.slide h1')).toHaveText('Too long', { timeout: 30_000 });
+	await expect(page.getByText(/shrunk to|Too long to fit/)).toHaveCount(0);
+});

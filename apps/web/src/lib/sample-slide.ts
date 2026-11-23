@@ -1,7 +1,7 @@
 const frame =
 	'<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="160" height="90" rx="8" fill-opacity=".25"/></svg>';
 
-/** A slide with each kind of content a slide shows: headings, lists, task lists, a table, code, an image, links and HTML. */
+/** A slide with each kind of content a slide shows: a heading, lists, task lists, a table, code, an image, links and HTML. */
 export const sampleSlide = `+++
 title = "Welcome"
 +++
@@ -9,8 +9,6 @@ title = "Welcome"
 # Welcome to sld
 
 Each slide is **markdown**, with [links](https://commonmark.org), \`code\` and ~~mistakes~~.
-
-## Lists
 
 - Edit a slide
   1. Change its markdown

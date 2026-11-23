@@ -1,0 +1,440 @@
+/*
+ * A slide, in the stage's pixels: the type scale, margins and layouts in `docs/design.md`. Colors are the scheme's
+ * slide roles only. Text sizes multiply by `--fit`, which `slide-fit.ts` lowers when a slide runs long, and each stops
+ * at its floor: 32px for body text and 72px for headings.
+ * TODO: let a deck choose one of the other font pairings by setting the `--font-*` variables and `--heading-weight`.
+ */
+.slide {
+	--fit: 1;
+	--font-heading: 'Hubot Sans Variable', 'Mona Sans Variable', system-ui, sans-serif;
+	--font-body: 'Mona Sans Variable', system-ui, sans-serif;
+	--font-code: 'Monaspace Neon', ui-monospace, monospace;
+	--heading-weight: 500;
+	--margin-top: 104px;
+	--margin-side: 120px;
+	--margin-bottom: 96px;
+	--measure: 1400px;
+	--body-size: max(32px, 44px * var(--fit));
+	--space: calc(40px * var(--fit));
+
+	position: relative;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: var(--margin-top) var(--margin-side) var(--margin-bottom);
+	/* Past the floor, a slide clips at its bottom margin rather than at the stage's edge. */
+	clip-path: inset(0 0 var(--margin-bottom) 0);
+	color: var(--body);
+	font-family: var(--font-body);
+	font-size: var(--body-size);
+	font-style: normal;
+	font-weight: 400;
+	line-height: 1.4;
+	letter-spacing: normal;
+	text-align: start;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.slide ::selection {
+	background: var(--selection);
+}
+
+/* Spacing comes from the rules below, so a nested block has no margin of its own either. */
+:where(.slide) :where(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, figure, hr, pre, table) {
+	margin: 0;
+}
+
+.slide > * {
+	flex: none;
+	max-width: var(--measure);
+	margin: 0;
+}
+
+.slide > * + * {
+	margin-top: var(--space);
+}
+
+/* A flex item stretches to the slide's width, which would widen an image or embed with no width of its own. */
+.slide > :is(img, video, audio, iframe, embed, object, svg, canvas, [data-frame]) {
+	align-self: flex-start;
+}
+
+.slide > :is(h1, h2, h3, h4, h5, h6) + * {
+	margin-top: calc(56px * var(--fit));
+}
+
+.slide > :where(h1, h2, h3, h4, h5, h6, table, pre, hr, figure, .lone-image) {
+	max-width: none;
+}
+
+.slide :is(h1, h2, h3, h4, h5, h6) {
+	color: var(--heading);
+	font-family: var(--font-heading);
+	font-weight: var(--heading-weight);
+	letter-spacing: -0.02em;
+	text-wrap: balance;
+}
+
+.slide h1 {
+	font-size: max(72px, 96px * var(--fit));
+	line-height: 1.05;
+}
+
+.slide h2 {
+	font-size: 72px;
+	line-height: 1.1;
+}
+
+.slide h3 {
+	font-size: 56px;
+	font-weight: calc(var(--heading-weight) + 100);
+	line-height: 1.15;
+}
+
+.slide :is(h4, h5, h6) {
+	font-size: var(--body-size);
+	font-weight: calc(var(--heading-weight) + 100);
+	line-height: 1.4;
+	letter-spacing: normal;
+}
+
+.slide a {
+	color: var(--link);
+	text-decoration: underline;
+	text-decoration-thickness: 3px;
+	text-underline-offset: 10px;
+}
+
+.slide :not(pre) > code {
+	padding: 2px 14px;
+	border: 2px solid var(--border);
+	border-radius: 10px;
+	background: var(--surface);
+	font-family: var(--font-code);
+	font-size: 0.86em;
+}
+
+.slide kbd {
+	padding: 0 12px;
+	border: 2px solid var(--border);
+	border-bottom-width: 4px;
+	border-radius: 10px;
+	font-family: var(--font-code);
+	font-size: 0.86em;
+}
+
+.slide pre:not(.code-block) {
+	font-family: var(--font-code);
+	font-size: max(20px, 30px * var(--fit));
+	line-height: 1.5;
+}
+
+.slide sup {
+	color: var(--link);
+	font-family: var(--font-code);
+	font-size: 0.55em;
+	line-height: 0;
+}
+
+.slide sup a {
+	color: inherit;
+	text-decoration: none;
+}
+
+/* Lists: accent squares, hollow squares for nested items, drawn task boxes and muted numbers. */
+.slide :is(ul, ol) {
+	padding: 0;
+}
+
+.slide li + li,
+.slide li > :is(ul, ol) {
+	margin-top: calc(18px * var(--fit));
+}
+
+.slide ul {
+	list-style: none;
+}
+
+.slide ul > li {
+	position: relative;
+	padding-left: 1.45em;
+}
+
+.slide ul > li::before {
+	content: '';
+	position: absolute;
+	top: 0.55em;
+	left: 0.18em;
+	box-sizing: border-box;
+	width: 0.41em;
+	height: 0.41em;
+	border-radius: 3px;
+	background: var(--accent);
+}
+
+.slide ul ul > li::before {
+	top: 0.6em;
+	width: 0.32em;
+	height: 0.32em;
+	border: 3px solid var(--accent);
+	background: transparent;
+}
+
+.slide ol {
+	padding-left: 1.6em;
+}
+
+.slide ol > li {
+	padding-left: 16px;
+}
+
+.slide ol > li::marker {
+	color: var(--muted);
+	font-family: var(--font-code);
+	font-size: 0.86em;
+}
+
+.slide ul > li.task-list-item::before {
+	content: none;
+}
+
+.slide li.task-list-item > input[type='checkbox'] {
+	appearance: none;
+	position: absolute;
+	font: inherit;
+	top: 0.28em;
+	left: 0;
+	box-sizing: border-box;
+	width: 0.95em;
+	height: 0.95em;
+	margin: 0;
+	border: 3px solid var(--muted);
+	border-radius: 8px;
+	background: transparent;
+}
+
+.slide li.task-list-item > input[type='checkbox']:checked {
+	border-color: var(--accent);
+	background: var(--accent);
+}
+
+/* The check is the item's own mark, drawn over the box, since a checkbox has no pseudo-elements in every browser. */
+.slide ul > li.task-list-item:has(> input[type='checkbox']:checked)::before {
+	content: '';
+	z-index: 1;
+	top: calc(0.28em + 4px);
+	left: 0.27em;
+	width: 0.27em;
+	height: 0.5em;
+	border: solid var(--bg);
+	border-width: 0 5px 5px 0;
+	border-radius: 0;
+	background: none;
+	transform: rotate(45deg);
+}
+
+/* Tables: heading-face headers over border-color rules, with tabular figures. */
+.slide table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: max(32px, 40px * var(--fit));
+	font-variant-numeric: tabular-nums;
+}
+
+.slide th {
+	padding: 0 32px calc(22px * var(--fit)) 0;
+	border-bottom: 3px solid var(--border);
+	color: var(--heading);
+	font-family: var(--font-heading);
+	font-weight: var(--heading-weight);
+	text-align: start;
+	vertical-align: bottom;
+}
+
+.slide td {
+	padding: calc(22px * var(--fit)) 32px calc(22px * var(--fit)) 0;
+	border-bottom: 2px solid var(--border);
+}
+
+.slide :is(th, td):last-child {
+	padding-right: 0;
+}
+
+/* A quote: a large accent quote mark and no side bar. Its text is body text set large, so it shrinks to the body
+ * floor. */
+.slide blockquote {
+	position: relative;
+	max-width: 1440px;
+	padding-left: calc(120px * var(--fit));
+}
+
+.slide blockquote::before {
+	content: '\201C';
+	position: absolute;
+	top: calc(-40px * var(--fit));
+	left: 0;
+	color: var(--accent);
+	font-family: var(--font-heading);
+	font-size: calc(220px * var(--fit));
+	line-height: 1;
+}
+
+.slide blockquote > * + * {
+	margin-top: var(--space);
+}
+
+.slide blockquote > p {
+	max-width: 1300px;
+	color: var(--heading);
+	font-family: var(--font-heading);
+	font-size: max(32px, 72px * var(--fit));
+	font-weight: var(--heading-weight);
+	line-height: 1.15;
+}
+
+.slide cite {
+	display: block;
+	color: var(--muted);
+	font-size: max(30px, 34px * var(--fit));
+	font-style: normal;
+}
+
+.slide hr {
+	align-self: stretch;
+	height: 3px;
+	border: 0;
+	background: var(--border);
+}
+
+/* Images keep their aspect inside the content area, which is 880px tall on every stage. */
+.slide :is(img, video) {
+	max-width: 100%;
+	max-height: calc(1080px - var(--margin-top) - var(--margin-bottom));
+	height: auto;
+	object-fit: contain;
+}
+
+.slide > p.lone-image:only-child {
+	display: flex;
+	flex: 1 1 0;
+	min-height: 0;
+}
+
+.slide > p.lone-image:only-child > img {
+	width: 100%;
+	height: 100%;
+	max-height: none;
+}
+
+.slide figcaption {
+	margin-top: calc(24px * var(--fit));
+	color: var(--muted);
+	font-size: 30px;
+}
+
+/* Footnotes sit above the bottom margin, under a border-color rule. */
+.slide > section.footnotes {
+	max-width: 1560px;
+	margin-top: auto;
+	padding-top: 20px;
+	border-top: 2px solid var(--border);
+	color: var(--muted);
+	font-size: 30px;
+	line-height: 1.4;
+}
+
+.slide > section.footnotes > h2 {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.slide > section.footnotes li + li {
+	margin-top: 8px;
+}
+
+.slide [data-footnote-backref] {
+	display: none;
+}
+
+/* The title layout: the deck's title, a subtitle under it, and a last line pinned to the bottom margin. */
+.slide.layout-title {
+	justify-content: safe center;
+}
+
+.slide.layout-title > :is(h1, h2) {
+	max-width: 1500px;
+	font-size: max(72px, 136px * var(--fit));
+	line-height: 1;
+	letter-spacing: -0.03em;
+}
+
+.slide.layout-title > :is(h1, h2) + p {
+	margin-top: var(--space);
+	font-size: max(32px, 48px * var(--fit));
+}
+
+.slide.layout-title > p:last-child:not(:first-child, :is(h1, h2) + p) {
+	position: absolute;
+	bottom: var(--margin-bottom);
+	left: var(--margin-side);
+	color: var(--muted);
+	font-size: 30px;
+}
+
+/* The center layout: one statement centered both ways, at heading 1 size. */
+.slide.layout-center {
+	align-items: center;
+	justify-content: safe center;
+	text-align: center;
+}
+
+.slide.layout-center > :is(img, video, audio, iframe, embed, object, svg, canvas, [data-frame]) {
+	align-self: center;
+}
+
+.slide.layout-center > :is(h1, h2) {
+	max-width: 1500px;
+	font-size: max(72px, 96px * var(--fit));
+	line-height: 1.05;
+}
+
+.slide.layout-center > :is(h1, h2, h3) ~ p {
+	color: var(--muted);
+}
+
+/* The section layout: a part label in the accent color over a title that sits on the bottom margin. */
+.slide.layout-section {
+	justify-content: safe flex-end;
+}
+
+.slide.layout-section > p:has(+ :is(h1, h2)) {
+	color: var(--accent);
+	font-family: var(--font-code);
+	font-size: max(30px, 34px * var(--fit));
+}
+
+.slide.layout-section > p + :is(h1, h2) {
+	margin-top: calc(28px * var(--fit));
+}
+
+.slide.layout-section > :is(h1, h2) {
+	max-width: var(--measure);
+	font-size: max(72px, 120px * var(--fit));
+	line-height: 1;
+}
+
+.slide.layout-section > :is(h1, h2)::after {
+	content: '';
+	display: block;
+	width: 160px;
+	height: 12px;
+	margin-top: calc(56px * var(--fit));
+	border-radius: 6px;
+	background: var(--accent);
+}

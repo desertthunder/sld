@@ -2,6 +2,7 @@
 	import { onDestroy, type Snippet } from 'svelte';
 	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import { schemeStyle } from '#lib/scheme-style.ts';
+	import { contentBottom } from '#lib/slide-fit.ts';
 	import { defaultAspect, fitStage, stageSize, type Aspect, type Fit } from '#lib/stage.ts';
 
 	let {
@@ -27,11 +28,10 @@
 	}
 
 	// A line too long for the stage, such as in a code block, widens neither the stage nor the content, so no resize
-	// reports it: measure the stage's scroll width whenever the slide's DOM, its height or its fonts change. The slide's
-	// bottom padding is room its content may run into, and only content past the stage's edge is clipped, so the height
-	// that counts ends at the slide's content box: line heights differ between browsers, and a slide that fits in one
-	// would otherwise be flagged in another. An element that clips its own overflow, such as a code block, hides a line
-	// before it reaches the stage's edge, so the slide also counts as overflowing when one of those clips something.
+	// reports it: measure the stage's scroll width whenever the slide's DOM, its fonts or its images change. A slide is as
+	// tall as the stage and clips at its bottom margin, so the height that counts is where its lowest child ends, plus
+	// that margin. An element that clips its own overflow, such as a code block, hides a line before it reaches the
+	// stage's edge, so the slide also counts as overflowing when one of those clips something.
 	$effect(() => {
 		if (!stage) return;
 		const element = stage;
@@ -42,7 +42,7 @@
 			if (slide instanceof HTMLElement) {
 				// eslint-disable-next-line unicorn/prefer-number-coercion -- The computed padding ends in px, which Number() rejects.
 				const padding = Number.parseFloat(getComputedStyle(slide).paddingBottom);
-				content.height = slide.offsetTop + slide.offsetHeight - padding;
+				content.height = slide.offsetTop + contentBottom(slide) + padding;
 				content.clipped = hasClippedContent(slide);
 			} else {
 				content.height = 0;
@@ -54,11 +54,13 @@
 		resizes.observe(wrapper);
 		if (wrapper.firstElementChild) resizes.observe(wrapper.firstElementChild);
 		mutations.observe(wrapper, { subtree: true, childList: true, characterData: true, attributes: true });
+		wrapper.addEventListener('load', measure, { capture: true });
 		document.fonts.addEventListener('loadingdone', measure);
 		measure();
 		return () => {
 			resizes.disconnect();
 			mutations.disconnect();
+			wrapper.removeEventListener('load', measure, { capture: true });
 			document.fonts.removeEventListener('loadingdone', measure);
 		};
 	});
@@ -113,6 +115,6 @@
 
 	.content {
 		display: flow-root;
-		min-height: 100%;
+		height: 100%;
 	}
 </style>

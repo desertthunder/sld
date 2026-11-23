@@ -1,12 +1,33 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { appRoles, roleCss, slideRoles, slots, tokenRoles, type Role } from '#lib/color-roles.ts';
+import {
+	appRoles,
+	contrast,
+	mix,
+	roleCss,
+	slideRoles,
+	slots,
+	textFloor,
+	tokenRoles,
+	type Palette,
+	type Role
+} from '#lib/color-roles.ts';
 import type { SchemeFile } from '#lib/scheme-compiler.ts';
 import { loadSchemes } from '#lib/schemes.ts';
 
 const cssRoles = (roles: Record<string, Role>) =>
 	Object.fromEntries(Object.entries(roles).map(([name, role]) => [name, roleCss(role)]));
+
+/** The color a role's CSS, `var(--baseNN)` or a `color-mix()` of two of them, draws in a palette. */
+function roleColor(css: string, colors: Palette): string {
+	const slot = (name: string) => colors[`base${name}` as keyof Palette];
+	const plain = /^var\(--base([\dA-F]{2})\)$/.exec(css);
+	if (plain) return slot(plain[1]);
+	const mixed = /^color-mix\(in oklab, var\(--base([\dA-F]{2})\) (\d+)%, var\(--base([\dA-F]{2})\)\)$/.exec(css);
+	if (!mixed) throw new Error(`Not a role: ${css}`);
+	return mix(slot(mixed[1]), slot(mixed[3]), Number(mixed[2]));
+}
 
 const file = JSON.parse(readFileSync(new URL('schemes/base16.json', import.meta.url), 'utf8')) as SchemeFile;
 
@@ -51,6 +72,23 @@ describe('the compiled Base16 schemes', () => {
 			'vulcan',
 			'zenbones'
 		]);
+	});
+
+	it('keep body text at 4.5:1 on the slide background, except in the schemes listed here', () => {
+		const below = file.schemes
+			.map(({ slug, colors, roles }) => ({
+				slug,
+				ratio: contrast(roleColor(roles.body, colors), roleColor(roles.bg, colors))
+			}))
+			.filter(({ ratio }) => ratio < textFloor)
+			.map(({ slug, ratio }) => `${slug} ${ratio.toFixed(2)}:1`);
+		expect(below).toMatchInlineSnapshot(`
+			[
+			  "shades-of-purple 4.11:1",
+			  "tango 3.84:1",
+			  "vulcan 3.93:1",
+			]
+		`);
 	});
 
 	it('keep the upstream license beside the data', () => {

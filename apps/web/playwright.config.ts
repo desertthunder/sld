@@ -12,6 +12,13 @@ export default defineConfig({
 	timeout: 90_000,
 	forbidOnly: Boolean(process.env.CI),
 	use: { baseURL: `http://localhost:${port}` },
+	// Screenshots are taken in Chromium on Linux, as CI runs, so their names carry neither.
+	expect: {
+		toHaveScreenshot: {
+			pathTemplate: '{testDir}/{testFileDir}/__screenshots__/{arg}{ext}',
+			maxDiffPixelRatio: 0.002
+		}
+	},
 	projects: [
 		{ name: 'chromium', use: { ...devices['Desktop Chrome'] } },
 		{ name: 'firefox', use: { ...devices['Desktop Firefox'] } },

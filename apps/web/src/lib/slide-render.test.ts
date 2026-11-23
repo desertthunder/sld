@@ -4,6 +4,11 @@ import { renderCount, renderSlide } from '#lib/slide-render.ts';
 
 const lines = (...rows: string[]) => rows.join('\n');
 
+async function html(markdown: string): Promise<string> {
+	const slide = await renderSlide(markdown);
+	return slide.html;
+}
+
 describe('renderSlide', () => {
 	it('turns the sample slide into HTML and reads its frontmatter', async () => {
 		const slide = await renderSlide(sampleSlide);
@@ -11,7 +16,6 @@ describe('renderSlide', () => {
 		expect(slide.html).toMatchInlineSnapshot(`
 			"<h1>Welcome to sld</h1>
 			<p>Each slide is <strong>markdown</strong>, with <a href="https://commonmark.org">links</a>, <code>code</code> and <del>mistakes</del>.</p>
-			<h2>Lists</h2>
 			<ul>
 			<li>Edit a slide
 			<ol>
@@ -42,7 +46,7 @@ describe('renderSlide', () => {
 			</tbody>
 			</table>
 			<pre class="code-block" data-language="ts" data-label="TypeScript"><code><span class="line"><span class="line-code" data-label="TypeScript"><span class="code-keyword">const</span> deck = <span class="code-function">splitDeck</span>(markdown);</span></span></code></pre>
-			<p><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22160%22%20height%3D%2290%22%3E%3Crect%20width%3D%22160%22%20height%3D%2290%22%20rx%3D%228%22%20fill-opacity%3D%22.25%22%2F%3E%3C%2Fsvg%3E" alt="A 16:9 frame"></p>
+			<p class="lone-image"><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22160%22%20height%3D%2290%22%3E%3Crect%20width%3D%22160%22%20height%3D%2290%22%20rx%3D%228%22%20fill-opacity%3D%22.25%22%2F%3E%3C%2Fsvg%3E" alt="A 16:9 frame"></p>
 			"
 		`);
 	});
@@ -104,6 +108,15 @@ describe('renderSlide', () => {
 	it('leaves directives as text', async () => {
 		const slide = await renderSlide(lines(':::note', 'One', ':::'));
 		expect(slide.html).toBe('<p>:::note\nOne\n:::</p>\n');
+	});
+
+	it('marks a paragraph holding only an image, and no paragraph with anything else', async () => {
+		expect(await html('![A chart](chart.png)')).toBe(
+			'<p class="lone-image"><img src="chart.png" alt="A chart"></p>\n'
+		);
+		expect(await html('See ![A chart](chart.png)')).toBe('<p>See <img src="chart.png" alt="A chart"></p>\n');
+		expect(await html('![One](1.png) ![Two](2.png)')).not.toContain('lone-image');
+		expect(await html('[![A chart](chart.png)](https://example.com)')).not.toContain('lone-image');
 	});
 
 	it('counts every call, cached ones included', async () => {
