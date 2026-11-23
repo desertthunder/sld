@@ -4,6 +4,7 @@ import { migrations } from 'virtual:migrations';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDatabase, type Database } from '#lib/database.ts';
 import {
+	applyDeckChanges,
 	createDeck,
 	deleteDeck,
 	deleteSlide,
@@ -221,20 +222,6 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await positions(deck.id)).toEqual([0, 1, 2, 3, 4, 5]);
 		});
 
-		it('inserts and duplicates a slide with the id it is given', async () => {
-			const deck = await threeSlides();
-			const [added, copied] = [crypto.randomUUID(), crypto.randomUUID()];
-			expect(await insertSlide(database, deck.id, 1, '# New', added)).toMatchObject({ id: added, position: 1 });
-			expect(await duplicateSlide(database, added, { id: copied })).toMatchObject({ id: copied, position: 2 });
-			const stored = (await getDeck(database, deck.id))!.slides.map(({ id, markdown }) => ({ id, markdown }));
-			expect(stored.slice(1, 3)).toEqual([
-				{ id: added, markdown: '# New' },
-				{ id: copied, markdown: '# New' }
-			]);
-			await expect(insertSlide(database, deck.id, 0, '# Again', added)).rejects.toThrow();
-			expect(await markdowns(deck.id)).toEqual(['# One', '# New', '# New', '# Two', '# Three']);
-		});
-
 		it('inserts the first slide of an empty deck', async () => {
 			const deck = await createDeck(database, { title: 'Talk' });
 			await insertSlide(database, deck.id, 3, '# Only');
@@ -277,13 +264,6 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await deleteSlide(database, await slideId(deck.id, 0))).toBeUndefined();
 			expect(await markdowns(deck.id)).toEqual(['# One']);
 			expect(await updatedAt(deck)).toEqual(before);
-		});
-
-		it('duplicates a slide with the markdown it is given', async () => {
-			const deck = await threeSlides();
-			const id = await slideId(deck.id, 1);
-			expect(await duplicateSlide(database, id, { markdown: '# Shown\0' })).toMatchObject({ position: 2 });
-			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Shown\u{FFFD}', '# Three']);
 		});
 
 		it('duplicates a slide to the place right after it', async () => {
@@ -356,6 +336,124 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			await expect(moveSlide(database, await slideId(deck.id, 0), 2)).rejects.toMatchObject({
 				cause: { message: 'refused' }
 			});
+			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
+		});
+
+		it('applies a batch of changes in order, in one transaction made durable once', async () => {
+			const deck = await threeSlides();
+			const [one, two] = [await slideId(deck.id, 0), await slideId(deck.id, 1)];
+			const [added, copied] = [crypto.randomUUID(), crypto.randomUUID()];
+			const sync = vi.spyOn(client, 'syncToFs');
+			await insertSlide(database, deck.id, 3, '# Lone');
+			const syncsForOne = sync.mock.calls.length;
+			await deleteSlide(database, await slideId(deck.id, 3));
+			const before = await ageDeck(deck);
+			sync.mockClear();
+			const applied = await applyDeckChanges(database, deck.id, [
+				{ kind: 'insert', id: added, position: 1, markdown: '# New' },
+				{ kind: 'update', id: added, markdown: '# New, edited\0' },
+				{ kind: 'duplicate', of: added, id: copied, markdown: '# Copy\0' },
+				{ kind: 'delete', id: one },
+				{ kind: 'update', id: two, markdown: '# Two, edited' },
+				{ kind: 'insert', id: crypto.randomUUID(), position: 99, markdown: '# Last' },
+				{ kind: 'rename', title: 'Talk, renamed' }
+			]);
+			expect(applied).toEqual([true, true, true, true, true, true, true]);
+			expect(sync).toHaveBeenCalledTimes(syncsForOne);
+			expect(await markdowns(deck.id)).toEqual([
+				'# New, edited\u{FFFD}',
+				'# Copy\u{FFFD}',
+				'# Two, edited',
+				'# Three',
+				'# Last'
+			]);
+			expect(await positions(deck.id)).toEqual([0, 1, 2, 3, 4]);
+			const stored = await getDeck(database, deck.id);
+			expect(stored!.title).toBe('Talk, renamed');
+			expect(stored!.slides.slice(0, 2).map(({ id }) => id)).toEqual([added, copied]);
+			expect(await updatedAt(deck)).toBeGreaterThan(before);
+		});
+
+		it('rolls back the whole batch when one change fails', async () => {
+			const deck = await threeSlides();
+			const two = await slideId(deck.id, 1);
+			const taken = await slideId(deck.id, 2);
+			await expect(
+				applyDeckChanges(database, deck.id, [
+					{ kind: 'update', id: two, markdown: '# Two, edited' },
+					{ kind: 'insert', id: crypto.randomUUID(), position: 0, markdown: '# New' },
+					{ kind: 'duplicate', of: two, id: taken, markdown: '# Clash' }
+				])
+			).rejects.toThrow();
+			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
+			expect(await positions(deck.id)).toEqual([0, 1, 2]);
+		});
+
+		it("keeps a deck's last slide however many deletes a batch holds", async () => {
+			const deck = await createDeck(database, { title: 'Talk', slides: ['# One', '# Two'] });
+			const [one, two] = [await slideId(deck.id, 0), await slideId(deck.id, 1)];
+			const applied = await applyDeckChanges(database, deck.id, [
+				{ kind: 'delete', id: two },
+				{ kind: 'delete', id: one },
+				{ kind: 'update', id: one, markdown: '# One, edited' }
+			]);
+			expect(applied).toEqual([true, false, true]);
+			expect(await markdowns(deck.id)).toEqual(['# One, edited']);
+			expect(await positions(deck.id)).toEqual([0]);
+		});
+
+		it("replaces a deck's only slide when a batch adds one before deleting it, and not the other way round", async () => {
+			const deck = await createDeck(database, { title: 'Talk', slides: ['# One'] });
+			const one = await slideId(deck.id, 0);
+			const applied = await applyDeckChanges(database, deck.id, [
+				{ kind: 'delete', id: one },
+				{ kind: 'insert', id: crypto.randomUUID(), position: 0, markdown: '# Skipped' }
+			]);
+			expect(applied).toEqual([false, false]);
+			expect(await markdowns(deck.id)).toEqual(['# One']);
+			const added = crypto.randomUUID();
+			expect(
+				await applyDeckChanges(database, deck.id, [
+					{ kind: 'insert', id: added, position: 1, markdown: '# New' },
+					{ kind: 'delete', id: one }
+				])
+			).toEqual([true, true]);
+			expect(await markdowns(deck.id)).toEqual(['# New']);
+			expect(await positions(deck.id)).toEqual([0]);
+		});
+
+		it('skips the inserts, copies and deletes after a change that finds its slide gone, but not the edits', async () => {
+			const deck = await threeSlides();
+			const [one, three] = [await slideId(deck.id, 0), await slideId(deck.id, 2)];
+			const applied = await applyDeckChanges(database, deck.id, [
+				{ kind: 'insert', id: crypto.randomUUID(), position: 1, markdown: '# New' },
+				{ kind: 'duplicate', of: missing, id: crypto.randomUUID(), markdown: '# Copy' },
+				{ kind: 'insert', id: crypto.randomUUID(), position: 2, markdown: '# Stale' },
+				{ kind: 'delete', id: three },
+				{ kind: 'update', id: missing, markdown: '# Lost' },
+				{ kind: 'update', id: one, markdown: '# One, edited' }
+			]);
+			expect(applied).toEqual([true, false, false, false, false, true]);
+			expect(await markdowns(deck.id)).toEqual(['# One, edited', '# New', '# Two', '# Three']);
+		});
+
+		it('applies nothing to a deck that does not exist, or to slides of another deck', async () => {
+			const deck = await threeSlides();
+			const other = await threeSlides();
+			const two = await slideId(other.id, 1);
+			expect(
+				await applyDeckChanges(database, missing, [
+					{ kind: 'insert', id: crypto.randomUUID(), position: 0, markdown: '#' }
+				])
+			).toEqual([false]);
+			expect(
+				await applyDeckChanges(database, deck.id, [
+					{ kind: 'update', id: two, markdown: '# Not yours' },
+					{ kind: 'delete', id: two },
+					{ kind: 'update', id: 'not-a-slide', markdown: '# Lost' }
+				])
+			).toEqual([false, false, false]);
+			expect(await markdowns(other.id)).toEqual(['# One', '# Two', '# Three']);
 			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
 		});
 

@@ -302,20 +302,96 @@ test('a copy stores the markdown it shows, even when the edit before it failed',
 	expect(await storedSlides(page, id)).toEqual(['# Edited', '# Edited']);
 });
 
-test('a change that fails after leaving the deck leaves the URL alone', async ({ page }) => {
+test('a change that fails while leaving the deck leaves the URL alone', async ({ page }) => {
 	const id = await createDeck(page, 'Talk', ['# One']);
 	await openDeck(page, id);
 	await failSlideWrites(page, 'INSERT');
 	const release = await holdWrites(page);
 	await page.getByRole('button', { name: 'New slide' }).click();
 	await page.getByRole('link', { name: /Decks/ }).click();
-	await expect(page).toHaveURL(/\/app$/);
+	await page.waitForTimeout(300);
+	await expect(page).toHaveURL(/\/app\/deck\//);
 	await release();
+	await expect(page).toHaveURL(/\/app$/);
 	// Each read waits behind the failed insert and the read-back it would start.
 	await storedSlides(page, id);
 	await storedSlides(page, id);
 	await page.waitForTimeout(500);
 	await expect(page).toHaveURL(/\/app$/);
+});
+
+test('going to the deck list waits for the changes to be stored first', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	const release = await holdWrites(page);
+	await selectedItem(page).focus();
+	await page.keyboard.press('n');
+	await page.keyboard.press('n');
+	await page.getByRole('link', { name: /Decks/ }).click();
+	await page.waitForTimeout(300);
+	await expect(page).toHaveURL(/\/app\/deck\//);
+	await release();
+	await expect(page).toHaveURL(/\/app$/);
+	expect(await storedSlides(page, id)).toEqual(['# One', '', '']);
+});
+
+test('twenty quick presses of N save within seconds, and a reload shows them all', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await selectedItem(page).focus();
+	const started = Date.now();
+	for (let press = 0; press < 20; press++) await page.keyboard.press('n');
+	await expect(slideItems(page)).toHaveCount(21);
+	await expect(saveState(page)).toHaveText('Saved', { timeout: 5000 });
+	expect(Date.now() - started).toBeLessThan(5000);
+	await page.reload();
+	await expect(slideItems(page)).toHaveCount(21, { timeout: 30_000 });
+	expect(await storedSlides(page, id)).toHaveLength(21);
+});
+
+/** Whether a `beforeunload` listener on the page would ask before leaving. */
+function doesAskBeforeLeaving(page: Page): Promise<boolean> {
+	return page.evaluate(() => {
+		const event = new Event('beforeunload', { cancelable: true });
+		dispatchEvent(event);
+		return event.defaultPrevented;
+	});
+}
+
+test('the page asks before leaving only while a change is not stored', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	expect(await doesAskBeforeLeaving(page)).toBe(false);
+	const release = await holdWrites(page);
+	await selectedItem(page).focus();
+	await page.keyboard.press('n');
+	await expect(saveState(page)).toHaveText('Saving…');
+	expect(await doesAskBeforeLeaving(page)).toBe(true);
+	await release();
+	await expect(saveState(page)).toHaveText('Saved');
+	expect(await doesAskBeforeLeaving(page)).toBe(false);
+	const dialogs: string[] = [];
+	page.on('dialog', (dialog) => {
+		dialogs.push(dialog.type());
+		void dialog.dismiss();
+	});
+	await page.close({ runBeforeUnload: true });
+	await expect.poll(() => page.isClosed()).toBe(true);
+	expect(dialogs).toEqual([]);
+});
+
+test('closing the page while a change is saving shows the browser prompt', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await holdWrites(page);
+	await selectedItem(page).focus();
+	await page.keyboard.press('n');
+	await expect(saveState(page)).toHaveText('Saving…');
+	const asked = page.waitForEvent('dialog');
+	await page.close({ runBeforeUnload: true });
+	const dialog = await asked;
+	expect(dialog.type()).toBe('beforeunload');
+	await dialog.accept();
 });
 
 test('saving the title by clicking away leaves focus where it went', async ({ page }) => {
