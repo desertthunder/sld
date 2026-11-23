@@ -1,11 +1,15 @@
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { parseDocument } from 'yaml';
+import { errorText } from '#lib/error-text.ts';
 
 /** The language of a frontmatter block: YAML between `---` lines or TOML between `+++` lines. */
 export type FrontmatterFormat = 'yaml' | 'toml';
 
 /** A frontmatter block: its text between the delimiter lines, its language, and every field it parses to. */
 export type Frontmatter = { format: FrontmatterFormat; raw: string; data: Record<string, unknown> };
+
+/** Why a block shaped as frontmatter doesn't parse: its language and the parser's message. */
+export type FrontmatterError = { format: FrontmatterFormat; message: string };
 
 /** A deck's frontmatter, with the fields sld reads typed where they hold a string. Every field stays in `data`. */
 export type DeckFrontmatter = Frontmatter & { title?: string; scheme?: string; aspect?: string };
@@ -160,7 +164,8 @@ export function deckFrontmatter(fields: Record<string, unknown>): DeckFrontmatte
 	const defined = withoutNulls(fields) as Record<string, unknown>;
 	if (Object.keys(defined).length === 0) return undefined;
 	const raw = stringifyToml(defined).trim();
-	return withDeckFields({ format: 'toml', raw, data: parseMapping('toml', raw) ?? defined });
+	const parsed = parseMapping('toml', raw);
+	return withDeckFields({ format: 'toml', raw, data: 'data' in parsed ? parsed.data : defined });
 }
 
 function isPresent(value: unknown): boolean {
@@ -189,34 +194,56 @@ function withDeckFields(frontmatter: Frontmatter): DeckFrontmatter {
 	return deck;
 }
 
-/** The frontmatter block opening at `start` and the index of its closing line, or undefined when there is none. */
-function blockAt(lines: string[], start: number): { frontmatter: Frontmatter; end: number } | undefined {
+/**
+ * Why the block a slide's markdown opens with doesn't parse, when it is shaped as frontmatter (delimiter lines around
+ * text that opens with a key) but isn't a valid mapping. Such a block is slide text, so `slideParts` doesn't return it.
+ */
+export function slideFrontmatterError(slide: string): FrontmatterError | undefined {
+	const candidate = candidateAt(slide.split('\n'), 0);
+	if (candidate === undefined) return undefined;
+	const parsed = parseMapping(candidate.format, candidate.raw);
+	return 'error' in parsed ? { format: candidate.format, message: parsed.error } : undefined;
+}
+
+/** The delimited text at `start` that could be a frontmatter block, before it is parsed. */
+function candidateAt(
+	lines: string[],
+	start: number
+): { format: FrontmatterFormat; raw: string; end: number } | undefined {
 	const format = (Object.keys(delimiters) as FrontmatterFormat[]).find((key) => delimiters[key] === lines[start]);
 	if (format === undefined || !firstLines[format].test(lines[start + 1] ?? '')) return undefined;
 	const end = lines.indexOf(delimiters[format], start + 2);
-	if (end === -1 || (format === 'yaml' && lines[end - 1].trim() === '')) return undefined;
-	const raw = lines.slice(start + 1, end).join('\n');
-	const data = parseMapping(format, raw);
-	return data === undefined ? undefined : { frontmatter: { format, raw, data }, end };
+	return end === -1 || (format === 'yaml' && lines[end - 1].trim() === '')
+		? undefined
+		: { format, raw: lines.slice(start + 1, end).join('\n'), end };
 }
 
-function parseMapping(format: FrontmatterFormat, raw: string): Record<string, unknown> | undefined {
+/** The frontmatter block opening at `start` and the index of its closing line, or undefined when there is none. */
+function blockAt(lines: string[], start: number): { frontmatter: Frontmatter; end: number } | undefined {
+	const candidate = candidateAt(lines, start);
+	if (candidate === undefined) return undefined;
+	const { format, raw, end } = candidate;
+	const parsed = parseMapping(format, raw);
+	return 'data' in parsed ? { frontmatter: { format, raw, data: parsed.data }, end } : undefined;
+}
+
+function parseMapping(format: FrontmatterFormat, raw: string): { data: Record<string, unknown> } | { error: string } {
 	let data: unknown;
 	try {
 		if (format === 'yaml') {
 			const document = parseDocument(raw);
-			if (document.errors.length > 0) return undefined;
+			if (document.errors.length > 0) return { error: document.errors[0].message };
 			// Throws on an unresolved alias or too many alias expansions, which parsing alone doesn't report.
 			data = document.toJS();
 		} else {
 			data = parseToml(raw);
 		}
-	} catch {
-		return undefined;
+	} catch (error) {
+		return { error: errorText(error) };
 	}
 	return typeof data === 'object' && data !== null && !Array.isArray(data)
-		? { ...(data as Record<string, unknown>) }
-		: undefined;
+		? { data: { ...(data as Record<string, unknown>) } }
+		: { error: 'Frontmatter is not a mapping of keys to values' };
 }
 
 function openFence(line: string): Fence | undefined {
