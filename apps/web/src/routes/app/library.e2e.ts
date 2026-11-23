@@ -71,7 +71,7 @@ async function paste(page: Page, text: string, target = 'body') {
 
 const pasteBox = (page: Page) => page.getByRole('textbox', { name: 'New deck' });
 const rows = (page: Page) => page.getByRole('region', { name: 'Library' }).getByRole('listitem');
-const titles = (page: Page) => rows(page).getByRole('link');
+const titles = (page: Page) => rows(page).getByRole('link').and(page.locator('a.title'));
 const menuButton = (page: Page, title: string) =>
 	page.getByRole('button', { name: `More actions for ${title}`, exact: true });
 const menuItem = (page: Page, name: string) => page.getByRole('menuitem', { name });
@@ -105,6 +105,9 @@ test('Create deck waits for text, and a paste into the rename field stays there'
 	await expect(page.getByRole('button', { name: 'Create deck' })).toBeDisabled();
 	await pasteBox(page).fill('   \n');
 	await expect(page.getByRole('button', { name: 'Create deck' })).toBeDisabled();
+	await pasteBox(page).fill('---\ntitle: Only frontmatter\n---\n');
+	await expect(page.getByText('0 slides', { exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Create deck' })).toBeDisabled();
 	await pasteBox(page).fill('');
 	await menuButton(page, 'Talk').click();
 	await menuItem(page, 'Rename').click();
@@ -121,9 +124,13 @@ test('the library lists decks newest first, and renames, duplicates, deletes and
 	]);
 	await expect(page.getByText('2 decks', { exact: true })).toBeVisible();
 	await expect(titles(page)).toHaveText(['Reading group', 'Field notes']);
-	await expect(rows(page).nth(1)).toContainText('3 slides · edited just now');
-	await expect(rows(page).nth(0)).toContainText('1 slide · edited just now');
+	await expect(rows(page).nth(1)).toHaveText(/^\s*3 slides\s*Field notes\s*edited just now\s*$/);
+	await expect(rows(page).nth(0)).toHaveText(/^\s*1 slide\s*Reading group\s*edited just now\s*$/);
 	await expect(titles(page).nth(1)).toHaveAttribute('href', `/app/deck/${first}`);
+	await expect(page.getByRole('link', { name: 'Present Field notes' })).toHaveAttribute(
+		'href',
+		`/app/deck/${first}/present`
+	);
 
 	// Rename: Enter saves, Escape cancels, and an empty title puts the old one back.
 	await menuButton(page, 'Field notes').click();
@@ -185,6 +192,8 @@ test('the list works with the keyboard alone', async ({ page }) => {
 	await page.keyboard.press('Tab');
 	await expect(titles(page).first()).toBeFocused();
 	await page.keyboard.press('Tab');
+	await expect(page.getByRole('link', { name: 'Present Reading group' })).toBeFocused();
+	await page.keyboard.press('Tab');
 	await expect(menuButton(page, 'Reading group')).toBeFocused();
 
 	// The menu opens on its first item, arrows move through it, and Escape closes it and returns focus.
@@ -221,6 +230,7 @@ test('the list works with the keyboard alone', async ({ page }) => {
 
 	// Tab moves out of an open menu and closes it.
 	await page.keyboard.press('Tab');
+	await page.keyboard.press('Tab');
 	await page.keyboard.press('Enter');
 	await expect(page.getByRole('menu')).toBeVisible();
 	await page.keyboard.press('Tab');
@@ -246,5 +256,45 @@ test('a first visit offers the sample deck, which Open creates and opens', async
 	await page.getByRole('link', { name: 'Decks' }).click();
 	await waitForApp(page);
 	await expect(titles(page)).toHaveText(['How to write Markdown']);
-	await expect(page.getByText('6 slides · edited just now')).toBeVisible();
+	await expect(rows(page)).toHaveText(/^\s*6 slides\s*How to write Markdown\s*edited just now\s*$/);
+});
+
+test('a failed Undo keeps the toast, and Undo works once the restore can go through', async ({ page }) => {
+	const [id] = await createDecks(page, [{ title: 'Field notes', slides: ['# One', '# Two'] }]);
+	await menuButton(page, 'Field notes').click();
+	await menuItem(page, 'Delete').click();
+	await expect(titles(page)).toHaveCount(0);
+	const blocker = async (shouldExist: boolean) =>
+		page.evaluate(
+			async ({ urls, id, shouldExist }) => {
+				const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
+				const { createDeck, removeDeck } = (await import(urls.decks)) as typeof DecksModule;
+				const database = await openDatabase();
+				await (shouldExist ? createDeck(database, { id, title: 'Blocker' }) : removeDeck(database, id));
+			},
+			{ urls: modules, id: id!, shouldExist }
+		);
+	// A deck with the same id makes the restore fail.
+	await blocker(true);
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect(page.getByRole('alert')).toContainText("That change couldn't be saved:");
+	await expect(page.getByRole('button', { name: 'Undo' })).toBeFocused();
+	await blocker(false);
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect(titles(page)).toHaveText(['Field notes']);
+	await expect(page.getByRole('alert')).toBeHidden();
+	const restored = await storedDeck(page, id!);
+	expect(restored?.slides.map(({ markdown }) => markdown)).toEqual(['# One', '# Two']);
+});
+
+test('decks that fail to load say so, and the list stops waiting', async ({ page }) => {
+	await openLibrary(page);
+	await page.evaluate(async (url) => {
+		const { openDatabase, writeDurably } = (await import(url)) as typeof DatabaseModule;
+		await writeDurably(await openDatabase(), ({ $client }) => $client.exec('drop table slides;'));
+	}, modules.database);
+	await page.reload();
+	await waitForApp(page);
+	await expect(page.getByRole('alert')).toContainText("Your decks didn't load:");
+	await expect(page.getByRole('region', { name: 'Library' })).not.toHaveAttribute('aria-busy', 'true');
 });

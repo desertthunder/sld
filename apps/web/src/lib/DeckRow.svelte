@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import type { DeckSummary } from '#lib/decks.ts';
 	import { slideCount } from '#lib/landing.ts';
-	import { editedWhen, renamedTitle, tabLetter, type TabPlace } from '#lib/library.ts';
+	import { editedWhen, renamedTitle, type TabPlace } from '#lib/library.ts';
 
 	let {
 		deck,
@@ -124,7 +124,7 @@
 <svelte:window onpointerdown={onwindowpointerdown} />
 
 <li class="deck {place}">
-	<span class="tab" aria-hidden="true">{tabLetter(deck.title)}</span>
+	<span class="tab">{slideCount(deck.slideCount)}</span>
 	<div class="card">
 		{#if row.isRenaming}
 			<input
@@ -143,14 +143,16 @@
 			</a>
 		{/if}
 		<span class="details">
-			{slideCount(deck.slideCount)} · edited
+			edited
 			<time datetime={deck.updatedAt.toISOString()}>{editedWhen(deck.updatedAt, now)}</time>
 		</span>
 		<div class="actions" bind:this={actions} {onfocusout}>
-			<!-- TODO: open the presenter once it exists. -->
-			<button class="icon-button" type="button" disabled aria-label="Present {deck.title}">
+			<a
+				class="icon-button"
+				href={resolve('/app/deck/[id]/present', { id: deck.id })}
+				aria-label="Present {deck.title}">
 				<span class="i-ri-play-line icon" aria-hidden="true"></span>
-			</button>
+			</a>
 			<button
 				class="icon-button"
 				type="button"
@@ -340,17 +342,11 @@
 		cursor: pointer;
 	}
 
-	.icon-button:hover:not(:disabled),
+	.icon-button:hover,
 	.icon-button[aria-expanded='true'] {
 		background: var(--background);
 		border-color: var(--border);
 		color: var(--heading);
-	}
-
-	.icon-button:disabled {
-		color: var(--muted);
-		opacity: 0.55;
-		cursor: not-allowed;
 	}
 
 	.icon-button:focus-visible {

@@ -41,12 +41,6 @@ export function tabPlace(index: number): TabPlace {
 	return tabPlaces[index % tabPlaces.length]!;
 }
 
-/** The letter on a deck's divider tab: the first character of its title, in upper case. */
-export function tabLetter(title: string): string {
-	const [first = ''] = title.trim();
-	return first.toLocaleUpperCase('en-US');
-}
-
 /** The title of a duplicated deck. */
 export function copyTitle(title: string): string {
 	return `${title} (copy)`;
@@ -62,8 +56,15 @@ export function deletedMessage(title: string): string {
 	return `Deleted “${title}”`;
 }
 
-/** The library's error messages: a deck that couldn't be made, or a change to one that couldn't be saved. */
-export const errorLeads = { deck: "The deck couldn't be saved:", change: "That change couldn't be saved:" } as const;
+/**
+ * The library's error messages: the decks that couldn't be listed, a deck that couldn't be made, or a change to one
+ * that couldn't be saved.
+ */
+export const errorLeads = {
+	load: "Your decks didn't load:",
+	deck: "The deck couldn't be saved:",
+	change: "That change couldn't be saved:"
+} as const;
 
 const textEntry = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 

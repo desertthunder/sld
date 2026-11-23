@@ -25,9 +25,10 @@
 		error?: { lead: string; text: string };
 		isReady: boolean;
 		isCreating: boolean;
+		hasLoadFailed: boolean;
 		deleted?: { deck: DeckWithSlides; key: number };
 		now: Date;
-	} = $state({ isReady: false, isCreating: false, now: new Date() });
+	} = $state({ isReady: false, isCreating: false, hasLoadFailed: false, now: new Date() });
 
 	// The database and its queries load once the page has mounted, so this page's code doesn't hold up the splash.
 	const opened: { store?: Store } = {};
@@ -41,7 +42,11 @@
 
 	async function refresh() {
 		const { store } = opened;
-		if (store) library.decks = await store.queries.listDeckSummaries(store.database);
+		if (!store) return;
+		library.decks = await store.queries.listDeckSummaries(store.database);
+		if (!library.hasLoadFailed) return;
+		library.hasLoadFailed = false;
+		library.error = undefined;
 	}
 
 	async function refreshQuietly() {
@@ -75,12 +80,20 @@
 		if (!store || library.isCreating) return;
 		library.isCreating = true;
 		library.error = undefined;
+		let id: string;
 		try {
-			const deck = await store.queries.createDeck(store.database, deckFromNote(markdown));
-			await goto(resolve('/app/deck/[id]', { id: deck.id }));
+			({ id } = await store.queries.createDeck(store.database, deckFromNote(markdown)));
 		} catch (error) {
 			fail('deck', error);
 			library.isCreating = false;
+			return;
+		}
+		try {
+			await goto(resolve('/app/deck/[id]', { id }));
+		} catch {
+			// The deck is saved, so it shows in the list instead.
+			library.isCreating = false;
+			await refreshQuietly();
 		}
 	}
 
@@ -101,13 +114,15 @@
 	}
 
 	async function undo() {
-		const deck = library.deleted?.deck;
+		const deleted = library.deleted;
 		library.deleted = undefined;
-		if (!deck) return;
-		const restored = await change('change', ({ database, queries }) => queries.restoreDeck(database, deck));
+		if (!deleted) return;
+		const restored = await change('change', ({ database, queries }) => queries.restoreDeck(database, deleted.deck));
+		// A restore that failed keeps the deck's only copy in the toast, so Undo can be tried again.
+		if (!restored && !library.deleted) library.deleted = { deck: deleted.deck, key: deleted.key + 1 };
 		await tick();
 		if (restored) document.querySelector<HTMLElement>(`#deck-${restored.id}`)?.focus();
-		else heading?.focus();
+		else toast?.focus();
 	}
 
 	function dismiss(wasByKey: boolean) {
@@ -133,6 +148,7 @@
 		opened.store = { database, queries };
 		// The layout shows this page only once the database is open, so a note handed over from the landing page is
 		// saved here, and never while another tab with older code holds the database.
+		// TODO: open the deck saved from a handed-over note in the editor.
 		try {
 			await saveHandoff(database, sessionStorage);
 		} catch (error) {
@@ -143,7 +159,10 @@
 	}
 
 	onMount(() => {
-		void open().catch((error: unknown) => fail('change', error));
+		void open().catch((error: unknown) => {
+			library.hasLoadFailed = true;
+			fail('load', error);
+		});
 		const clock = setInterval(() => (library.now = new Date()), 30_000);
 		const onVisibilityChange = () => {
 			if (document.visibilityState !== 'visible') return;
@@ -174,7 +193,10 @@
 			</p>
 		{/if}
 		<NewDeck bind:this={newDeck} isReady={library.isReady} isCreating={library.isCreating} oncreate={create} />
-		<section class="decks" aria-labelledby="library-heading" aria-busy={library.decks === undefined}>
+		<section
+			class="decks"
+			aria-labelledby="library-heading"
+			aria-busy={library.decks === undefined && !library.hasLoadFailed}>
 			<div class="head">
 				<h2 id="library-heading" tabindex="-1" bind:this={heading}>Library</h2>
 				{#if library.decks?.length}<span class="count">{deckCount(library.decks.length)}</span>{/if}

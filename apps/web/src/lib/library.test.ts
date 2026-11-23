@@ -4,9 +4,9 @@ import {
 	deckCount,
 	deletedMessage,
 	editedWhen,
+	errorLeads,
 	isTextEntry,
 	renamedTitle,
-	tabLetter,
 	tabPlace
 } from '#lib/library.ts';
 
@@ -54,7 +54,7 @@ describe('editedWhen', () => {
 		expect(editedWhen(new Date(2025, 10, 2, 9, 0), now)).toBe('Nov 2, 2025');
 	});
 
-	it('gives the date by the new year, even within six days', () => {
+	it('counts days across the new year, and gives a date from last year with its year', () => {
 		const newYear = new Date(2027, 0, 2, 12, 0);
 		expect(editedWhen(new Date(2026, 11, 30, 12, 0), newYear)).toBe('3 days ago');
 		expect(editedWhen(new Date(2026, 11, 20, 12, 0), newYear)).toBe('Dec 20, 2026');
@@ -71,6 +71,11 @@ describe('library copy', () => {
 	it('names a copy and a deleted deck', () => {
 		expect(copyTitle('Thesis defense')).toBe('Thesis defense (copy)');
 		expect(deletedMessage('Thesis defense')).toBe('Deleted “Thesis defense”');
+	});
+
+	it('says the decks did not load apart from a change that was not saved', () => {
+		expect(errorLeads.load).toBe("Your decks didn't load:");
+		expect(errorLeads.change).toBe("That change couldn't be saved:");
 	});
 
 	it('keeps the old title when a rename leaves the field empty', () => {
@@ -91,13 +96,6 @@ describe('divider tabs', () => {
 			'right',
 			'left'
 		]);
-	});
-
-	it('show the first character of the title in upper case', () => {
-		expect(tabLetter('reading group')).toBe('R');
-		expect(tabLetter('  thesis')).toBe('T');
-		expect(tabLetter('😀 party')).toBe('😀');
-		expect(tabLetter('')).toBe('');
 	});
 });
 

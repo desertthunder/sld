@@ -25,7 +25,7 @@
 	}
 
 	function create() {
-		if (hasText && isReady && !isCreating) oncreate(box.markdown);
+		if (isReady && !isCreating && slides > 0) oncreate(box.markdown);
 	}
 </script>
 
@@ -44,7 +44,7 @@
 		bind:value={box.markdown}
 		bind:this={field}></textarea>
 	<div class="row">
-		<button class="create" type="button" disabled={!hasText || !isReady || isCreating} onclick={create}>
+		<button class="create" type="button" disabled={slides === 0 || !isReady || isCreating} onclick={create}>
 			<span class="i-ri-add-line icon" aria-hidden="true"></span>Create deck
 		</button>
 		<span class="count" aria-live="polite">
