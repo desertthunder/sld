@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { errorText } from '#lib/error-text.ts';
+	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import type { SlideOptions } from '#lib/slide-plugins.ts';
 	import { RendererLoadError, renderSlide, type RenderedSlide } from '#lib/slide-render.ts';
 	import SlideStage from '#lib/SlideStage.svelte';
@@ -9,12 +10,17 @@
 	let {
 		markdown,
 		aspect = defaultAspect,
+		scheme,
+		schemes = [],
 		lineNumbers = false,
 		overflowing = $bindable(false),
 		overlay
 	}: {
 		markdown: string;
 		aspect?: Aspect;
+		/** The deck's scheme, which a slide's own `scheme` replaces when it names one of `schemes`. */
+		scheme?: Scheme;
+		schemes?: readonly Scheme[];
 		overflowing?: boolean;
 		overlay?: Snippet;
 	} & Partial<SlideOptions> = $props();
@@ -45,7 +51,7 @@
 {#if view.shown.status === 'pending'}
 	<p role="status">Getting slides ready…</p>
 {:else if view.shown.status === 'shown'}
-	<SlideStage slide={view.shown.slide} {aspect} bind:overflowing {overlay} />
+	<SlideStage slide={view.shown.slide} {aspect} {scheme} {schemes} bind:overflowing {overlay} />
 {:else if view.shown.error instanceof RendererLoadError}
 	<p role="alert">Slides couldn't be loaded. Reload the page to try again: {view.shown.error.message}</p>
 {:else}

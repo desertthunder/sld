@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import '#lib/code-block.css';
+	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import { slideClasses } from '#lib/slide-meta.ts';
 	import type { RenderedSlide } from '#lib/slide-render.ts';
 	import Stage from '#lib/Stage.svelte';
@@ -9,12 +10,22 @@
 	let {
 		slide,
 		aspect = defaultAspect,
+		scheme,
+		schemes = [],
 		overflowing = $bindable(false),
 		overlay
-	}: { slide: RenderedSlide; aspect?: Aspect; overflowing?: boolean; overlay?: Snippet } = $props();
+	}: {
+		slide: RenderedSlide;
+		aspect?: Aspect;
+		/** The deck's scheme, which a slide's own `scheme` replaces when it names one of `schemes`. */
+		scheme?: Scheme;
+		schemes?: readonly Scheme[];
+		overflowing?: boolean;
+		overlay?: Snippet;
+	} = $props();
 </script>
 
-<Stage {aspect} bind:overflowing>
+<Stage {aspect} scheme={schemes.find(({ slug }) => slug === slide.meta.scheme) ?? scheme} bind:overflowing>
 	<!-- Raw HTML in a slide passes through: the markdown is the person's own. -->
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	<article class={slideClasses(slide.meta)}>{@html slide.html}</article>
@@ -30,7 +41,7 @@
 	.slide {
 		box-sizing: border-box;
 		padding: 64px 96px;
-		color: var(--text);
+		color: var(--body);
 		font-family: var(--ui-font);
 		font-size: 32px;
 		font-style: normal;

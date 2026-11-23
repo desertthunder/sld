@@ -35,6 +35,9 @@ export function warningNotice(warning: SlideWarning): Notice {
 		case 'reserved-class': {
 			return [{ code: warning.value }, " is a class sld uses itself, so it's left out."];
 		}
+		case 'invalid-scheme': {
+			return ["The scheme isn't text, so the slide uses the deck's."];
+		}
 	}
 }
 

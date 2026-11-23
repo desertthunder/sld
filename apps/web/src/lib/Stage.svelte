@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { onDestroy, type Snippet } from 'svelte';
+	import type { Scheme } from '#lib/scheme-compiler.ts';
+	import { schemeStyle } from '#lib/scheme-style.ts';
 	import { defaultAspect, fitStage, stageSize, type Aspect, type Fit } from '#lib/stage.ts';
 
 	let {
 		aspect = defaultAspect,
+		scheme,
 		overflowing = $bindable(false),
 		children
-	}: { aspect?: Aspect; overflowing?: boolean; children: Snippet } = $props();
+	}: { aspect?: Aspect; scheme?: Scheme; overflowing?: boolean; children: Snippet } = $props();
 
 	const size = $derived(stageSize(aspect));
 	const container = $state({ width: 0, height: 0 });
@@ -71,8 +74,10 @@
 	});
 </script>
 
+<!-- A scheme only sets custom properties here, so changing it repaints the slide without rendering it again. -->
 <div
 	class="frame"
+	style={scheme && schemeStyle(scheme)}
 	bind:clientWidth={container.width}
 	bind:clientHeight={container.height}
 	data-overflowing={overflowing}>
@@ -93,7 +98,8 @@
 		width: 100%;
 		height: 100%;
 		overflow: hidden;
-		background: var(--base00);
+		background: var(--bg);
+		color: var(--body);
 	}
 
 	.stage {
@@ -102,7 +108,7 @@
 		left: 0;
 		overflow: hidden;
 		transform-origin: 0 0;
-		background: var(--base00);
+		background: var(--bg);
 	}
 
 	.content {

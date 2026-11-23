@@ -302,7 +302,7 @@
 	.rename {
 		margin: -7px 0 -7px -11px;
 		padding: 6px 10px;
-		background: var(--background);
+		background: var(--bg);
 		border: 1px solid var(--border);
 		border-radius: 8px;
 		text-overflow: clip;
@@ -349,7 +349,7 @@
 
 	.icon-button:hover,
 	.icon-button[aria-expanded='true'] {
-		background: var(--background);
+		background: var(--bg);
 		border-color: var(--border);
 		color: var(--heading);
 	}
@@ -374,7 +374,7 @@
 		min-width: 220px;
 		padding: 6px;
 		box-sizing: border-box;
-		background: var(--background);
+		background: var(--bg);
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		box-shadow:

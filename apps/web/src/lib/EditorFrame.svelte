@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 
 	let { toolbar, children }: { toolbar?: Snippet; children: Snippet } = $props();
 </script>
@@ -11,6 +12,13 @@
 			<span class="i-ri-arrow-left-s-line icon" aria-hidden="true"></span>Decks
 		</a>
 		{@render toolbar?.()}
+		<a
+			class="settings"
+			href={resolve('/app/settings')}
+			aria-label="Settings"
+			aria-current={page.url.pathname === resolve('/app/settings') ? 'page' : undefined}>
+			<span class="i-ri-settings-3-line icon" aria-hidden="true"></span>
+		</a>
 	</header>
 	{@render children()}
 </div>
@@ -26,8 +34,8 @@
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
-		background: var(--background);
-		color: var(--text);
+		background: var(--bg);
+		color: var(--body);
 		font-family: var(--ui-font);
 		font-size: 15px;
 		line-height: 1.5;
@@ -69,12 +77,27 @@
 		height: 18px;
 	}
 
-	.back:hover {
+	.settings {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 40px;
+		height: 40px;
+		margin-left: auto;
+		border-radius: 8px;
+		color: var(--muted);
+	}
+
+	.back:hover,
+	.settings:hover,
+	.settings[aria-current='page'] {
 		background: var(--surface);
 		color: var(--heading);
 	}
 
-	.back:focus-visible {
+	.back:focus-visible,
+	.settings:focus-visible {
 		outline: 3px solid var(--accent);
 		outline-offset: 2px;
 	}

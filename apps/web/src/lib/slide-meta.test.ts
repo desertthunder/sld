@@ -23,21 +23,21 @@ describe('layoutClass', () => {
 describe('readSlideMeta', () => {
 	it('gives a slide with no frontmatter the default layout, no notes and no classes', () => {
 		expect(readSlideMeta(undefined)).toEqual({
-			meta: { layout: 'default', notes: undefined, classes: [] },
+			meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
 			warnings: []
 		});
 	});
 
 	it('reads a layout whatever its case and surrounding spaces', () => {
 		expect(readSlideMeta(yaml({ layout: ' Title ' }))).toEqual({
-			meta: { layout: 'title', notes: undefined, classes: [] },
+			meta: { layout: 'title', notes: undefined, classes: [], scheme: undefined },
 			warnings: []
 		});
 	});
 
 	it.each(['two-column', 3, ['title'], '"><script>'])('falls back to default for layout %j and warns', (value) => {
 		expect(readSlideMeta(yaml({ layout: value }))).toEqual({
-			meta: { layout: 'default', notes: undefined, classes: [] },
+			meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
 			warnings: [{ kind: 'unknown-layout', value }]
 		});
 	});
@@ -49,7 +49,7 @@ describe('readSlideMeta', () => {
 
 	it.each([42, ['a'], { a: 1 }, true])('drops notes %j that are not a string and warns', (value) => {
 		expect(readSlideMeta(yaml({ notes: value }))).toEqual({
-			meta: { layout: 'default', notes: undefined, classes: [] },
+			meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
 			warnings: [{ kind: 'invalid-notes', value }]
 		});
 	});
@@ -80,7 +80,7 @@ describe('readSlideMeta', () => {
 
 	it.each([42, { wide: true }, true])('drops a class field %j that is neither a string nor a list', (value) => {
 		expect(readSlideMeta(yaml({ class: value }))).toEqual({
-			meta: { layout: 'default', notes: undefined, classes: [] },
+			meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
 			warnings: [{ kind: 'invalid-class', value }]
 		});
 	});
@@ -97,15 +97,15 @@ describe('readSlideMeta', () => {
 			'content'
 		];
 		const { meta, warnings } = readSlideMeta(yaml({ layout: 'center', class: [...reserved, 'wide'] }));
-		expect(meta).toEqual({ layout: 'center', notes: undefined, classes: ['wide'] });
+		expect(meta).toEqual({ layout: 'center', notes: undefined, classes: ['wide'], scheme: undefined });
 		expect(warnings).toEqual(reserved.map((value) => ({ kind: 'reserved-class', value })));
 	});
 
 	it('leaves a field with no value unset, with no warning', () => {
-		const frontmatter = slideFrontmatter('---\nlayout:\nnotes:\nclass:\n---\n# One');
-		expect(Object.keys(frontmatter?.data ?? {})).toEqual(['layout', 'notes', 'class']);
+		const frontmatter = slideFrontmatter('---\nlayout:\nnotes:\nclass:\nscheme:\n---\n# One');
+		expect(Object.keys(frontmatter?.data ?? {})).toEqual(['layout', 'notes', 'class', 'scheme']);
 		expect(readSlideMeta(frontmatter)).toEqual({
-			meta: { layout: 'default', notes: undefined, classes: [] },
+			meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
 			warnings: []
 		});
 	});
@@ -116,7 +116,7 @@ describe('readSlideMeta', () => {
 			const frontmatter = slideFrontmatter(`---\nlayout: ${blank}\nnotes: ${blank}\nclass: ${blank}\n---\n# One`);
 			expect(Object.keys(frontmatter?.data ?? {})).toEqual(['layout', 'notes', 'class']);
 			expect(readSlideMeta(frontmatter)).toEqual({
-				meta: { layout: 'default', notes: undefined, classes: [] },
+				meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
 				warnings: []
 			});
 		}
@@ -124,26 +124,39 @@ describe('readSlideMeta', () => {
 
 	it('leaves blank TOML strings unset, with no warning', () => {
 		expect(readSlideMeta(slideFrontmatter('+++\nlayout = ""\nnotes = " "\n+++\n# One'))).toEqual({
-			meta: { layout: 'default', notes: undefined, classes: [] },
+			meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
 			warnings: []
 		});
 	});
 
 	it('leaves keys it does not read out of the meta, with no warning', () => {
 		expect(readSlideMeta(yaml({ title: 'Hi', transition: 'fade' }))).toEqual({
-			meta: { layout: 'default', notes: undefined, classes: [] },
+			meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
 			warnings: []
+		});
+	});
+});
+
+describe('scheme', () => {
+	it('reads the slug whatever its case and surrounding spaces', () => {
+		expect(readSlideMeta(yaml({ scheme: ' Gruvbox-Dark ' }))).toEqual({
+			meta: { layout: 'default', notes: undefined, classes: [], scheme: 'gruvbox-dark' },
+			warnings: []
+		});
+	});
+
+	it.each([3, ['nord'], { slug: 'nord' }, true])('drops scheme %j that is not a string and warns', (value) => {
+		expect(readSlideMeta(yaml({ scheme: value }))).toEqual({
+			meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
+			warnings: [{ kind: 'invalid-scheme', value }]
 		});
 	});
 });
 
 describe('slideClasses', () => {
 	it('puts slide first, then the layout class, then the extra classes', () => {
-		expect(slideClasses({ layout: 'section', notes: undefined, classes: ['wide', 'dark'] })).toEqual([
-			'slide',
-			'layout-section',
-			'wide',
-			'dark'
-		]);
+		expect(
+			slideClasses({ layout: 'section', notes: undefined, classes: ['wide', 'dark'], scheme: undefined })
+		).toEqual(['slide', 'layout-section', 'wide', 'dark']);
 	});
 });

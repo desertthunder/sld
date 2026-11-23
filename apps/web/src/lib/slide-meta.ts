@@ -14,10 +14,12 @@ export type Layout = (typeof layouts)[number];
  * - `notes` are the speaker's notes, which only the speaker view shows.
  * - `classes` are the extra class names from `class`, valid class tokens only, and never `slide`, a `layout-` or
  *   `svelte-` name, or one of the stage's own classes.
+ * - `scheme` is the slug of the scheme the slide takes in place of the deck's, lowercased. A slug that names no scheme
+ *   leaves the slide on the deck's.
  *
  * Keys sld doesn't read, and keys left empty or holding only spaces, stay out of it, with no warning.
  */
-export type SlideMeta = { layout: Layout; notes: string | undefined; classes: string[] };
+export type SlideMeta = { layout: Layout; notes: string | undefined; classes: string[]; scheme: string | undefined };
 
 /**
  * Something in a slide's frontmatter that sld set aside. The slide still shows, with the field's default.
@@ -27,13 +29,15 @@ export type SlideMeta = { layout: Layout; notes: string | undefined; classes: st
  * - `invalid-notes`: `notes` isn't a string, so the slide has none.
  * - `invalid-class`: `class` isn't a string or a list of strings, or `value` isn't a valid class token.
  * - `reserved-class`: `value` would clash with the slide's own classes.
+ * - `invalid-scheme`: `scheme` isn't a string, so the slide uses the deck's.
  */
 export type SlideWarning =
 	| ({ kind: 'invalid-frontmatter' } & FrontmatterError)
 	| { kind: 'unknown-layout'; value: unknown }
 	| { kind: 'invalid-notes'; value: unknown }
 	| { kind: 'invalid-class'; value: unknown }
-	| { kind: 'reserved-class'; value: string };
+	| { kind: 'reserved-class'; value: string }
+	| { kind: 'invalid-scheme'; value: unknown };
 
 /** A slide's validated meta and the warnings reading it raised. */
 export type ReadSlideMeta = { meta: SlideMeta; warnings: SlideWarning[] };
@@ -65,7 +69,8 @@ export function readSlideMeta(frontmatter: Frontmatter | undefined): ReadSlideMe
 		meta: {
 			layout: readLayout(field('layout'), warnings),
 			notes: readNotes(field('notes'), warnings),
-			classes: readClasses(field('class'), warnings)
+			classes: readClasses(field('class'), warnings),
+			scheme: readScheme(field('scheme'), warnings)
 		},
 		warnings
 	};
@@ -77,6 +82,13 @@ function readLayout(value: unknown, warnings: SlideWarning[]): Layout {
 	const layout = layouts.find((known) => known === name);
 	if (layout === undefined) warnings.push({ kind: 'unknown-layout', value });
 	return layout ?? 'default';
+}
+
+function readScheme(value: unknown, warnings: SlideWarning[]): string | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value === 'string') return value.trim().toLowerCase();
+	warnings.push({ kind: 'invalid-scheme', value });
+	return undefined;
 }
 
 function readNotes(value: unknown, warnings: SlideWarning[]): string | undefined {

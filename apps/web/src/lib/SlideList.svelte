@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { canDeleteSlide, listCommand, listKeysHint } from '#lib/deck-editor.ts';
+	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import { slideLabel } from '#lib/slide-label.ts';
 	import { readListView, writeListView, type ListView } from '#lib/slide-list-view.ts';
 	import SlideThumb from '#lib/SlideThumb.svelte';
@@ -10,6 +11,8 @@
 		id,
 		slides,
 		aspect,
+		scheme,
+		schemes,
 		selected,
 		announcement,
 		onselect,
@@ -20,6 +23,9 @@
 		id: string;
 		slides: readonly { id: string; markdown: string }[];
 		aspect: Aspect;
+		/** The deck's scheme, which a slide's own `scheme` replaces when it names one of `schemes`. */
+		scheme?: Scheme;
+		schemes?: readonly Scheme[];
 		selected: number;
 		announcement: string;
 		/** `shouldOpen` is true when the slide was picked to edit it, not only moved to with the arrow keys. */
@@ -131,7 +137,7 @@
 					<span class="number"><span class="sr">Slide</span> {index + 1}</span>
 					<span class="label">{slideLabel(slide.markdown)}</span>
 					{#if display.view === 'thumbnails'}
-						<SlideThumb slideId={slide.id} markdown={slide.markdown} {aspect} />
+						<SlideThumb slideId={slide.id} markdown={slide.markdown} {aspect} {scheme} {schemes} />
 					{/if}
 				</button>
 				{#if isCurrent}
@@ -171,7 +177,7 @@
 		flex-direction: column;
 		min-width: 0;
 		min-height: 0;
-		background: var(--background);
+		background: var(--bg);
 	}
 
 	.header {
@@ -290,7 +296,7 @@
 		display: flex;
 		gap: 2px;
 		padding: 2px;
-		background: var(--background);
+		background: var(--bg);
 		border: 1px solid var(--border);
 		border-radius: 8px;
 	}
@@ -305,7 +311,7 @@
 		border: 0;
 		border-radius: 6px;
 		background: transparent;
-		color: var(--text);
+		color: var(--body);
 		cursor: pointer;
 	}
 
@@ -315,7 +321,7 @@
 	}
 
 	.icon-button:disabled {
-		color: color-mix(in oklab, var(--muted) 45%, var(--background));
+		color: color-mix(in oklab, var(--muted) 45%, var(--bg));
 		cursor: not-allowed;
 	}
 

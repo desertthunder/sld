@@ -17,6 +17,7 @@ import {
 	removeDeck,
 	renameDeck,
 	restoreDecks,
+	setDeckScheme,
 	updateSlide,
 	type Deck
 } from '#lib/decks.ts';
@@ -123,6 +124,7 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			const id = await slideId(deck.id, 0);
 			const writes = [
 				() => renameDeck(database, deck.id, 'Renamed'),
+				() => setDeckScheme(database, deck.id, 'nord'),
 				() => insertSlide(database, deck.id, 0, '# Zero'),
 				() => updateSlide(database, id, '# One, edited'),
 				() => duplicateSlide(database, id),
@@ -200,6 +202,18 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(renamed).toMatchObject({ id: deck.id, title: 'Keynote' });
 			expect(renamed!.updatedAt.getTime()).toBeGreaterThan(before);
 			expect(await renameDeck(database, missing, 'Keynote')).toBeUndefined();
+		});
+
+		it("sets a deck's scheme, leaving its slides alone", async () => {
+			const deck = await threeSlides();
+			const before = await ageDeck(deck);
+			const changed = await setDeckScheme(database, deck.id, 'gruvbox-dark');
+			expect(changed).toMatchObject({ id: deck.id, scheme: 'gruvbox-dark' });
+			expect(changed!.updatedAt.getTime()).toBeGreaterThan(before);
+			expect(await setDeckScheme(database, deck.id, 'a\0b')).toMatchObject({ scheme: 'a\u{FFFD}b' });
+			expect(await markdowns(deck.id)).toEqual(['# One', '# Two', '# Three']);
+			expect(await setDeckScheme(database, missing, 'nord')).toBeUndefined();
+			expect(await setDeckScheme(database, 'not-a-uuid', 'nord')).toBeUndefined();
 		});
 
 		it('deletes a deck and its slides, leaving other decks alone', async () => {
@@ -384,6 +398,32 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(stored!.title).toBe('Talk, renamed');
 			expect(stored!.slides.slice(0, 2).map(({ id }) => id)).toEqual([added, copied]);
 			expect(await updatedAt(deck)).toBeGreaterThan(before);
+		});
+
+		it("sets a deck's scheme in a batch, with the edits, or alone, and after a change that found its slide gone", async () => {
+			const deck = await threeSlides();
+			const one = await slideId(deck.id, 0);
+			const before = await ageDeck(deck);
+			expect(
+				await applyDeckChanges(database, deck.id, [
+					{ kind: 'scheme', scheme: 'nord' },
+					{ kind: 'update', id: one, markdown: '# One, edited' },
+					{ kind: 'scheme', scheme: 'gruvbox-dark\0' }
+				])
+			).toEqual([true, true, true]);
+			let stored = await getDeck(database, deck.id);
+			expect(stored).toMatchObject({ scheme: 'gruvbox-dark\u{FFFD}', title: 'Talk' });
+			expect(stored!.updatedAt.getTime()).toBeGreaterThan(before);
+			expect(await markdowns(deck.id)).toEqual(['# One, edited', '# Two', '# Three']);
+			expect(
+				await applyDeckChanges(database, deck.id, [
+					{ kind: 'duplicate', of: missing, id: crypto.randomUUID(), markdown: '# Copy' },
+					{ kind: 'scheme', scheme: 'nord' }
+				])
+			).toEqual([false, true]);
+			stored = await getDeck(database, deck.id);
+			expect(stored!.scheme).toBe('nord');
+			expect(await applyDeckChanges(database, missing, [{ kind: 'scheme', scheme: 'nord' }])).toEqual([false]);
 		});
 
 		it('stores a lone surrogate in a batch as U+FFFD, as a single write does', async () => {

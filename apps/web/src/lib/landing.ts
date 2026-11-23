@@ -1,4 +1,5 @@
 import type { Scheme } from '#lib/scheme-compiler.ts';
+import { schemeStyle } from '#lib/scheme-style.ts';
 
 /** The note the landing page's paste box starts with. */
 export const sampleNote = `# Field notes on sleep
@@ -58,26 +59,7 @@ export const swatchSchemes = ['oxocarbon-dark', 'oxocarbon-light', 'gruvbox-dark
 /** What a scheme swatch needs: the scheme's name, and its colors and roles as CSS custom properties. */
 export type Swatch = { slug: string; name: string; style: string };
 
-/**
- * A scheme as a swatch. The scheme's colors go on `--base00` to `--base0F`, and the roles that `scheme.css` defines
- * over them are redefined there too, since a role takes its color where it is defined.
- */
-export function swatch({ slug, name, colors, roles, appRoles, tokens }: Scheme): Swatch {
-	const properties: Record<string, string> = {
-		...colors,
-		background: roles.bg,
-		surface: roles.surface,
-		border: roles.border,
-		text: roles.body,
-		muted: roles.muted,
-		heading: roles.heading,
-		link: roles.link,
-		accent: roles.accent,
-		'on-primary': appRoles.onPrimary,
-		...Object.fromEntries(Object.entries(tokens).map(([kind, css]) => [`code-${kind}`, css]))
-	};
-	const style = Object.entries(properties)
-		.map(([name, value]) => `--${name}: ${value}`)
-		.join('; ');
-	return { slug, name, style };
+/** A scheme as a swatch, with its colors and roles set in place of the page's. */
+export function swatch(scheme: Scheme): Swatch {
+	return { slug: scheme.slug, name: scheme.name, style: schemeStyle(scheme) };
 }

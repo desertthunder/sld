@@ -1,11 +1,18 @@
 <script lang="ts">
+	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import { renderSlide } from '#lib/slide-render.ts';
 	import { nextPreview, type PreviewState, type RenderOutcome } from '#lib/slide-preview.ts';
 	import SlideStage from '#lib/SlideStage.svelte';
 	import type { Aspect } from '#lib/stage.ts';
 	import { thumbnailHtml } from '#lib/thumbnail-html.ts';
 
-	let { slideId, markdown, aspect }: { slideId: string; markdown: string; aspect: Aspect } = $props();
+	let {
+		slideId,
+		markdown,
+		aspect,
+		scheme,
+		schemes
+	}: { slideId: string; markdown: string; aspect: Aspect; scheme?: Scheme; schemes?: readonly Scheme[] } = $props();
 
 	const view: { isNear: boolean; state: PreviewState | undefined } = $state({ isNear: false, state: undefined });
 	let box: HTMLElement | undefined = $state();
@@ -58,7 +65,7 @@
 <!-- A slide's own links, controls and sound stay out of the list: the thumbnail is a picture of the slide. -->
 <span class="thumb" style:aspect-ratio={aspect.replace(':', ' / ')} inert aria-hidden="true" bind:this={box}>
 	{#if view.state?.shown}
-		<span class="fill"><SlideStage slide={view.state.shown} {aspect} /></span>
+		<span class="fill"><SlideStage slide={view.state.shown} {aspect} {scheme} {schemes} /></span>
 	{/if}
 </span>
 

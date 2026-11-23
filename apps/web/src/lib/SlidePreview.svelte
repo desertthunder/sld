@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import { renderSlide } from '#lib/slide-render.ts';
 	import { nextPreview, type PreviewState, type RenderOutcome } from '#lib/slide-preview.ts';
 	import type { Notice } from '#lib/slide-notices.ts';
@@ -9,8 +10,18 @@
 		slideId,
 		markdown,
 		aspect,
+		scheme,
+		schemes,
 		notices = $bindable([])
-	}: { slideId: string; markdown: string; aspect: Aspect; notices?: readonly Notice[] } = $props();
+	}: {
+		slideId: string;
+		markdown: string;
+		aspect: Aspect;
+		/** The deck's scheme, which a slide's own `scheme` replaces when it names one of `schemes`. */
+		scheme?: Scheme;
+		schemes?: readonly Scheme[];
+		notices?: readonly Notice[];
+	} = $props();
 
 	// The last render stays on the stage while the next one renders, so typing and moving between slides don't flash.
 	const view: { state: PreviewState | undefined } = $state({ state: undefined });
@@ -42,7 +53,7 @@
 		{#if !view.state}
 			<p class="waiting" role="status">Getting slides ready…</p>
 		{:else if view.state.shown}
-			<SlideStage slide={view.state.shown} {aspect} />
+			<SlideStage slide={view.state.shown} {aspect} {scheme} {schemes} />
 		{:else if view.state.failure}
 			<p class="waiting" role="alert">
 				{#each view.state.failure as part, at (at)}

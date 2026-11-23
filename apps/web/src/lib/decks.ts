@@ -114,6 +114,19 @@ export function renameDeck(database: Database, id: string, title: string): Promi
 	});
 }
 
+/** Sets the slug of a deck's scheme and returns the deck, or `undefined` when there is no such deck. */
+export function setDeckScheme(database: Database, id: string, scheme: string): Promise<Deck | undefined> {
+	return write(database, async (tx) => {
+		if (!isUuid(id)) return;
+		const [deck] = await tx
+			.update(decks)
+			.set({ scheme: storable(scheme), updatedAt: sql`now()` })
+			.where(eq(decks.id, id))
+			.returning();
+		return deck;
+	});
+}
+
 /** Deletes a deck and its slides, and returns the deck, or `undefined` when there is no such deck. */
 export function deleteDeck(database: Database, id: string): Promise<Deck | undefined> {
 	return write(database, async (tx) => {
@@ -296,14 +309,15 @@ export function restoreDecks(database: Database, removed: readonly DeckWithSlide
 
 /**
  * One change to a deck, as `applyDeckChanges` takes it: an edit to a slide's markdown, a new slide at a position, a
- * copy of a slide right after it, a slide to delete, or a new title.
+ * copy of a slide right after it, a slide to delete, a new title, or the slug of a new scheme.
  */
 export type DeckChange =
 	| { kind: 'update'; id: string; markdown: string }
 	| { kind: 'insert'; id: string; position: number; markdown: string }
 	| { kind: 'duplicate'; of: string; id: string; markdown: string }
 	| { kind: 'delete'; id: string }
-	| { kind: 'rename'; title: string };
+	| { kind: 'rename'; title: string }
+	| { kind: 'scheme'; scheme: string };
 
 // A slide as a batch leaves it: whether the batch inserts it, and its markdown when the batch sets that.
 type BatchSlide = { id: string; isNew: boolean; markdown?: string };
@@ -312,7 +326,7 @@ type BatchSlide = { id: string; isNew: boolean; markdown?: string };
  * Applies `changes` to a deck in order, in one transaction made durable once, and resolves to whether each one applied.
  * A change doesn't apply when its slide is gone, when it would delete the deck's last slide, or when the deck is gone,
  * which applies none. After a change that doesn't apply, the inserts, copies and deletes are skipped too, since they
- * were asked for on a list that no longer matches; edits and renames still apply. A failure rolls back every change.
+ * were asked for on a list that no longer matches; edits, renames and schemes still apply. A failure rolls back every change.
  */
 export function applyDeckChanges(
 	database: Database,
@@ -323,15 +337,20 @@ export function applyDeckChanges(
 		const applied: boolean[] = changes.map(() => false);
 		if (!isUuid(deckId) || changes.length === 0) return applied;
 		const title = changes.findLast((change) => change.kind === 'rename')?.title;
+		const scheme = changes.findLast((change) => change.kind === 'scheme')?.scheme;
 		const touched = await tx
 			.update(decks)
-			.set({ updatedAt: sql`now()`, ...(title !== undefined && { title: storable(title) }) })
+			.set({
+				updatedAt: sql`now()`,
+				...(title !== undefined && { title: storable(title) }),
+				...(scheme !== undefined && { scheme: storable(scheme) })
+			})
 			.where(eq(decks.id, deckId))
 			.returning({ id: decks.id });
 		if (touched.length === 0) return applied;
 		// Each statement is several round trips to the database worker, so the batch is worked out here and written with
 		// a few statements whatever its size.
-		if (changes.every(({ kind }) => kind === 'update' || kind === 'rename')) {
+		if (changes.every((change) => isListFree(change))) {
 			return applyEdits(tx, deckId, changes);
 		}
 		const stored = await tx
@@ -343,7 +362,7 @@ export function applyDeckChanges(
 		const deleted: string[] = [];
 		let isStale = false;
 		for (const [index, change] of changes.entries()) {
-			if (isStale && change.kind !== 'update' && change.kind !== 'rename') continue;
+			if (isStale && !isListFree(change)) continue;
 			const isApplied = didApplyToList(list, deleted, change);
 			applied[index] = isApplied;
 			if (!isApplied) isStale = true;
@@ -353,20 +372,28 @@ export function applyDeckChanges(
 	});
 }
 
-/** Applies a batch of edits and renames, which need no list of the slides. */
+const listFreeKinds: ReadonlySet<DeckChange['kind']> = new Set(['update', 'rename', 'scheme']);
+
+/** Whether a change is an edit, a rename or a scheme, which need no list of the slides. */
+function isListFree({ kind }: DeckChange): boolean {
+	return listFreeKinds.has(kind);
+}
+
+/** Applies a batch of edits, renames and schemes, which need no list of the slides. */
 async function applyEdits(tx: Transaction, deckId: string, changes: readonly DeckChange[]): Promise<boolean[]> {
 	const markdowns = new Map<string, string>();
 	for (const change of changes) {
 		if (change.kind === 'update' && isUuid(change.id)) markdowns.set(change.id, change.markdown);
 	}
 	const found = new Set(await updateMarkdowns(tx, deckId, markdowns));
-	return changes.map((change) => change.kind === 'rename' || found.has(change.id));
+	return changes.map((change) => change.kind === 'rename' || change.kind === 'scheme' || found.has(change.id));
 }
 
 /** Applies one change to `list`, noting the stored slides it deletes, and returns whether it applied. */
 function didApplyToList(list: BatchSlide[], deleted: string[], change: DeckChange): boolean {
 	switch (change.kind) {
-		case 'rename': {
+		case 'rename':
+		case 'scheme': {
 			return true;
 		}
 		case 'update': {

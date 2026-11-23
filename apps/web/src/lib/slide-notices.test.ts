@@ -25,6 +25,9 @@ describe('warningNotice', () => {
 		expect(warningNotice({ kind: 'invalid-notes', value: 3 })).toEqual([
 			"The notes aren't text, so the slide has none."
 		]);
+		expect(warningNotice({ kind: 'invalid-scheme', value: 3 })).toEqual([
+			"The scheme isn't text, so the slide uses the deck's."
+		]);
 	});
 
 	it('writes a value that is not a string as it reads in the frontmatter', () => {

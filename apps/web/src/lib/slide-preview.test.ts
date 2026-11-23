@@ -4,7 +4,12 @@ import { RendererLoadError, type RenderedSlide } from '#lib/slide-render.ts';
 import type { SlideWarning } from '#lib/slide-meta.ts';
 
 function rendered(html: string, warnings: SlideWarning[] = []): RenderedSlide {
-	return { html, frontmatter: undefined, meta: { layout: 'default', notes: undefined, classes: [] }, warnings };
+	return {
+		html,
+		frontmatter: undefined,
+		meta: { layout: 'default', notes: undefined, classes: [], scheme: undefined },
+		warnings
+	};
 }
 
 const broken: SlideWarning = { kind: 'invalid-frontmatter', format: 'yaml', message: 'Bad indentation' };

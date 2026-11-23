@@ -52,7 +52,7 @@ describe('renderSlide', () => {
 		expect(slide).toEqual({
 			html: '<h1>One</h1>\n',
 			frontmatter: { format: 'yaml', raw: 'class: wide', data: { class: 'wide' } },
-			meta: { layout: 'default', notes: undefined, classes: ['wide'] },
+			meta: { layout: 'default', notes: undefined, classes: ['wide'], scheme: undefined },
 			warnings: []
 		});
 	});

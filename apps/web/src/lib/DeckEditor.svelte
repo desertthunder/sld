@@ -25,20 +25,31 @@
 		type EditorTab,
 		type PaneWidths
 	} from '#lib/deck-editor.ts';
+	import { slideParts } from '#lib/deck-markdown.ts';
 	import { applyDeckChanges, getDeck, type DeckChange, type DeckWithSlides } from '#lib/decks.ts';
 	import DeckTitle from '#lib/DeckTitle.svelte';
 	import EditorFrame from '#lib/EditorFrame.svelte';
 	import LeaveDialog from '#lib/LeaveDialog.svelte';
 	import PaneHandle from '#lib/PaneHandle.svelte';
 	import { hashForSlide } from '#lib/presenter-navigation.ts';
+	import { ownSchemeNote, resolveScheme } from '#lib/scheme-choice.ts';
+	import type { Scheme } from '#lib/scheme-compiler.ts';
+	import SchemePicker from '#lib/SchemePicker.svelte';
+	import Slide from '#lib/Slide.svelte';
 	import SlideList from '#lib/SlideList.svelte';
+	import { readSlideMeta } from '#lib/slide-meta.ts';
 	import SlidePreview from '#lib/SlidePreview.svelte';
 	import type { Notice } from '#lib/slide-notices.ts';
 	import { createSlideSaver, saveStatusLabels, type SaveStatus, type SaverEntry } from '#lib/slide-saver.ts';
 	import SlideWarnings from '#lib/SlideWarnings.svelte';
 	import { deckAspect } from '#lib/stage.ts';
 
-	let { database, deck, onmissing }: { database: Database; deck: DeckWithSlides; onmissing: () => void } = $props();
+	let {
+		database,
+		deck,
+		schemes,
+		onmissing
+	}: { database: Database; deck: DeckWithSlides; schemes: readonly Scheme[]; onmissing: () => void } = $props();
 
 	function readStored(storage: () => Storage, key: string): string | undefined {
 		try {
@@ -65,13 +76,15 @@
 
 	// The deck is loaded once; from here on this state is the source, and every change is written through.
 	// svelte-ignore state_referenced_locally
-	const { id: deckId, title, slides } = deck;
+	const { id: deckId, title, slides, scheme } = deck;
 	// svelte-ignore state_referenced_locally
 	const aspect = deckAspect(deck.aspect);
 	let notices: readonly Notice[] = $state([]);
 	type SlideItem = { id: string; markdown: string };
 	const editor: {
 		title: string;
+		scheme: string | null;
+		isPicking: boolean;
 		slides: SlideItem[];
 		selected: number;
 		status: SaveStatus;
@@ -80,6 +93,8 @@
 		tab: EditorTab;
 	} = $state({
 		title,
+		scheme,
+		isPicking: false,
 		slides: slides.map(({ id, markdown }) => ({ id, markdown })),
 		selected: selectedIndex(page.url.searchParams.get(slideParameter) ?? undefined, slides.length),
 		status: 'saved',
@@ -88,6 +103,13 @@
 		tab: parseEditorTab(readStored(() => sessionStorage, editorTabKey))
 	});
 	const current = $derived(editor.slides[editor.selected]!);
+	const prefersLight = new MediaQuery('prefers-color-scheme: light');
+	const inUse = $derived(resolveScheme(schemes, editor.scheme, prefersLight.current ? 'light' : 'dark'));
+	// A slide whose frontmatter names a scheme keeps it while the picker previews the deck's.
+	const ownScheme = $derived.by(() => {
+		const { scheme } = readSlideMeta(slideParts(current.markdown).frontmatter).meta;
+		return schemes.find(({ slug }) => slug === scheme);
+	});
 	// The slides as last known to be stored, to go back to when a change fails and the deck can't be read. A change
 	// shows at once and waits its turn to be written; `generation` moves on whenever the list is replaced by what is
 	// stored, so the changes still waiting, made to the list that was replaced, are dropped. `takenBack` holds the edits
@@ -156,6 +178,7 @@
 	const phone = new MediaQuery(`max-width: ${phoneWidth}px`);
 	let body: HTMLElement | undefined = $state();
 	let listPane: HTMLElement | undefined = $state();
+	let schemeButton: HTMLButtonElement | undefined = $state();
 
 	const columns = $derived.by(() => {
 		const { list, editor: share } = editor.widths;
@@ -275,6 +298,17 @@
 	async function rename(next: string) {
 		editor.title = next;
 		await saver.change({ change: { kind: 'rename', title: next } });
+	}
+
+	async function useScheme(next: Scheme) {
+		editor.scheme = next.slug;
+		await saver.change({ change: { kind: 'scheme', scheme: next.slug } });
+	}
+
+	async function closePicker() {
+		editor.isPicking = false;
+		await tick();
+		schemeButton?.focus();
 	}
 
 	function edit(event: Event & { currentTarget: HTMLTextAreaElement }) {
@@ -423,7 +457,7 @@
 		await goto(`${resolve('/app/deck/[id]/present', { id: deckId })}${hashForSlide(editor.selected)}`);
 	}
 
-	const typing = 'input, textarea, select, [contenteditable]';
+	const typing = 'input, textarea, select, [contenteditable], [role="listbox"]';
 
 	function onkeydown(event: KeyboardEvent) {
 		if (asking.isOpen) return;
@@ -471,13 +505,39 @@
 		<span class="{saveStatusIcons[editor.status]} icon" aria-hidden="true"></span>{saveStatusLabels[editor.status]}
 	</span>
 	<span class="spacer"></span>
+	<button
+		class="scheme"
+		type="button"
+		aria-expanded={editor.isPicking}
+		bind:this={schemeButton}
+		onclick={() => (editor.isPicking ? closePicker() : (editor.isPicking = true))}>
+		<span class="i-ri-palette-line icon" aria-hidden="true"></span><span class="sr">Scheme: </span><span
+			class="scheme-name">
+			{inUse.name}
+		</span>
+	</button>
 	<button class="present" type="button" aria-keyshortcuts="P" onclick={present}>
 		<span class="i-ri-play-line icon" aria-hidden="true"></span>Present<kbd>P</kbd>
 	</button>
 {/snippet}
 
 <EditorFrame {toolbar}>
-	<div class="tabs" role="tablist" aria-label="Editor panes">
+	{#if editor.isPicking}
+		<SchemePicker
+			{schemes}
+			{inUse}
+			label="Deck scheme"
+			previewLabel="Previewing on slide {editor.selected + 1}"
+			previewNote={ownScheme && ownSchemeNote(ownScheme.name)}
+			focusOnMount
+			onuse={(next) => next && useScheme(next)}
+			onclose={closePicker}>
+			{#snippet preview(scheme)}
+				<Slide markdown={current.markdown} {aspect} {scheme} {schemes} />
+			{/snippet}
+		</SchemePicker>
+	{/if}
+	<div class="tabs" class:hidden={editor.isPicking} role="tablist" aria-label="Editor panes">
 		{#each editorTabs as name (name)}
 			<button
 				class="tab"
@@ -493,7 +553,7 @@
 			</button>
 		{/each}
 	</div>
-	<div class="body" style:--columns={columns} bind:this={body}>
+	<div class="body" class:hidden={editor.isPicking} style:--columns={columns} bind:this={body}>
 		<div
 			class="pane-slot"
 			class:away={editor.tab !== 'slides'}
@@ -504,6 +564,8 @@
 				id={paneIds.slides}
 				slides={editor.slides}
 				{aspect}
+				scheme={inUse}
+				{schemes}
 				selected={editor.selected}
 				announcement={editor.announcement}
 				onselect={select}
@@ -556,7 +618,13 @@
 			aria-label="Preview"
 			{...panel('preview')}>
 			<div class="pane-header"><span>Preview</span></div>
-			<SlidePreview slideId={current.id} markdown={current.markdown} {aspect} bind:notices />
+			<SlidePreview
+				slideId={current.id}
+				markdown={current.markdown}
+				{aspect}
+				scheme={inUse}
+				{schemes}
+				bind:notices />
 		</section>
 	</div>
 	<LeaveDialog open={asking.isOpen} onchoose={answerLeave} />
@@ -593,6 +661,43 @@
 		flex: 1;
 	}
 
+	.scheme {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		min-height: 40px;
+		padding: 0 12px;
+		border: 1px solid var(--border);
+		border-radius: 9px;
+		background: var(--surface);
+		color: var(--heading);
+		font: 500 14px var(--ui-font);
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.scheme-name {
+		max-width: 220px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.scheme[aria-expanded='true'] {
+		border-color: var(--accent);
+	}
+
+	.sr {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
 	.present {
 		flex: none;
 		display: inline-flex;
@@ -623,13 +728,15 @@
 	}
 
 	.present:focus-visible,
+	.scheme:focus-visible,
 	.tab:focus-visible,
 	textarea:focus-visible {
 		outline: 3px solid var(--accent);
 		outline-offset: -3px;
 	}
 
-	.present:focus-visible {
+	.present:focus-visible,
+	.scheme:focus-visible {
 		outline-offset: 2px;
 	}
 
@@ -680,8 +787,8 @@
 		padding: 20px 24px;
 		border: 0;
 		resize: none;
-		background: var(--background);
-		color: var(--text);
+		background: var(--bg);
+		color: var(--body);
 		font-family: var(--code-font);
 		font-size: 14px;
 		line-height: 1.75;
@@ -692,6 +799,11 @@
 		outline: none;
 	}
 
+	.tabs.hidden,
+	.body.hidden {
+		display: none;
+	}
+
 	@media (max-width: 760px) {
 		.saved:not(.failed),
 		.present kbd {
@@ -700,6 +812,19 @@
 
 		.present {
 			padding: 0 14px;
+		}
+
+		.scheme {
+			padding: 0 11px;
+		}
+
+		/* The icon stands for the button at phone width, and the scheme's name stays in its accessible name. */
+		.scheme-name {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
 		}
 
 		.tabs {

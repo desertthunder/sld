@@ -3,18 +3,22 @@
 	import type { DeckWithSlides } from '#lib/decks.ts';
 	import Presenter from '#lib/Presenter.svelte';
 	import PresenterMissing from '#lib/PresenterMissing.svelte';
+	import type { Scheme } from '#lib/scheme-compiler.ts';
+	import { loadSchemes } from '#lib/schemes.ts';
 
-	type Loaded = { status: 'loading' } | { status: 'missing' } | { status: 'found'; deck: DeckWithSlides };
+	type Loaded =
+		{ status: 'loading' } | { status: 'missing' } | { status: 'found'; deck: DeckWithSlides; schemes: Scheme[] };
 
 	const view: { loaded: Loaded } = $state({ loaded: { status: 'loading' } });
 
 	async function load(id: string): Promise<Loaded> {
-		const [{ openDatabase }, { getDeck }] = await Promise.all([
+		const [{ openDatabase }, { getDeck }, schemes] = await Promise.all([
 			import('#lib/database.ts'),
-			import('#lib/decks.ts')
+			import('#lib/decks.ts'),
+			loadSchemes()
 		]);
 		const deck = await getDeck(await openDatabase(), id);
-		return deck ? { status: 'found', deck } : { status: 'missing' };
+		return deck ? { status: 'found', deck, schemes } : { status: 'missing' };
 	}
 
 	$effect(() => {
@@ -33,7 +37,7 @@
 
 {#if view.loaded.status === 'found'}
 	{#key view.loaded.deck.id}
-		<Presenter deck={view.loaded.deck} />
+		<Presenter deck={view.loaded.deck} schemes={view.loaded.schemes} />
 	{/key}
 {:else if view.loaded.status === 'missing'}
 	<PresenterMissing />
