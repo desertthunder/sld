@@ -82,11 +82,13 @@
 	const current = $derived(editor.slides[editor.selected]!);
 	// The slides as last known to be stored, to go back to when a change fails and the deck can't be read. A change
 	// shows at once and waits its turn to be written; `generation` moves on whenever the list is replaced by what is
-	// stored, so the changes still waiting, made to the list that was replaced, are dropped.
-	const changes: { stored: SlideItem[]; generation: number; isDestroyed: boolean } = {
+	// stored, so the changes still waiting, made to the list that was replaced, are dropped. `takenBack` holds the edits
+	// of a failed batch to the new slides it took back: the saver queues them again, and they were reported already.
+	const changes: { stored: SlideItem[]; generation: number; isDestroyed: boolean; takenBack: Map<string, string> } = {
 		stored: slides.map(({ id, markdown }) => ({ id, markdown })),
 		generation: 0,
-		isDestroyed: false
+		isDestroyed: false,
+		takenBack: new Map()
 	};
 
 	// A change to the slides carries the generation it was made in, so a refresh since drops it, and the list it leaves.
@@ -97,6 +99,10 @@
 		const batch: QueuedChange[] = [];
 		let isDropped = false;
 		for (const entry of entries) {
+			if (entry.kind === 'edit' && changes.takenBack.get(entry.id) === entry.markdown) {
+				changes.takenBack.delete(entry.id);
+				continue;
+			}
 			if (entry.kind === 'edit') {
 				batch.push({ change: { kind: 'update', id: entry.id, markdown: entry.markdown } });
 			} else if (entry.change.generation === undefined || entry.change.generation === changes.generation) {
@@ -115,6 +121,10 @@
 			);
 		} catch (error) {
 			if (batch.some(({ list }) => list)) await refresh();
+			const shown = new Set(editor.slides.map(({ id }) => id));
+			for (const entry of entries) {
+				if (entry.kind === 'edit' && !shown.has(entry.id)) changes.takenBack.set(entry.id, entry.markdown);
+			}
 			throw error;
 		}
 		const first = applied.indexOf(false);
@@ -287,6 +297,7 @@
 	// page it goes to reads them. Back and forward go at once; the writes still finish in the background.
 	const leaving: { to?: string; isFlushing: boolean; isFlushed: boolean } = { isFlushing: false, isFlushed: false };
 	beforeNavigate((navigation) => {
+		if (navigation.type === 'popstate') leaving.to = undefined;
 		if (navigation.willUnload || !navigation.to || navigation.type === 'popstate') return;
 		if (leaving.isFlushed && leaving.to === navigation.to.url.href) return;
 		if (!leaving.isFlushing && editor.status === 'saved') return;
@@ -296,6 +307,8 @@
 		leaving.isFlushing = true;
 		void flush().then(async () => {
 			leaving.isFlushing = false;
+			// Back or forward since the link, or the editor already gone, means the person went elsewhere meanwhile.
+			if (leaving.to === undefined || changes.isDestroyed) return;
 			leaving.isFlushed = true;
 			try {
 				// The address is the one the navigation was going to, already resolved.

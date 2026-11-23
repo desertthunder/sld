@@ -382,6 +382,18 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await updatedAt(deck)).toBeGreaterThan(before);
 		});
 
+		it('stores a lone surrogate in a batch as U+FFFD, as a single write does', async () => {
+			const deck = await threeSlides();
+			const [one, two] = [await slideId(deck.id, 0), await slideId(deck.id, 1)];
+			await updateSlide(database, one, '# One\u{D800}');
+			const applied = await applyDeckChanges(database, deck.id, [
+				{ kind: 'update', id: two, markdown: '# Two\u{DC00}' },
+				{ kind: 'insert', id: crypto.randomUUID(), position: 3, markdown: '\u{D83D}# Last' }
+			]);
+			expect(applied).toEqual([true, true]);
+			expect(await markdowns(deck.id)).toEqual(['# One\u{FFFD}', '# Two\u{FFFD}', '# Three', '\u{FFFD}# Last']);
+		});
+
 		it('rolls back the whole batch when one change fails', async () => {
 			const deck = await threeSlides();
 			const two = await slideId(deck.id, 1);

@@ -38,8 +38,8 @@ export type SlideSaver<C> = {
 
 /**
  * Writes slide edits and other changes in the background: an edit waits until typing pauses, and whatever is queued
- * while a batch is written goes, in order, into the next batch. The status says `saved` only once nothing waits and
- * every batch has resolved. An edit whose batch fails waits to be written again with the next flush, unless a newer
+ * while a batch is written goes, in order, into the next batch. The status says `saving` while a batch is written, even
+ * after a failed one, and `saved` only once nothing waits and every batch has resolved. An edit whose batch fails waits to be written again with the next flush, unless a newer
  * edit replaced it.
  */
 export function createSlideSaver<C>({ commit, onStatus, delay }: SlideSaverOptions<C>): SlideSaver<C> {
@@ -54,8 +54,8 @@ export function createSlideSaver<C>({ commit, onStatus, delay }: SlideSaverOptio
 	} = { hasFailed: false };
 
 	const report = () => {
-		const isBusy = waiting.size > 0 || queue.length > 0 || state.draining !== undefined;
-		const status: SaveStatus = state.hasFailed ? 'failed' : isBusy ? 'saving' : 'saved';
+		const isBusy = waiting.size > 0 || queue.length > 0;
+		const status: SaveStatus = state.draining ? 'saving' : state.hasFailed ? 'failed' : isBusy ? 'saving' : 'saved';
 		if (status === state.reported) return;
 		state.reported = status;
 		onStatus(status);

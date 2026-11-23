@@ -147,18 +147,25 @@ describe('createSlideSaver', () => {
 		expect(statuses).toEqual(['saving', 'saved']);
 	});
 
-	it('says saved again once a batch after a failed one is stored', async () => {
+	it('says saving while a batch after a failed one is written, and saved once it is stored', async () => {
 		const slides = saver();
 		commit = () => Promise.reject(new Error('no'));
 		await slides.change('add');
 		expect(statuses).toEqual(['saving', 'failed']);
-		commit = async (entries) => {
+		slides.edit('a', '# A');
+		expect(statuses).toEqual(['saving', 'failed']);
+		let finish!: (isStored: boolean) => void;
+		commit = (entries) => {
 			batches.push(entries);
-			return true;
+			return new Promise<boolean>((resolve) => (finish = resolve));
 		};
-		await slides.change('add again');
-		expect(batches).toEqual([[change('add again')]]);
-		expect(statuses).toEqual(['saving', 'failed', 'saved']);
+		const added = slides.change('add again');
+		await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+		expect(statuses).toEqual(['saving', 'failed', 'saving']);
+		finish(true);
+		await added;
+		expect(batches).toEqual([[edit('a', '# A'), change('add again')]]);
+		expect(statuses).toEqual(['saving', 'failed', 'saving', 'saved']);
 	});
 
 	it('resolves a flush with nothing to write at once', async () => {

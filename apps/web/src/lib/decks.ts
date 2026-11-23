@@ -42,9 +42,10 @@ async function slideCount(tx: Transaction, deckId: string): Promise<number> {
 	return row?.total ?? 0;
 }
 
-// Postgres text cannot hold U+0000. CommonMark replaces it with U+FFFD, so markdown means the same either way.
+// Postgres text cannot hold U+0000, and JSON cast to `jsonb` refuses a lone surrogate. CommonMark replaces U+0000 with
+// U+FFFD, and so does encoding text as UTF-8 a lone surrogate, so markdown means the same either way.
 function storable(text: string): string {
-	return text.replaceAll('\0', '\u{FFFD}');
+	return text.replaceAll('\0', '\u{FFFD}').toWellFormed();
 }
 
 // Postgres binds at most 65,535 parameters to one statement, and each slide row takes three.

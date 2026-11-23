@@ -320,6 +320,53 @@ test('a change that fails while leaving the deck leaves the URL alone', async ({
 	await expect(page).toHaveURL(/\/app$/);
 });
 
+test('after a batch with a new slide fails, the next change saves', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await failSlideWrites(page, 'INSERT');
+	const release = await holdWrites(page);
+	await editor(page).fill('# One, edited');
+	await expect(saveState(page)).toHaveText('Saving…');
+	await page.waitForTimeout(600);
+	await selectedItem(page).focus();
+	await page.keyboard.press('n');
+	await editor(page).fill('# Typed');
+	await page.getByRole('button', { name: 'New slide' }).click();
+	await release();
+	await expect(saveState(page)).toHaveText('Not saved');
+	await expect(slideItems(page)).toHaveText(['Slide 1 One, edited']);
+	await runSql(page, 'DROP TRIGGER fail_slide_writes ON slides');
+	await page.getByRole('button', { name: 'New slide' }).click();
+	await expect(slideItems(page)).toHaveCount(2);
+	await expect(saveState(page)).toHaveText('Saved');
+	expect(await storedSlides(page, id)).toEqual(['# One, edited', '']);
+});
+
+test('going back while a link waits for the changes stays where back went', async ({ page }) => {
+	const first = await createDeck(page, 'First', ['# First']);
+	const second = await createDeck(page, 'Second', ['# Second']);
+	await openDeck(page, first);
+	await page.evaluate((id) => {
+		const link = document.createElement('a');
+		link.href = `/app/deck/${id}`;
+		link.id = 'to-second';
+		document.body.append(link);
+	}, second);
+	await page.locator('#to-second').dispatchEvent('click');
+	await expect(editor(page)).toHaveValue('# Second');
+	const release = await holdWrites(page);
+	await selectedItem(page).focus();
+	await page.keyboard.press('n');
+	await page.getByRole('link', { name: /Decks/ }).click();
+	await page.waitForTimeout(300);
+	await page.goBack();
+	await expect(page).toHaveURL(new RegExp(first));
+	await release();
+	expect(await storedSlides(page, second)).toEqual(['# Second', '']);
+	await page.waitForTimeout(500);
+	await expect(page).toHaveURL(new RegExp(first));
+});
+
 test('going to the deck list waits for the changes to be stored first', async ({ page }) => {
 	const id = await createDeck(page, 'Talk', ['# One']);
 	await openDeck(page, id);
