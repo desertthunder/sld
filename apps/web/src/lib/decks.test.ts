@@ -1,8 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { sql } from 'drizzle-orm';
-import { migrations } from 'virtual:migrations';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createDatabase, type Database } from '#lib/database.ts';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createDatabase } from '#lib/database.ts';
 import {
 	applyDeckChanges,
 	createDeck,
@@ -17,22 +16,23 @@ import {
 	updateSlide,
 	type Deck
 } from '#lib/decks.ts';
-import { migrate } from '#lib/migrate.ts';
+import { resetTestDatabase } from '#lib/test-database.ts';
 
 const missing = '00000000-0000-4000-8000-000000000000';
 
-// Each case starts PGlite and migrates it, which takes a few seconds when every suite runs at once.
 describe('deck queries', { timeout: 30_000 }, () => {
-	let client: PGlite;
-	let database: Database;
+	const client = new PGlite();
+	const database = createDatabase(client);
 
 	beforeEach(async () => {
-		client = new PGlite();
-		await migrate(client, migrations);
-		database = createDatabase(client);
+		await resetTestDatabase(client);
 	});
 
-	afterEach(async () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	afterAll(async () => {
 		await client.close();
 	});
 

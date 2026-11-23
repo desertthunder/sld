@@ -1,21 +1,22 @@
 import { PGlite } from '@electric-sql/pglite';
 import { LeaderChangedError, PGliteWorker } from '@electric-sql/pglite/worker';
 import { sql } from 'drizzle-orm';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { connect, createDatabase, openDatabase, syncWhenHidden, writeDurably, type Database } from '#lib/database.ts';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { connect, createDatabase, openDatabase, syncWhenHidden, writeDurably } from '#lib/database.ts';
 import { migrate, migrationChannelName, OutdatedDatabaseError, type Migration } from '#lib/migrate.ts';
+import { resetTestDatabase } from '#lib/test-database.ts';
+
+const shared = new PGlite();
+
+afterAll(async () => {
+	await shared.close();
+});
 
 describe('createDatabase', () => {
-	let client: PGlite;
-	let database: Database;
+	const database = createDatabase(shared);
 
-	beforeEach(() => {
-		client = new PGlite();
-		database = createDatabase(client);
-	});
-
-	afterEach(async () => {
-		await client.close();
+	beforeEach(async () => {
+		await resetTestDatabase(shared, []);
 	});
 
 	it('runs queries through Drizzle', async () => {
@@ -44,8 +45,16 @@ describe('createDatabase', () => {
 });
 
 describe('writeDurably', () => {
+	beforeEach(async () => {
+		await resetTestDatabase(shared, []);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it('resolves with what the write returns once the database has synced after it', async () => {
-		const client = new PGlite();
+		const client = shared;
 		const events: string[] = [];
 		vi.spyOn(client, 'syncToFs').mockImplementation(async () => {
 			events.push('sync');
@@ -58,11 +67,10 @@ describe('writeDurably', () => {
 		});
 		expect(saved).toBe('saved');
 		expect(events).toEqual(['write', 'sync']);
-		await client.close();
 	});
 
 	it('does not sync or report a write that failed', async () => {
-		const client = new PGlite();
+		const client = shared;
 		const sync = vi.spyOn(client, 'syncToFs');
 		await expect(
 			writeDurably(createDatabase(client), async () => {
@@ -70,7 +78,6 @@ describe('writeDurably', () => {
 			})
 		).rejects.toThrow('constraint failed');
 		expect(sync).not.toHaveBeenCalled();
-		await client.close();
 	});
 
 	it("rejects when another tab's worker takes over during the write, though the write never settles", async () => {
@@ -288,8 +295,8 @@ describe('connect to a database another tab elected and migrated', () => {
 				}
 			}
 		});
-		leader = new PGlite();
-		await migrate(leader, [create, notes]);
+		leader = shared;
+		await resetTestDatabase(leader, [create, notes]);
 		await leader.query(`insert into notes (body) values ('first slide')`);
 		vi.spyOn(PGliteWorker.prototype, 'query').mockImplementation((query, parameters) =>
 			leader.query(query, parameters)
@@ -301,7 +308,6 @@ describe('connect to a database another tab elected and migrated', () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
-		await leader.close();
 	});
 
 	it('refuses a database one migration behind this build, and leaves it as it was', async () => {
