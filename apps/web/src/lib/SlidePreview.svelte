@@ -4,7 +4,7 @@
 	import { nextPreview, type PreviewState, type RenderOutcome } from '#lib/slide-preview.ts';
 	import type { Notice } from '#lib/slide-notices.ts';
 	import SlideStage from '#lib/SlideStage.svelte';
-	import type { Aspect } from '#lib/stage.ts';
+	import { fitStage, stageSize, type Aspect } from '#lib/stage.ts';
 
 	let {
 		slideId,
@@ -24,6 +24,17 @@
 	} = $props();
 
 	const fitting = $state({ fit: 1, overflowing: false });
+
+	// The surface's padding, which the stage fits inside.
+	const inset = 28;
+	const surface = $state({ width: 0, height: 0 });
+	// Where the stage sits on the surface, as the stage places itself, so the fit note can sit on its corner.
+	const placed = $derived(
+		fitStage(stageSize(aspect), {
+			width: Math.max(0, surface.width - 2 * inset),
+			height: Math.max(0, surface.height - 2 * inset)
+		})
+	);
 
 	// The last render stays on the stage while the next one renders, so typing and moving between slides don't flash.
 	const view: { state: PreviewState | undefined } = $state({ state: undefined });
@@ -51,7 +62,13 @@
 </script>
 
 <div class="preview">
-	<div class="surface">
+	<div
+		class="surface"
+		style:--inset="{inset}px"
+		style:--stage-x="{placed.x}px"
+		style:--stage-y="{placed.y}px"
+		bind:clientWidth={surface.width}
+		bind:clientHeight={surface.height}>
 		{#if !view.state}
 			<p class="waiting" role="status">Getting slides ready…</p>
 		{:else if view.state.shown}
@@ -92,7 +109,7 @@
 		flex: 1;
 		min-height: 0;
 		display: grid;
-		padding: 28px;
+		padding: var(--inset);
 	}
 
 	/* The stage sits on the surface, lifted by a shadow, and the frame around it shows no bars of its own. */
@@ -109,8 +126,8 @@
 
 	.fit-note {
 		position: absolute;
-		top: 36px;
-		right: 36px;
+		top: calc(var(--inset) + var(--stage-y) + 8px);
+		right: calc(var(--inset) + var(--stage-x) + 8px);
 		margin: 0;
 		padding: 2px 8px;
 		border: 1px solid var(--border);
