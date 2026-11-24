@@ -202,4 +202,79 @@ test.describe('fitting a slide', () => {
 		await expect.poll(() => fontSize(page, '.slide pre')).toBe(20);
 		await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'true');
 	});
+	test('a code block whose labeled first line is too long for it shrinks its code too', async ({ page }) => {
+		await show(page, `\`\`\`ts\nconst items = '${'x'.repeat(70)}';\n\`\`\``);
+		await expect.poll(() => fontSize(page, '.slide pre')).toBeLessThan(30);
+		await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
+	});
+
+	test('a title slide shrinks before its subtitle runs into the pinned last line', async ({ page }) => {
+		// At full size, this subtitle ends 27 px into the pinned line and 15 px above the bottom margin.
+		const subtitle =
+			'What a month of sleep diaries taught me about mornings, coffee, weekends, alarms, light, and the habits that ' +
+			'moved my sleep the most over thirty-one nights, and what I would tell anyone who wants to start a sleep diary ' +
+			'of their own this winter, with a notebook and a pen by the bed, every single night, even on the weekends and ' +
+			'holidays when it feels pointless and the coffee is calling from the kitchen downstairs again before the sun ' +
+			'is even up over the hills to the east of town';
+		await show(
+			page,
+			`---\nlayout: title\n---\n# Field notes on sleep and the long title\n\n${subtitle}\n\nReading group · 21 November`
+		);
+		await expect.poll(() => fontSize(page, '.slide h1')).toBeLessThan(136);
+		const gap = await page
+			.locator('.slide > p:last-child')
+			.evaluate(
+				(last: HTMLElement) =>
+					last.offsetTop -
+					((last.previousElementSibling as HTMLElement).offsetTop +
+						(last.previousElementSibling as HTMLElement).offsetHeight)
+			);
+		expect(gap).toBeGreaterThan(0);
+		await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
+	});
+
+	test('a slide fits again when a disclosure on it opens', async ({ page }) => {
+		await show(page, `# Everything I wrote down\n\n<details><summary>More</summary>\n\n${items(10)}\n\n</details>`);
+		expect(await fontSize(page, '.slide summary')).toBe(44);
+		await page.locator('.slide details').evaluate((details: HTMLDetailsElement) => (details.open = true));
+		await expect.poll(() => fontSize(page, '.slide summary')).toBeLessThan(44);
+		await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
+	});
+
+	test('a slide fits again when an image on it loads', async ({ page }) => {
+		const held = Promise.withResolvers<void>();
+		await page.route('**/late-image.svg', async (route) => {
+			await held.promise;
+			await route.fulfill({
+				contentType: 'image/svg+xml',
+				body: '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400"/></svg>'
+			});
+		});
+		await show(page, `# Everything I wrote down\n\n${items(5)}\n\n![A chart](/late-image.svg)`);
+		expect(await fontSize(page, '.slide li')).toBe(44);
+		held.resolve();
+		await expect.poll(() => fontSize(page, '.slide li')).toBeLessThan(44);
+		await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
+	});
+
+	test('a slide fits again when a font it uses loads', async ({ page }) => {
+		const line = 'Sleep diaries kept for a month, one line each night';
+		await show(page, `# Everything I wrote down\n\n${Array.from({ length: 8 }, () => `- ${line}`).join('\n')}`);
+		expect(await fontSize(page, '.slide li')).toBe(44);
+		// Nothing has drawn the italic code face yet, so it loads only now, after the slide fitted, and is wider than the
+		// body face. A style change alone fits nothing.
+		await page.locator('article.slide').evaluate((slide: HTMLElement) => {
+			slide.style.setProperty('--font-body', "'Monaspace Neon'");
+			slide.style.fontStyle = 'italic';
+		});
+		await expect.poll(() => fontSize(page, '.slide li')).toBeLessThan(44);
+	});
+
+	test('text hidden for screen readers in a pixel-sized box does not flag the slide', async ({ page }) => {
+		await show(
+			page,
+			'# A chart\n\n<span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Hours slept, by week</span>'
+		);
+		await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
+	});
 });

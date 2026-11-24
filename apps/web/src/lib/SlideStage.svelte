@@ -7,7 +7,7 @@
 	import '#lib/slide.css';
 	import '#lib/code-block.css';
 	import type { Scheme } from '#lib/scheme-compiler.ts';
-	import { fitSlide } from '#lib/slide-fit.ts';
+	import { fitSlide, sizeEvents } from '#lib/slide-fit.ts';
 	import { slideClasses } from '#lib/slide-meta.ts';
 	import type { RenderedSlide } from '#lib/slide-render.ts';
 	import Stage from '#lib/Stage.svelte';
@@ -35,7 +35,8 @@
 
 	let article: HTMLElement | undefined = $state();
 
-	// The slide fits again whenever what it shows or how wide it is changes, and once its fonts or images load. Fitting
+	// The slide fits again whenever what it shows or how wide it is changes, once its fonts, images or videos load, and
+	// when a disclosure opens or closes, since those change its height without changing its HTML. Fitting
 	// writes only custom properties, which none of these watch, so it never sets itself off, and the slide's HTML is
 	// never drawn again. A resize of the window scales the stage without changing its layout, so it fits nothing.
 	$effect(() => {
@@ -50,7 +51,8 @@
 		mutations.observe(element, { subtree: true, childList: true, characterData: true, attributeFilter: ['class'] });
 		const resizes = new ResizeObserver(refit);
 		resizes.observe(element);
-		element.addEventListener('load', refit, { capture: true });
+		for (const type of sizeEvents) element.addEventListener(type, refit, { capture: true });
+		// TODO: spread a font load's refits over frames: it refits every thumbnail in the list in one task.
 		document.fonts.addEventListener('loadingdone', refit);
 		void document.fonts.ready.then(refit);
 		refit();
@@ -58,7 +60,7 @@
 			isCurrent = false;
 			mutations.disconnect();
 			resizes.disconnect();
-			element.removeEventListener('load', refit, { capture: true });
+			for (const type of sizeEvents) element.removeEventListener(type, refit, { capture: true });
 			document.fonts.removeEventListener('loadingdone', refit);
 		};
 	});

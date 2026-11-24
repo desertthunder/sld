@@ -20,7 +20,7 @@ Slides read only the slide roles, which the scheme compiler derives from a Base1
 | `--link`      | base0D                                           | Links and footnote references                                      |
 | `--accent`    | base0E                                           | List squares, checked boxes, the quote mark, section labels        |
 
-Body, muted and link text aim for 4.5:1 on base00 and base01, and the accent for 3:1. A role that misses its floor mixes toward the strongest foreground in 5% steps, except muted, which mixes toward the body color unless body text was mixed too. When no mix reaches the floor, the role takes the color it mixes toward, so a few schemes keep body text under 4.5:1; `schemes.test.ts` lists them. Code tokens take the slots in the Base16 styling guide, held to 4.5:1 the same way. The app's own interface marks warnings with `--rule`, such as the editor's note on a slide too long to fit.
+Body, muted and link text aim for 4.5:1 on base00 and base01, and the accent for 3:1. A role that misses its floor mixes toward the strongest foreground in 5% steps, except muted, which mixes toward the body color unless body text was mixed too. When no mix reaches the floor, the role takes the color it mixes toward, so a few schemes keep text under 4.5:1; `schemes.test.ts` lists them. Code tokens take the slots in the Base16 styling guide, held to 4.5:1 the same way. The app's own interface marks warnings with `--rule`, such as the editor's note on a slide too long to fit.
 
 ## Type
 

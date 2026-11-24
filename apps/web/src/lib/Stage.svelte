@@ -2,7 +2,7 @@
 	import { onDestroy, type Snippet } from 'svelte';
 	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import { schemeStyle } from '#lib/scheme-style.ts';
-	import { contentBottom } from '#lib/slide-fit.ts';
+	import { contentBottom, sizeEvents } from '#lib/slide-fit.ts';
 	import { defaultAspect, fitStage, stageSize, type Aspect, type Fit } from '#lib/stage.ts';
 
 	let {
@@ -22,13 +22,15 @@
 		return [...slide.querySelectorAll('*')].some((element) => {
 			if (element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight)
 				return false;
+			// A box a pixel wide and tall hides its text on purpose, for screen readers only.
+			if (element.clientWidth <= 1 && element.clientHeight <= 1) return false;
 			const { overflowX, overflowY } = getComputedStyle(element);
 			return overflowX !== 'visible' || overflowY !== 'visible';
 		});
 	}
 
 	// A line too long for the stage, such as in a code block, widens neither the stage nor the content, so no resize
-	// reports it: measure the stage's scroll width whenever the slide's DOM, its fonts or its images change. A slide is as
+	// reports it: measure the stage's scroll width whenever the slide's DOM, its fonts or its media change. A slide is as
 	// tall as the stage and clips at its bottom margin, so the height that counts is where its lowest child ends, plus
 	// that margin. An element that clips its own overflow, such as a code block, hides a line before it reaches the
 	// stage's edge, so the slide also counts as overflowing when one of those clips something.
@@ -54,13 +56,13 @@
 		resizes.observe(wrapper);
 		if (wrapper.firstElementChild) resizes.observe(wrapper.firstElementChild);
 		mutations.observe(wrapper, { subtree: true, childList: true, characterData: true, attributes: true });
-		wrapper.addEventListener('load', measure, { capture: true });
+		for (const type of sizeEvents) wrapper.addEventListener(type, measure, { capture: true });
 		document.fonts.addEventListener('loadingdone', measure);
 		measure();
 		return () => {
 			resizes.disconnect();
 			mutations.disconnect();
-			wrapper.removeEventListener('load', measure, { capture: true });
+			for (const type of sizeEvents) wrapper.removeEventListener(type, measure, { capture: true });
 			document.fonts.removeEventListener('loadingdone', measure);
 		};
 	});
