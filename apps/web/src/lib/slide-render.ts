@@ -1,3 +1,4 @@
+import type { Features } from 'satteri';
 import { slideFrontmatterError, slideParts, type Frontmatter } from '#lib/deck-markdown.ts';
 import { errorText } from '#lib/error-text.ts';
 import type { SlideOptions } from '#lib/slide-plugins.ts';
@@ -15,6 +16,9 @@ export type RenderedSlide = {
 };
 
 type Renderer = (markdown: string, options: SlideOptions) => Promise<RenderedSlide>;
+
+/** The markdown Sätteri reads in a slide. Anything else that parses a slide reads it the same way. */
+export const markdownFeatures: Features = { gfm: true, frontmatter: false, directive: false };
 
 const defaultOptions: SlideOptions = { lineNumbers: false };
 
@@ -79,7 +83,7 @@ async function createRenderer(): Promise<Renderer> {
 		const { html } = await markdownToHtml(body, {
 			mdastPlugins,
 			hastPlugins: hastPlugins(options),
-			features: { gfm: true, frontmatter: false, directive: false }
+			features: markdownFeatures
 		});
 		const frontmatterError = frontmatter ? undefined : slideFrontmatterError(markdown);
 		const { meta, warnings } = readSlideMeta(frontmatter);

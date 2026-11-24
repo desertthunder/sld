@@ -113,6 +113,16 @@ describe('splitDeck', () => {
 		}
 	});
 
+	it('reads --- under text after a heading, rule or fence that ended a list or quote as a setext underline', () => {
+		for (const slide of [
+			lines('- item', '# Heading', 'text', '---'),
+			lines('> quote', '***', 'text', '---'),
+			lines('- item', '```', 'code', '```', 'text', '---')
+		]) {
+			expect(splitDeck(slide).slides).toEqual([slide]);
+		}
+	});
+
 	it('leaves a table separator row alone', () => {
 		const table = lines('| a | b |', '| --- | --- |', '| 1 | 2 |', '', 'a | b', '--- | ---', '1 | 2');
 		expect(splitDeck(table).slides).toEqual([table]);
