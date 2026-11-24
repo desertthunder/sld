@@ -192,6 +192,82 @@ test('a selected slide another tab deletes gives way to its neighbor, and says s
 	await expect(saveState(b)).toHaveText('Saved');
 });
 
+test('a new slide whose slide another tab deleted lands after the one before it, or says it was not saved', async ({
+	page
+}) => {
+	const { id, a, b } = await openTwice(page, ['# One', '# Two', '# Three'], '?slide=2');
+	// Deleting without a signal leaves B showing slide 2, and holding B's next edit keeps its new slide queued.
+	await runSql(
+		a,
+		`DELETE FROM slides WHERE deck_id = '${id}' AND position = 1;
+		UPDATE slides SET position = 1 WHERE deck_id = '${id}' AND position = 2;
+		CREATE OR REPLACE FUNCTION hold_slow() RETURNS trigger AS $$ BEGIN PERFORM pg_sleep(1); RETURN NEW; END $$
+		LANGUAGE plpgsql;
+		CREATE TRIGGER hold_slow BEFORE UPDATE ON slides FOR EACH ROW WHEN (NEW.markdown LIKE '%slow%')
+		EXECUTE FUNCTION hold_slow();`
+	);
+	await slideItems(b).first().click();
+	await editor(b).fill('# One, slow');
+	await editor(b).blur();
+	await expect(saveState(b)).toHaveText('Saving…');
+	await slideItems(b).nth(1).click();
+	await b.getByRole('button', { name: 'New slide' }).click();
+	await b.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+	await expect(saveState(b)).toHaveText('Saved', { timeout: 5000 });
+	await expect(slideItems(b)).toHaveText(['Slide 1 One, slow', 'Slide 2 Untitled slide', 'Slide 3 Three']);
+	await expect(selectedItem(b)).toHaveText('Slide 2 Untitled slide');
+	expect(await storedSlides(b, id)).toEqual(['# One, slow', '', '# Three']);
+
+	// Written before B hears of the delete, the new slide can't land, and B says so.
+	await runSql(
+		a,
+		`DELETE FROM slides WHERE deck_id = '${id}' AND position = 1;
+		UPDATE slides SET position = 1 WHERE deck_id = '${id}' AND position = 2;`
+	);
+	await b.getByRole('button', { name: 'New slide' }).click();
+	await expect(saveState(b)).toHaveText('Not saved');
+	await expect(slideItems(b)).toHaveText(['Slide 1 One, slow', 'Slide 2 Three']);
+	expect(await storedSlides(b, id)).toEqual(['# One, slow', '# Three']);
+});
+
+test('a split not yet written keeps both parts through a catch-up', async ({ page }) => {
+	const { id, b } = await openTwice(page, ['# One', '# Last']);
+	await runSql(
+		b,
+		`CREATE OR REPLACE FUNCTION hold_slow() RETURNS trigger AS $$ BEGIN PERFORM pg_sleep(1); RETURN NEW; END $$
+		LANGUAGE plpgsql;
+		CREATE TRIGGER hold_slow BEFORE UPDATE ON slides FOR EACH ROW WHEN (NEW.markdown LIKE '%slow%')
+		EXECUTE FUNCTION hold_slow();`
+	);
+	// The catch-up waits behind a slow write, with the split and the typing before it queued after.
+	await editor(b).click();
+	await b.keyboard.press('ControlOrMeta+End');
+	await b.keyboard.type(' slow');
+	await editor(b).blur();
+	await expect(saveState(b)).toHaveText('Saving…');
+	await editor(b).click();
+	await b.keyboard.press('ControlOrMeta+End');
+	await b.keyboard.press('Enter');
+	await b.keyboard.press('Enter');
+	await b.keyboard.type('---');
+	await b.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+	await b.keyboard.press('Enter');
+	await b.keyboard.press('Enter');
+	await b.keyboard.type('# Two');
+	await expect(saveState(b)).toHaveText('Saved', { timeout: 5000 });
+	await expect(slideItems(b)).toHaveText(['Slide 1 One slow', 'Slide 2 Two', 'Slide 3 Last']);
+	await slideItems(b).first().click();
+	await expect(editor(b)).toHaveText('# One slow');
+	expect(await storedSlides(b, id)).toEqual(['# One slow', '# Two', '# Last']);
+});
+
+test('a change no signal told of shows once the tab shows again', async ({ page }) => {
+	const { id, a, b } = await openTwice(page, ['# One', '# Two']);
+	await runSql(a, `UPDATE slides SET markdown = '# Two, quietly' WHERE deck_id = '${id}' AND position = 1`);
+	await b.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+	await expect(slideItems(b)).toHaveText(['Slide 1 One', 'Slide 2 Two, quietly'], withinASecond);
+});
+
 test('a rename, a scheme and deleting the deck in another tab show in the open editor', async ({ page }) => {
 	const { id, a, b } = await openTwice(page, ['# One']);
 	await a.getByRole('button', { name: 'Rename deck: Talk' }).click();

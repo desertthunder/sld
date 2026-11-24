@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	anchoredChange,
 	canDeleteSlide,
 	clampPaneWidths,
 	defaultPaneWidths,
@@ -81,6 +82,12 @@ describe('withChange', () => {
 
 	it('places new slides and copies after the slide they name', () => {
 		expect(ids(withChange(list, { kind: 'insert', id: 'n', after: 'a', markdown: '' }))).toEqual(['a', 'n', 'b']);
+		expect(ids(withChange(list, { kind: 'insert', id: 'n', after: 'b', markdown: '' }))).toEqual(['a', 'b', 'n']);
+		expect(ids(withChange(list, { kind: 'insert', id: 'n', after: undefined, markdown: '' }))).toEqual([
+			'n',
+			'a',
+			'b'
+		]);
 		expect(withChange(list, { kind: 'duplicate', of: 'b', id: 'c', markdown: '# B' })).toEqual([
 			...list,
 			{ id: 'c', markdown: '# B' }
@@ -169,5 +176,34 @@ describe('listCommand', () => {
 		expect(listCommand(key('d', { metaKey: true }))).toBeUndefined();
 		expect(listCommand(key('n', { ctrlKey: true }))).toBeUndefined();
 		expect(listCommand(key('ArrowUp', { altKey: true }))).toBeUndefined();
+	});
+});
+
+describe('anchoredChange', () => {
+	const list = [
+		{ id: 'a', markdown: '# A' },
+		{ id: 'c', markdown: '# C' }
+	];
+
+	it('leaves a change whose slide is still there as it is', () => {
+		const change = { kind: 'insert', id: 'n', after: 'c', markdown: '' } as const;
+		expect(anchoredChange(change, list, ['a', 'c', 'n'])).toBe(change);
+		const edit = { kind: 'update', id: 'x', markdown: '' } as const;
+		expect(anchoredChange(edit, list, ['a', 'c'])).toBe(edit);
+	});
+
+	it('puts a new slide or copy whose slide is gone after the nearest one before it that is still there', () => {
+		expect(
+			anchoredChange({ kind: 'insert', id: 'n', after: 'b', markdown: '' }, list, ['a', 'b', 'n', 'c'])
+		).toEqual({ kind: 'insert', id: 'n', after: 'a', markdown: '' });
+		expect(
+			anchoredChange({ kind: 'duplicate', of: 'b', id: 'n', markdown: '# B' }, list, ['a', 'b', 'n', 'c'])
+		).toEqual({ kind: 'insert', id: 'n', after: 'a', markdown: '# B' });
+	});
+
+	it('puts it first when no slide before it is still there', () => {
+		expect(
+			anchoredChange({ kind: 'insert', id: 'n', after: 'x', markdown: '' }, list, ['x', 'n', 'a', 'c'])
+		).toEqual({ kind: 'insert', id: 'n', after: undefined, markdown: '' });
 	});
 });

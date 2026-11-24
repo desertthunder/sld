@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, gt, gte, sql } from 'drizzle-orm';
 import { writeDurably, type Database } from '#lib/database.ts';
-import { announceDeckChange, type DeckChangeKind } from '#lib/deck-signal.ts';
+import { announceDeckChange } from '#lib/deck-signal.ts';
 import type { DeckSettings } from '#lib/deck-settings.ts';
 import { decks, slides } from '#lib/schema.ts';
 import { isUuid } from '#lib/uuid.ts';
@@ -32,11 +32,8 @@ function write<T>(database: Database, change: (tx: Transaction) => Promise<T>): 
 }
 
 // Each write that changed a deck then tells the other tabs, which may have it open.
-function announced<T extends { id: string } | { deckId: string } | undefined>(
-	row: T,
-	changed: readonly DeckChangeKind[]
-): T {
-	if (row) announceDeckChange('deckId' in row ? row.deckId : row.id, changed);
+function announced<T extends { id: string } | { deckId: string } | undefined>(row: T): T {
+	if (row) announceDeckChange('deckId' in row ? row.deckId : row.id);
 	return row;
 }
 
@@ -93,7 +90,7 @@ export async function createDeck(
 		);
 		return deck!;
 	});
-	return announced(deck, ['created']);
+	return announced(deck);
 }
 
 /** Lists every deck, the most recently changed first. */
@@ -123,7 +120,7 @@ export async function renameDeck(database: Database, id: string, title: string):
 			.returning();
 		return deck;
 	});
-	return announced(renamed, ['title']);
+	return announced(renamed);
 }
 
 /** Sets the slug of a deck's scheme and returns the deck, or `undefined` when there is no such deck. */
@@ -137,7 +134,7 @@ export async function setDeckScheme(database: Database, id: string, scheme: stri
 			.returning();
 		return deck;
 	});
-	return announced(changed, ['scheme']);
+	return announced(changed);
 }
 
 /** Deletes a deck and its slides, and returns the deck, or `undefined` when there is no such deck. */
@@ -147,7 +144,7 @@ export async function deleteDeck(database: Database, id: string): Promise<Deck |
 		const [deck] = await tx.delete(decks).where(eq(decks.id, id)).returning();
 		return deck;
 	});
-	return announced(deleted, ['deleted']);
+	return announced(deleted);
 }
 
 /**
@@ -167,7 +164,7 @@ export async function insertSlide(
 		const at = clampPosition(position, await slideCount(tx, deckId));
 		return insertAt(tx, deckId, at, storable(markdown));
 	});
-	return announced(slide, ['slides']);
+	return announced(slide);
 }
 
 async function insertAt(tx: Transaction, deckId: string, position: number, markdown: string): Promise<Slide> {
@@ -191,7 +188,7 @@ export async function updateSlide(database: Database, id: string, markdown: stri
 		if (slide) await touchDeck(tx, slide.deckId);
 		return slide;
 	});
-	return announced(updated, ['text']);
+	return announced(updated);
 }
 
 /**
@@ -212,7 +209,7 @@ export async function deleteSlide(database: Database, id: string): Promise<Slide
 		await touchDeck(tx, slide.deckId);
 		return slide;
 	});
-	return announced(deleted, ['slides']);
+	return announced(deleted);
 }
 
 /** Copies a slide to the place right after it and returns the copy, or `undefined` when there is no such slide. */
@@ -224,7 +221,7 @@ export async function duplicateSlide(database: Database, id: string): Promise<Sl
 		await touchDeck(tx, slide.deckId);
 		return insertAt(tx, slide.deckId, slide.position + 1, slide.markdown);
 	});
-	return announced(copy, ['slides']);
+	return announced(copy);
 }
 
 /**
@@ -255,7 +252,7 @@ export async function moveSlide(database: Database, id: string, position: number
 		}
 		return tx.select().from(slides).where(eq(slides.deckId, deckId)).orderBy(asc(slides.position));
 	});
-	announced(moved?.[0], ['slides']);
+	announced(moved?.[0]);
 	return moved;
 }
 
@@ -303,7 +300,7 @@ export async function duplicateDeck(database: Database, id: string, title: strin
 		);
 		return copy!;
 	});
-	return announced(copy, ['created']);
+	return announced(copy);
 }
 
 /**
@@ -319,7 +316,7 @@ export async function removeDeck(database: Database, id: string): Promise<DeckWi
 		await tx.delete(decks).where(eq(decks.id, id));
 		return { ...deck, slides: rows };
 	});
-	return announced(removed, ['deleted']);
+	return announced(removed);
 }
 
 /**
@@ -337,31 +334,47 @@ export async function restoreDecks(database: Database, removed: readonly DeckWit
 		}
 		return restored;
 	});
-	for (const deck of restored) announced(deck, ['created']);
+	for (const deck of restored) announced(deck);
 	return restored;
 }
 
 /**
  * One change to a deck, as `applyDeckChanges` takes it: an edit to a slide's markdown, a new slide right after the
- * slide `after`, a copy of a slide right after it, a slide to delete, a new title, or the slug of a new scheme. A change
- * names slides by id, never by position, so it lands where it was asked for whatever another tab did to the order.
+ * slide `after`, or first when `after` is `undefined`, a copy of a slide right after it, a slide to delete, a new
+ * title, or the slug of a new scheme. A change names slides by id, never by position, so it lands where it was asked
+ * for whatever another tab did to the order.
  */
 export type DeckChange =
 	| { kind: 'update'; id: string; markdown: string }
-	| { kind: 'insert'; id: string; after: string; markdown: string }
+	| { kind: 'insert'; id: string; after: string | undefined; markdown: string }
 	| { kind: 'duplicate'; of: string; id: string; markdown: string }
 	| { kind: 'delete'; id: string }
 	| { kind: 'rename'; title: string }
 	| { kind: 'scheme'; scheme: string };
+
+/**
+ * The index in `list` of the slide a new slide or copy follows, `-1` when it goes first, or `undefined` when the slide
+ * it follows is gone.
+ */
+export function followedIndex(
+	list: readonly { id: string }[],
+	change: Extract<DeckChange, { kind: 'insert' | 'duplicate' }>
+): number | undefined {
+	const followed = change.kind === 'insert' ? change.after : change.of;
+	if (followed === undefined) return -1;
+	const at = list.findIndex(({ id }) => id === followed);
+	return at === -1 ? undefined : at;
+}
 
 // A slide as a batch leaves it: whether the batch inserts it, and its markdown when the batch sets that.
 type BatchSlide = { id: string; isNew: boolean; markdown?: string };
 
 /**
  * Applies `changes` to a deck in order, in one transaction made durable once, and resolves to whether each one applied.
- * A change doesn't apply when its slide, or the slide an insert follows, is gone, when it would delete the deck's last slide, or when the deck is gone,
- * which applies none. After a change that doesn't apply, the inserts, copies and deletes are skipped too, since they
- * were asked for on a list that no longer matches; edits, renames and schemes still apply. A failure rolls back every change.
+ * A change doesn't apply when its slide, or the slide an insert follows, is gone, when it would delete the deck's last
+ * slide, or when the deck is gone, which applies none. After a change that doesn't apply, the inserts, copies and
+ * deletes are skipped too, since they were asked for on a list that no longer matches; edits, renames and schemes still
+ * apply. A failure rolls back every change.
  */
 export async function applyDeckChanges(
 	database: Database,
@@ -405,21 +418,9 @@ export async function applyDeckChanges(
 		await writeList(tx, deckId, stored, list, deleted);
 		return applied;
 	});
-	announceDeckChange(
-		deckId,
-		changes.filter((_, index) => applied[index]).map(({ kind }) => signalKinds[kind])
-	);
+	if (applied.includes(true)) announceDeckChange(deckId);
 	return applied;
 }
-
-const signalKinds: Record<DeckChange['kind'], DeckChangeKind> = {
-	update: 'text',
-	insert: 'slides',
-	duplicate: 'slides',
-	delete: 'slides',
-	rename: 'title',
-	scheme: 'scheme'
-};
 
 const listFreeKinds: ReadonlySet<DeckChange['kind']> = new Set(['update', 'rename', 'scheme']);
 
@@ -452,8 +453,8 @@ function didApplyToList(list: BatchSlide[], deleted: string[], change: DeckChang
 		}
 		case 'insert':
 		case 'duplicate': {
-			const at = list.findIndex(({ id }) => id === (change.kind === 'insert' ? change.after : change.of));
-			if (at === -1) return false;
+			const at = followedIndex(list, change);
+			if (at === undefined) return false;
 			list.splice(at + 1, 0, { id: change.id, isNew: true, markdown: change.markdown });
 			return true;
 		}

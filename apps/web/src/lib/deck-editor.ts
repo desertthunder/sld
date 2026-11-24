@@ -1,4 +1,4 @@
-import type { DeckChange } from '#lib/decks.ts';
+import { followedIndex, type DeckChange } from '#lib/decks.ts';
 
 /** The search parameter that holds the selected slide's number, counted from 1. */
 export const slideParameter = 'slide';
@@ -52,14 +52,29 @@ export function withChange(list: readonly SlideItem[], change: DeckChange): Slid
 		}
 		case 'insert':
 		case 'duplicate': {
-			const at = list.findIndex(({ id }) => id === (change.kind === 'insert' ? change.after : change.of));
-			return at === -1 ? [...list] : list.toSpliced(at + 1, 0, { id: change.id, markdown: change.markdown });
+			const at = followedIndex(list, change);
+			return at === undefined
+				? [...list]
+				: list.toSpliced(at + 1, 0, { id: change.id, markdown: change.markdown });
 		}
 		case 'delete': {
 			const at = list.findIndex(({ id }) => id === change.id);
 			return at === -1 || list.length <= 1 ? [...list] : list.toSpliced(at, 1);
 		}
 	}
+}
+
+/**
+ * `change` as it applies over `list`: a new slide or copy whose slide `list` no longer holds goes instead after the
+ * nearest slide before it in `shown` that `list` still holds, or first.
+ */
+export function anchoredChange(change: DeckChange, list: readonly SlideItem[], shown: readonly string[]): DeckChange {
+	if ((change.kind !== 'insert' && change.kind !== 'duplicate') || followedIndex(list, change) !== undefined) {
+		return change;
+	}
+	const kept = new Set(list.map(({ id }) => id));
+	const after = shown.slice(0, Math.max(shown.indexOf(change.id), 0)).findLast((id) => kept.has(id));
+	return { kind: 'insert', id: change.id, after, markdown: change.markdown };
 }
 
 /** Whether a deck of `count` slides may lose one: a deck always keeps at least one slide. */

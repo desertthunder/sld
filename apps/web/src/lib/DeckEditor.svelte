@@ -12,6 +12,7 @@
 		defaultPaneWidths,
 		editorTabKey,
 		editorTabs,
+		anchoredChange,
 		indexAfterDelete,
 		joinSplit,
 		nearestKept,
@@ -268,10 +269,10 @@
 			if (list) changes.stored = list;
 			return !isDropped;
 		}
-		// Another tab changed the deck first, so show what is stored. A change that tab already made isn't lost, but an
-		// edit to a gone slide is, and so are the changes skipped after it.
+		// Another tab changed the deck first, so show what is stored. A delete that tab already made isn't lost, but an
+		// edit to a gone slide is, so is a new slide or copy placed after one, and so are the changes skipped after it.
 		await refresh();
-		return !isDropped && batch[first]!.change.kind !== 'update' && !applied.slice(first + 1).includes(false);
+		return !isDropped && batch[first]!.change.kind === 'delete' && !applied.slice(first + 1).includes(false);
 	}
 
 	const saver = createSlideSaver<QueuedChange>({
@@ -395,15 +396,27 @@
 		if (!unwritten.has('rename')) editor.title = stored.title;
 		if (!unwritten.has('scheme')) editor.scheme = stored.scheme;
 		changes.stored = stored.slides.map(({ id, markdown }) => ({ id, markdown }));
+		const previous = editor.slides.map(({ id }) => id);
 		let list = changes.stored;
 		for (const queued of changes.unwritten) {
 			if (queued.first) list = withChange(list, queued.first);
+			queued.change = anchoredChange(queued.change, list, previous);
 			list = withChange(list, queued.change);
 			if (queued.list) queued.list = list;
 		}
-		const previous = editor.slides.map(({ id }) => id);
 		const { selected } = editor;
-		editor.slides = list.map(({ id, markdown }) => ({ id, markdown: saver.pending(id) ?? markdown }));
+		// A slide with typing or a change of this tab's not yet written keeps the text it shows, which is newer than both
+		// what is stored and the typing waiting, such as the part a split not yet written leaves in it.
+		const shown = new Map(editor.slides.map(({ id, markdown }) => [id, markdown]));
+		const local = new Set(
+			changes.unwritten
+				.flatMap(({ first, change }) => (first ? [first, change] : [change]))
+				.map((made) => ('id' in made ? made.id : undefined))
+		);
+		editor.slides = list.map(({ id, markdown }) => {
+			const isLocal = local.has(id) || saver.pending(id) !== undefined;
+			return { id, markdown: (isLocal ? shown.get(id) : undefined) ?? saver.pending(id) ?? markdown };
+		});
 		const next = editor.slides.map(({ id }) => id);
 		const index = next.indexOf(previous[selected]!);
 		select(index === -1 ? nearestKept(previous, next, selected) : index);
@@ -683,10 +696,17 @@
 		showSelectedInUrl();
 		for (const [id, markdown] of journaled) saver.edit(id, markdown);
 		if (journaled.size > 0) void flush();
+		// A tab may miss a signal while it is frozen or in the back-forward cache, so it reads the deck again whenever it
+		// shows again.
 		const onVisibilityChange = () => {
 			if (document.visibilityState === 'hidden') void flush();
+			else hearRemoteChange();
+		};
+		const onPageShow = ({ persisted }: PageTransitionEvent) => {
+			if (persisted) hearRemoteChange();
 		};
 		addEventListener('pagehide', flush);
+		addEventListener('pageshow', onPageShow);
 		document.addEventListener('visibilitychange', onVisibilityChange);
 		const stopListening = listenForDeckChanges(deckId, hearRemoteChange);
 		return () => {
@@ -694,6 +714,7 @@
 			stopListening();
 			clearTimeout(remote.timer);
 			removeEventListener('pagehide', flush);
+			removeEventListener('pageshow', onPageShow);
 			document.removeEventListener('visibilitychange', onVisibilityChange);
 			saver.stop();
 			void flush();

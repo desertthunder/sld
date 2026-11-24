@@ -523,11 +523,24 @@ describe('deck queries', { timeout: 30_000 }, () => {
 			expect(await markdowns(deck.id)).toEqual(['# Zero', '# One', '# New', '# Three']);
 		});
 
-		it('tells the other tabs what each write changed, once it is stored', async () => {
+		it('puts a new slide first when it follows no slide, and last after the last slide', async () => {
+			const deck = await threeSlides();
+			const three = await slideId(deck.id, 2);
+			expect(
+				await applyDeckChanges(database, deck.id, [
+					{ kind: 'insert', id: crypto.randomUUID(), after: undefined, markdown: '# First' },
+					{ kind: 'insert', id: crypto.randomUUID(), after: three, markdown: '# Last' }
+				])
+			).toEqual([true, true]);
+			expect(await markdowns(deck.id)).toEqual(['# First', '# One', '# Two', '# Three', '# Last']);
+			expect(await positions(deck.id)).toEqual([0, 1, 2, 3, 4]);
+		});
+
+		it('tells the other tabs about each write that changed a deck, once it is stored', async () => {
 			const heard: unknown[] = [];
 			const channel = new BroadcastChannel('sld:deck-changes');
-			channel.addEventListener('message', ({ data }: MessageEvent<{ deckId: string; changed: string[] }>) => {
-				heard.push([data.deckId, data.changed]);
+			channel.addEventListener('message', ({ data }: MessageEvent<{ deckId: string }>) => {
+				heard.push(data.deckId);
 			});
 			try {
 				const deck = await threeSlides();
@@ -544,14 +557,7 @@ describe('deck queries', { timeout: 30_000 }, () => {
 				await renameDeck(database, missing, 'Nothing');
 				await removeDeck(database, deck.id);
 				await vi.waitFor(() => expect(heard).toHaveLength(6));
-				expect(heard).toEqual([
-					[deck.id, ['created']],
-					[deck.id, ['text', 'title']],
-					[deck.id, ['text']],
-					[deck.id, ['slides']],
-					[deck.id, ['scheme']],
-					[deck.id, ['deleted']]
-				]);
+				expect(heard).toEqual(Array.from({ length: 6 }, () => deck.id));
 			} finally {
 				channel.close();
 			}
