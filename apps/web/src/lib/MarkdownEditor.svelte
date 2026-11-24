@@ -7,6 +7,7 @@
 		cursorLabel,
 		editorExtensions,
 		goToLine as goToLineSpec,
+		hold as holdSpec,
 		syncSlideState,
 		type SplitParts
 	} from '#lib/markdown-editor.ts';
@@ -35,12 +36,14 @@
 	const shown: { view?: EditorView; id: string; states: Map<string, EditorState> } = { id: '', states: new Map() };
 
 	const hintId = $props.id();
+	const status = $state({ isHeld: false });
 	const extensions = [
 		editorExtensions({
 			change: (text) => onchange(shown.id, text),
 			blur: () => onblur(),
 			split: (parts) => onsplit(shown.id, parts),
-			position: (label) => onposition(label)
+			position: (label) => onposition(label),
+			held: (isHeld) => (status.isHeld = isHeld)
 		}),
 		EditorView.contentAttributes.of({ 'aria-describedby': hintId })
 	];
@@ -49,6 +52,7 @@
 		const { view } = shown;
 		if (!view) return;
 		if (id !== shown.id) {
+			if (status.isHeld) view.dispatch(holdSpec(false));
 			shown.states.set(shown.id, view.state);
 			const isFocused = view.hasFocus;
 			view.setState(shown.states.get(id) ?? createSlideState(text, number, extensions));
@@ -58,6 +62,17 @@
 		const update = syncSlideState(view.state, text, number);
 		if (update) view.dispatch(update);
 		onposition(cursorLabel(view.state));
+	}
+
+	/**
+	 * Holds the slide shown read-only while the editor has focus, until a click, a focus from elsewhere or Escape lets
+	 * it go, so keys meant for a slide that just went away don't edit this one. Returns whether it held it.
+	 */
+	export function didHold(): boolean {
+		const { view } = shown;
+		if (!view?.hasFocus) return false;
+		view.dispatch(holdSpec(true));
+		return true;
 	}
 
 	/** Moves the cursor to line `number` of the slide shown, scrolls to it and focuses the editor. */
@@ -87,7 +102,11 @@
 </script>
 
 <div class="markdown-editor" bind:this={host}></div>
-<p class="hint" id={hintId}>Esc then Tab leaves the editor</p>
+<p class="hint" class:held={status.isHeld} id={hintId}>
+	{status.isHeld
+		? 'The slide you were typing in was deleted in another tab. Click or press Escape to edit this one.'
+		: 'Esc then Tab leaves the editor'}
+</p>
 
 <style>
 	.markdown-editor {
@@ -112,6 +131,11 @@
 		border-top: 1px solid var(--border);
 		font-size: 12px;
 		color: var(--muted);
+	}
+
+	.hint.held {
+		color: var(--heading);
+		font-weight: 600;
 	}
 
 	.markdown-editor > :global(.cm-editor:has(.cm-content:focus-visible)) {

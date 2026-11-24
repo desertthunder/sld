@@ -47,6 +47,8 @@ export type EditorHandlers = {
 	split: (parts: SplitParts) => void;
 	/** The cursor moved, or the selection changed. */
 	position: (label: string) => void;
+	/** The editor was held read-only, or let go. */
+	held: (isHeld: boolean) => void;
 };
 
 const separator = '---';
@@ -197,6 +199,33 @@ class SplitOfferWidget extends WidgetType {
 	}
 }
 
+const setHeld = StateEffect.define<boolean>();
+
+/**
+ * Whether the slide is read-only because the slide being typed in was deleted elsewhere, so the keys still coming
+ * don't edit the slide shown in its place. A click, a focus from elsewhere or Escape lets it go.
+ */
+export const held = StateField.define<boolean>({
+	create: () => false,
+	update(isHeld, transaction) {
+		for (const effect of transaction.effects) if (effect.is(setHeld)) return effect.value;
+		return isHeld;
+	},
+	provide: (field) => EditorState.readOnly.from(field)
+});
+
+/** Holds the slide read-only, or lets it go. */
+export function hold(isHeld: boolean): TransactionSpec {
+	return { effects: setHeld.of(isHeld) };
+}
+
+/** Lets a held slide go. */
+export const letGo: Command = (view) => {
+	if (!view.state.field(held)) return false;
+	view.dispatch(hold(false));
+	return true;
+};
+
 const setSplitOffer = StateEffect.define<number>();
 
 /**
@@ -224,6 +253,7 @@ export const splitOffer = StateField.define<number>({
  */
 export const offerSplit: Command = (view) => {
 	const { state } = view;
+	if (state.readOnly) return false;
 	if (state.field(splitOffer) !== 0) return acceptSplit(view);
 	const { main } = state.selection;
 	if (state.selection.ranges.length > 1 || !main.empty) return false;
@@ -397,6 +427,8 @@ export function editorExtensions(handlers: EditorHandlers): Extension {
 		frontmatterBand,
 		splitOffer,
 		splitHandler.of(handlers.split),
+		held,
+		Prec.highest(keymap.of([{ key: 'Escape', run: letGo }])),
 		Prec.high(
 			keymap.of([
 				{ key: 'Enter', run: offerSplit },
@@ -410,9 +442,15 @@ export function editorExtensions(handlers: EditorHandlers): Extension {
 				handlers.change(update.state.doc.toString());
 			}
 			if (update.docChanged || update.selectionSet) handlers.position(cursorLabel(update.state));
+			const isHeld = update.state.field(held);
+			if (isHeld !== update.startState.field(held)) handlers.held(isHeld);
 		}),
-		// CodeMirror notes a lost focus a moment later, after a click elsewhere has already run.
-		EditorView.domEventHandlers({ blur: () => handlers.blur() })
+		EditorView.domEventHandlers({
+			// CodeMirror notes a lost focus a moment later, after a click elsewhere has already run.
+			blur: () => handlers.blur(),
+			focus: (_event, view) => void letGo(view),
+			mousedown: (_event, view) => void letGo(view)
+		})
 	];
 }
 

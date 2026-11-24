@@ -10,7 +10,10 @@ import {
 	editorExtensions,
 	frontmatterEnd,
 	goToLine,
+	held,
+	hold,
 	keepRule,
+	letGo,
 	offerSplit,
 	splitAtRule,
 	splitOffer,
@@ -205,7 +208,8 @@ function fakeView(markdown: string, cursor: number) {
 		change: () => {},
 		blur: () => {},
 		split: (parts) => void splits.push(parts),
-		position: () => {}
+		position: () => {},
+		held: () => {}
 	});
 	const view = {
 		state: createSlideState(markdown, 1, extensions).update({ selection: EditorSelection.cursor(cursor) }).state,
@@ -274,8 +278,36 @@ describe('the split offer', () => {
 	});
 });
 
+describe('holding a slide', () => {
+	it('makes it read-only, so neither typing nor a split edits it, until it is let go', () => {
+		const { view, splits } = fakeView('# One\n\n---\n# Two', 10);
+		view.dispatch(hold(true));
+		expect(view.state.readOnly).toBe(true);
+		expect(offerSplit(view)).toBe(false);
+		expect(splits).toEqual([]);
+		expect(letGo(view)).toBe(true);
+		expect(view.state.field(held)).toBe(false);
+		expect(view.state.readOnly).toBe(false);
+		expect(letGo(view)).toBe(false);
+	});
+
+	it('still takes markdown from outside while held', () => {
+		const { view } = fakeView('# Two', 0);
+		view.dispatch(hold(true));
+		view.dispatch(syncSlideState(view.state, '# Two, renamed', 1)!);
+		expect(view.state.doc.toString()).toBe('# Two, renamed');
+		expect(view.state.readOnly).toBe(true);
+	});
+});
+
 describe('syncSlideState', () => {
-	const extensions = editorExtensions({ change: () => {}, blur: () => {}, split: () => {}, position: () => {} });
+	const extensions = editorExtensions({
+		change: () => {},
+		blur: () => {},
+		split: () => {},
+		position: () => {},
+		held: () => {}
+	});
 
 	it('brings in outside markdown without adding it to the undo history', () => {
 		const state = createSlideState('# One', 1, extensions);

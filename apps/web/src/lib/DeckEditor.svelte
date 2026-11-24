@@ -293,7 +293,7 @@
 	// CodeMirror loads only once a deck opens, in its own chunk.
 	const markdownEditor = import('#lib/MarkdownEditor.svelte');
 	const cursor = $state({ label: '' });
-	let markdownPane: { goToLine: (line: number) => void } | undefined = $state();
+	let markdownPane: { goToLine: (line: number) => void; didHold: () => boolean } | undefined = $state();
 
 	const phone = new MediaQuery(`max-width: ${phoneWidth}px`);
 	let body: HTMLElement | undefined = $state();
@@ -433,7 +433,13 @@
 		const next = editor.slides.map(({ id }) => id);
 		const index = next.indexOf(previous[selected]!);
 		select(index === -1 ? nearestKept(previous, next, selected) : index);
-		if (index === -1) await announce(`Slide ${selected + 1} was deleted in another tab.`);
+		if (index !== -1) return;
+		// The keys still coming were meant for the deleted slide, so the slide shown in its place takes none of them.
+		await tick();
+		const isHeld = markdownPane?.didHold() ?? false;
+		await announce(
+			`Slide ${selected + 1} was deleted in another tab.${isHeld ? ` Click or press Escape to edit slide ${editor.selected + 1}.` : ''}`
+		);
 	}
 
 	/** Queues `queued` after the writes before it, as a change not yet written until its batch starts. */
