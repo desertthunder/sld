@@ -107,7 +107,7 @@ Each feature is a project, and a project carries the label of the version it bel
 Working an issue:
 
 1. Read the issue and its comments (`get_issue`, `list_comments`). Read the project's description and documents.
-2. Start only an issue in **Todo**: Todo means ready. If it isn't in Todo, or its **Open questions** don't read "None.", ask Owais rather than starting it.
+2. Start only an issue in **Todo**: Todo means ready. If it isn't in Todo, or its **Open questions** don't read "None.", ask Owais rather than starting it. An issue with no **Open questions** section counts as "None."
 3. Move it to **In Progress** when you start.
 4. Open the PR by pushing the branch. Move the issue to **In Review** if Linear hasn't already.
 5. The issue moves to **Done** when the PR merges. If acceptance criteria are left over, say so in an issue comment instead of closing it.

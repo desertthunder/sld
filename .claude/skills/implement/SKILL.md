@@ -14,19 +14,27 @@ session's own context: the separation is what makes the review worth having.
 An `SLD-n` argument starts at **I**. A pull request number starts at **II**, for a
 draft opened another way.
 
+Each pass is a fresh agent: one that inherits this session's history, or the
+implementer's, is not a fresh reader. If a pass hits a stop condition, report it
+and stop; don't dispatch more agents to work around it.
+
 ## Before dispatching
 
 1. Read the issue and its comments (`get_issue` with relations, `list_comments`).
-   Stop and ask Owais if the issue isn't in **Todo**, if its **Open questions**
-   don't read "None.", if a blocked-by issue isn't Done, or if the acceptance
-   criteria need a decision the issue doesn't record.
+   Stop and ask Owais if a blocked-by issue isn't Done, or if the acceptance
+   criteria need a decision the issue doesn't record. For an `SLD-n` argument,
+   also stop and ask if the issue isn't in **Todo** or its **Open questions**
+   don't read "None." An issue with no Open questions section counts as
+   "None."
 2. Move the issue to **In Progress**.
 3. Copy out what every subagent needs, since they may not have the Linear
    tools: the issue id and title, its Why, Scope, Acceptance criteria and Out of
    scope, and any Agent notes.
-4. Decide whether the issue is small: docs, copy, CSS only, config, or a short
-   follow-up that its Agent notes mark as small. A small issue skips **III**;
-   every issue gets **IV**.
+4. Decide whether the issue is small: it changes only docs, interface copy, CSS
+   or config, and touches none of `.github/workflows`,
+   `apps/web/static/_headers` or the CSS for the stage's scaling, overflow or
+   fit. When unsure, it isn't small. A small issue skips **III**; every issue
+   gets **IV**.
 
 ## I. Implementer
 
@@ -69,10 +77,6 @@ the `adversarial-reviewer` agent with the same inputs plus pass II's report and
 answers. It checks that pass II's fixes hold, hunts the worst cases, posts, revises,
 pushes and posts its answers. Remove the worktree when it returns and confirm
 its push.
-
-Each pass is a fresh agent: one that inherits this session's history, or the
-implementer's, is not a fresh reader. If a pass hits a stop condition, report it
-and stop; don't dispatch more agents to work around it.
 
 ## IV. Verify
 
@@ -126,8 +130,9 @@ report what blocked it.
 Then post with `ready` set to `true` and a body whose first line is
 `Review loop finished at <full head sha>`, followed by one line per pass: what
 it found and what it fixed, or for III on a small issue, that it was skipped.
-The verify line links the Verification artifact and names any criterion that failed and the commit that fixed it, which no
-review pass read, or says in a few words why verification didn't apply. The bot marks the pull request ready,
+The verify line links the Verification artifact and names any criterion that
+failed and the commit that fixed it, which no review pass read, or says in a few
+words why verification didn't apply. The bot marks the pull request ready,
 which requests Owais's review, then comments. Move the issue to **In Review**.
 
 CI skips drafts, so marking the pull request ready starts its first `ci` job.
