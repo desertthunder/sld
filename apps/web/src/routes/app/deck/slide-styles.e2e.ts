@@ -168,7 +168,8 @@ test('a slide draws its own content as it did before its styles were scoped', as
 			'@supports (display: grid) { ul { display: grid; } }',
 			'@keyframes wobble { from { opacity: 0.5; } to { opacity: 1; } }',
 			'em { animation: wobble 10s infinite paused; }',
-			'@layer deck { p { line-height: 2; } }',
+			'@layer deck { p { line-height: 2; } .slide { color: rgb(10, 20, 30); } }',
+			'@media (min-width: 1px) { @supports (display: grid) { .slide { border: 2px solid rgb(4, 5, 6); } } }',
 			'.slide > div [data-note="a, b"], li:nth-child(2)::marker, body .slide li:last-child { color: rgb(5, 6, 7); }',
 			'.slide h1::after { content: "!"; }',
 			'</style>',
@@ -186,6 +187,17 @@ test('a slide draws its own content as it did before its styles were scoped', as
 			'# Drawing',
 			'',
 			'<svg width="200" height="100"><style>circle { fill: rgb(0, 200, 0); }</style><circle cx="50" cy="50" r="40"></circle></svg>'
+		),
+		lines(
+			'<style>',
+			'@namespace svg url("http://www.w3.org/2000/svg");',
+			'svg|circle { fill: rgb(0, 0, 200); }',
+			'svg|a, h1 { color: rgb(0, 128, 0); }',
+			'</style>',
+			'',
+			'# Namespaced',
+			'',
+			'<svg width="200" height="100"><circle cx="50" cy="50" r="40"></circle></svg>'
 		)
 	];
 	const id = await createDeck(page, slides);
@@ -235,17 +247,24 @@ test('scoping leaves HTML with no styles alone and names each slide the same whe
 	await waitForApp(page);
 	const result = await page.evaluate(async (url) => {
 		const { scopeSlideStyles } = (await import(url)) as typeof SlideStylesModule;
-		const plain = '<h1>Title</h1><p>Text <code>&lt;style&gt;</code></p>';
+		const plain = '<h1>Title</h1><p>Text <code>&lt;style&gt;</code> about data-slide-scope</p>';
 		const styled = '<style>h1 { color: red; }</style><h1>Title</h1>';
+		const { scope } = scopeSlideStyles(styled);
 		return {
 			plain: scopeSlideStyles(plain),
 			plainHtml: plain,
+			forged: scopeSlideStyles(`<p data-slide-scope="${scope}">Text</p><svg DATA-SLIDE-SCOPE="${scope}"></svg>`),
+			forgedStyled: scopeSlideStyles(`<style>p { color: red; }</style><p data-slide-scope="${scope}">Text</p>`)
+				.html,
 			first: scopeSlideStyles(styled).scope,
 			again: scopeSlideStyles(styled).scope,
 			other: scopeSlideStyles(`${styled}<p>More</p>`).scope
 		};
 	}, modules.styles);
 	expect(result.plain).toEqual({ html: result.plainHtml, scope: undefined });
+	// A slide can't name itself, or part of itself, after another slide to take that slide's styles.
+	expect(result.forged).toEqual({ html: '<p>Text</p><svg></svg>', scope: undefined });
+	expect(result.forgedStyled).toContain('<p>Text</p>');
 	expect(result.first).toMatch(/^\w+$/);
 	expect(result.again).toBe(result.first);
 	expect(result.other).not.toBe(result.first);
@@ -393,8 +412,24 @@ test("the app's own fonts and keyframes are ones a slide can't redefine", async 
 			}
 		};
 		for (const sheet of sheets) visit(sheet.cssRules);
+		// Every family the app's visible text names, fallbacks included, as well as each one it loads.
+		const named = [...document.body.querySelectorAll('*')]
+			.filter((element) => {
+				const box = element.getBoundingClientRect();
+				const hasText = [...element.childNodes].some(
+					(node) => node.nodeType === Node.TEXT_NODE && node.textContent!.trim()
+				);
+				return hasText && element.checkVisibility() && box.width > 1 && box.height > 1;
+			})
+			.flatMap((element) => getComputedStyle(element).fontFamily.split(','));
+		const loaded = [...document.fonts].map(({ family }) => family);
+		const generic = new Set(['system-ui', 'sans-serif', 'monospace']);
 		const families = [
-			...new Set([...document.fonts].map(({ family }) => family.replaceAll(/["']/g, '').toLowerCase()))
+			...new Set(
+				[...named, ...loaded]
+					.map((family) => family.replaceAll(/["']/g, '').trim().toLowerCase())
+					.filter((family) => !generic.has(family))
+			)
 		];
 		return {
 			families: families.filter((family) => !appFontFamilies.has(family)),

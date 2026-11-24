@@ -1,11 +1,15 @@
 /** A slide's HTML with its style sheets scoped to it, and the `data-slide-scope` its element needs, if it has any. */
 export type ScopedSlide = { html: string; scope: string | undefined };
 
-/** The font families the app draws its own text in, which a slide's `@font-face` may not redefine. */
+/**
+ * The font families the app draws its own text in, fallbacks included, which a slide's `@font-face` may not redefine.
+ * Chromium and Firefox read `ui-monospace` as a family name rather than a generic one.
+ */
 export const appFontFamilies: ReadonlySet<string> = new Set([
 	'mona sans variable',
 	'hubot sans variable',
-	'monaspace neon'
+	'monaspace neon',
+	'ui-monospace'
 ]);
 
 /** Whether the app's own keyframes may be named `name`: Svelte's start with `svelte-`, and CodeMirror's with `cm-`. */
@@ -105,10 +109,11 @@ const isOfType = (rule: CSSRule, types: RuleType[]) => types.some((type) => rule
 /**
  * Whether a slide may keep `rule`. Rules that select elements, and at-rules that only hold them, such as `@media`, go
  * in the slide's `@scope`. Fonts, keyframes and counter styles are defined by name for the whole page wherever they
- * sit, so the ones that would replace the app's own are refused. Any other rule, such as `@import`, `@property` or
- * `@page`, would reach past the slide.
+ * sit, so the ones that would replace the app's own are refused. `@namespace` only names prefixes for its own sheet.
+ * Any other rule, such as `@import`, `@property` or `@page`, would reach past the slide.
  */
 function isKept(rule: CSSRule): boolean {
+	if (rule instanceof CSSNamespaceRule) return true;
 	if (rule instanceof CSSFontFaceRule) return !appFontFamilies.has(familyName(rule));
 	if (rule instanceof CSSKeyframesRule) return !isAppAnimation(rule.name);
 	return (
@@ -139,9 +144,9 @@ function scopeRules(rules: CSSRuleList): void {
 }
 
 /**
- * `css` as the browser reads it, less the rules a slide may not keep, with fonts, keyframes and counter styles left
- * for the whole page and every other rule inside an `@scope` rooted at the slide, so it only matches the slide and
- * what is in it.
+ * `css` as the browser reads it, less the rules a slide may not keep, with namespaces first, fonts, keyframes and
+ * counter styles left for the whole page, and every other rule inside an `@scope` rooted at the slide, so it only
+ * matches the slide and what is in it.
  */
 function scopedSheet(css: string, scope: string): string {
 	const sheet = new CSSStyleSheet();
@@ -152,7 +157,10 @@ function scopedSheet(css: string, scope: string): string {
 	const scoped: string[] = [];
 	for (const rule of sheet.cssRules) {
 		const isNamed =
-			rule instanceof CSSFontFaceRule || rule instanceof CSSKeyframesRule || rule instanceof CSSCounterStyleRule;
+			rule instanceof CSSNamespaceRule ||
+			rule instanceof CSSFontFaceRule ||
+			rule instanceof CSSKeyframesRule ||
+			rule instanceof CSSCounterStyleRule;
 		(isNamed ? named : scoped).push(rule.cssText);
 	}
 	if (scoped.length > 0) named.push(`@scope ([data-slide-scope="${scope}"]) {\n${scoped.join('\n')}\n}`);
@@ -162,16 +170,19 @@ function scopedSheet(css: string, scope: string): string {
 
 /**
  * A slide's HTML with the rules of each `<style>` in it, SVG's included, scoped to the slide's element, so a slide's
- * styles can't restyle the page around it. HTML with no `<style>` comes back as it is. Needs a DOM.
+ * styles can't restyle the page around it, and with no `data-slide-scope` of its own, so it can't take another slide's
+ * styles. HTML with neither comes back as it is. Needs a DOM.
  */
 export function scopeSlideStyles(html: string): ScopedSlide {
-	if (!/<style/i.test(html)) return { html, scope: undefined };
+	if (!/<style|data-slide-scope/i.test(html)) return { html, scope: undefined };
 	const template = document.createElement('template');
 	template.innerHTML = html;
+	const forged = template.content.querySelectorAll<HTMLElement | SVGElement | MathMLElement>('[data-slide-scope]');
+	for (const element of forged) delete element.dataset.slideScope;
 	const styles = template.content.querySelectorAll('style');
-	if (styles.length === 0) return { html, scope: undefined };
+	if (forged.length === 0 && styles.length === 0) return { html, scope: undefined };
 	const scope = scopeName(html);
 	for (const style of styles) style.textContent = scopedSheet(style.textContent, scope);
 	// eslint-disable-next-line unicorn/prefer-dom-node-html-methods -- `getHTML()` needs Safari 18, and the app supports 17.4.
-	return { html: template.innerHTML, scope };
+	return { html: template.innerHTML, scope: styles.length > 0 ? scope : undefined };
 }
