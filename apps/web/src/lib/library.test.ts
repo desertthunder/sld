@@ -5,6 +5,7 @@ import {
 	deletedMessage,
 	editedWhen,
 	errorLeads,
+	importFailure,
 	isTextEntry,
 	renamedTitle,
 	tabPlace
@@ -78,6 +79,19 @@ describe('library copy', () => {
 	it('says the decks did not load apart from a change that was not saved', () => {
 		expect(errorLeads.load).toBe("Your decks didn't load:");
 		expect(errorLeads.change).toBe("That change couldn't be saved:");
+	});
+
+	it('names each file that did not import and why', () => {
+		expect(importFailure([{ name: 'photo.png', reason: 'not a markdown file' }])).toEqual({
+			lead: "“photo.png” wasn't imported:",
+			text: 'not a markdown file'
+		});
+		expect(
+			importFailure([
+				{ name: 'photo.png', reason: 'not a markdown file' },
+				{ name: 'big.md', reason: 'over 5 MB' }
+			])
+		).toEqual({ lead: "2 files weren't imported:", text: 'photo.png: not a markdown file; big.md: over 5 MB' });
 	});
 
 	it('keeps the old title when a rename leaves the field empty', () => {

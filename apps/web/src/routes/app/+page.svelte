@@ -6,11 +6,22 @@
 	import type { Database } from '#lib/database.ts';
 	import DeckRow from '#lib/DeckRow.svelte';
 	import type * as DecksModule from '#lib/decks.ts';
+	import { deckFile, deckFileName, deckMarkdown } from '#lib/deck-file.ts';
+	import { importDeckFiles } from '#lib/deck-import.ts';
 	import type { DeckSummary, DeckWithSlides } from '#lib/decks.ts';
+	import { download } from '#lib/download.ts';
 	import { errorText } from '#lib/error-text.ts';
 	import { deckFromNote } from '#lib/handoff.ts';
 	import { slideCount } from '#lib/landing.ts';
-	import { copyTitle, deckCount, deletedMessage, errorLeads, isTextEntry, tabPlace } from '#lib/library.ts';
+	import {
+		copyTitle,
+		deckCount,
+		deletedMessage,
+		errorLeads,
+		importFailure,
+		isTextEntry,
+		tabPlace
+	} from '#lib/library.ts';
 	import LibraryHeader from '#lib/LibraryHeader.svelte';
 	import NewDeck from '#lib/NewDeck.svelte';
 	import { sampleDeck } from '#lib/sample-deck.ts';
@@ -27,15 +38,27 @@
 		isReady: boolean;
 		isCreating: boolean;
 		hasLoadFailed: boolean;
+		isExporting: boolean;
+		isDragging: boolean;
 		deleted?: { decks: DeckWithSlides[]; key: number };
 		now: Date;
-	} = $state({ isReady: false, isCreating: false, hasLoadFailed: false, now: new Date() });
+	} = $state({
+		isReady: false,
+		isCreating: false,
+		hasLoadFailed: false,
+		isExporting: false,
+		isDragging: false,
+		now: new Date()
+	});
 
 	// The database and its queries load once the page has mounted, so this page's code doesn't hold up the splash.
 	const opened: { store?: Store } = {};
 	let newDeck: ReturnType<typeof NewDeck> | undefined = $state();
 	let toast: ReturnType<typeof UndoToast> | undefined = $state();
 	let heading: HTMLElement | undefined = $state();
+	let filePicker: HTMLInputElement | undefined = $state();
+	// Drag events fire for each element the pointer crosses, so the drop hint shows while any enter lacks its leave.
+	const drag = { depth: 0 };
 
 	function fail(lead: keyof typeof errorLeads, error: unknown) {
 		library.error = { lead: errorLeads[lead], text: errorText(error) };
@@ -99,6 +122,105 @@
 			// The deck is saved, so it shows in the list instead.
 			library.isCreating = false;
 			await refreshQuietly();
+		}
+	}
+
+	async function importFiles(files: File[]) {
+		const { store } = opened;
+		if (files.length === 0) return;
+		if (!store || library.isCreating) {
+			const reason = store ? 'another deck is still being made' : 'the library is still loading';
+			library.error = importFailure(files.map(({ name }) => ({ name, reason })));
+			return;
+		}
+		library.isCreating = true;
+		library.error = undefined;
+		const { ids, failures } = await importDeckFiles(files, {
+			create: (deck) => store.queries.createDeck(store.database, deck),
+			loadCleaner: async () => {
+				const { cleanImportedSlide } = await import('#lib/imported-html.ts');
+				return cleanImportedSlide;
+			}
+		});
+		if (failures.length > 0) library.error = importFailure(failures);
+		const [id] = ids;
+		if (id !== undefined && files.length === 1) {
+			try {
+				await goto(resolve('/app/deck/[id]', { id }));
+				return;
+			} catch {
+				// The deck is saved, so it shows in the list instead.
+			}
+		}
+		library.isCreating = false;
+		await refreshQuietly();
+	}
+
+	function onfilechange() {
+		const files = [...(filePicker?.files ?? [])];
+		if (filePicker) filePicker.value = '';
+		void importFiles(files);
+	}
+
+	function hasFiles(event: DragEvent): boolean {
+		return event.dataTransfer?.types.includes('Files') ?? false;
+	}
+
+	function ondragenter(event: DragEvent) {
+		if (!hasFiles(event)) return;
+		drag.depth++;
+		library.isDragging = true;
+	}
+
+	function ondragleave(event: DragEvent) {
+		if (!hasFiles(event)) return;
+		drag.depth = Math.max(drag.depth - 1, 0);
+		if (drag.depth === 0) library.isDragging = false;
+	}
+
+	// A file dropped anywhere on the page imports, rather than the browser opening it in place of the app.
+	function ondragover(event: DragEvent) {
+		if (!hasFiles(event)) return;
+		event.preventDefault();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+	}
+
+	function ondrop(event: DragEvent) {
+		if (!hasFiles(event)) return;
+		event.preventDefault();
+		drag.depth = 0;
+		library.isDragging = false;
+		void importFiles([...(event.dataTransfer?.files ?? [])]);
+	}
+
+	async function exportDeck(summary: DeckSummary) {
+		const { store } = opened;
+		if (!store) return;
+		library.error = undefined;
+		try {
+			const deck = await store.queries.getDeck(store.database, summary.id);
+			if (!deck) throw new Error('The deck no longer exists');
+			download(deckFileName(deck.title), deckMarkdown(deckFile(deck)), 'text/markdown');
+		} catch (error) {
+			fail('export', error);
+		}
+	}
+
+	async function exportAll() {
+		const { store } = opened;
+		if (!store || library.isExporting) return;
+		library.isExporting = true;
+		library.error = undefined;
+		try {
+			const [decks, { archiveName, decksArchive }] = await Promise.all([
+				store.queries.listDecksWithSlides(store.database),
+				import('#lib/deck-archive.ts')
+			]);
+			download(archiveName(new Date()), decksArchive(decks), 'application/zip');
+		} catch (error) {
+			fail('exportAll', error);
+		} finally {
+			library.isExporting = false;
 		}
 	}
 
@@ -198,7 +320,7 @@
 	<title>{appName}</title>
 </svelte:head>
 
-<svelte:window {onpaste} />
+<svelte:window {onpaste} {ondragenter} {ondragleave} {ondragover} {ondrop} />
 
 <div class="library">
 	<LibraryHeader />
@@ -217,6 +339,32 @@
 			<div class="head">
 				<h2 id="library-heading" tabindex="-1" bind:this={heading}>Library</h2>
 				{#if library.decks?.length}<span class="count">{deckCount(library.decks.length)}</span>{/if}
+				<div class="files">
+					<button
+						class="file-button"
+						type="button"
+						disabled={!library.isReady || library.isCreating}
+						onclick={() => filePicker?.click()}>
+						<span class="i-ri-upload-2-line icon" aria-hidden="true"></span>Import
+					</button>
+					{#if library.decks?.length}
+						<button
+							class="file-button"
+							type="button"
+							disabled={library.isExporting}
+							onclick={() => void exportAll()}>
+							<span class="i-ri-download-2-line icon" aria-hidden="true"></span>Export all decks
+						</button>
+					{/if}
+					<input
+						type="file"
+						accept=".md,.markdown,text/markdown"
+						multiple
+						hidden
+						aria-label="Import markdown files"
+						bind:this={filePicker}
+						onchange={onfilechange} />
+				</div>
 			</div>
 			{#if library.decks?.length}
 				<ul class="list">
@@ -227,6 +375,7 @@
 							now={library.now}
 							onrename={(title) => rename(deck, title)}
 							onduplicate={() => duplicate(deck)}
+							onexport={() => void exportDeck(deck)}
 							ondelete={() => void remove(deck)} />
 					{/each}
 				</ul>
@@ -254,6 +403,11 @@
 			{/if}
 		</section>
 	</main>
+	{#if library.isDragging}
+		<div class="drop" aria-hidden="true">
+			<p><span class="i-ri-markdown-line icon"></span>Drop markdown files to import them as decks</p>
+		</div>
+	{/if}
 	<div class="toasts" role="status">
 		{#if library.deleted}
 			{#key library.deleted.key}
@@ -324,9 +478,9 @@
 
 	.head {
 		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 16px;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 12px 16px;
 		margin: 56px 0 20px;
 	}
 
@@ -340,6 +494,10 @@
 		color: var(--heading);
 	}
 
+	.head h2 {
+		margin-right: auto;
+	}
+
 	h2:focus-visible {
 		outline: 3px solid var(--accent);
 		outline-offset: 4px;
@@ -349,6 +507,46 @@
 	.count {
 		font-size: 14px;
 		color: var(--muted);
+	}
+
+	.files {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.file-button {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		min-height: 44px;
+		padding: 0 16px 0 14px;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		background: transparent;
+		color: var(--text);
+		font: 600 15px var(--ui-font);
+		cursor: pointer;
+	}
+
+	.file-button:hover:not(:disabled) {
+		border-color: var(--muted);
+		color: var(--heading);
+	}
+
+	.file-button:disabled {
+		color: var(--muted);
+		cursor: not-allowed;
+	}
+
+	.file-button:focus-visible {
+		outline: 3px solid var(--accent);
+		outline-offset: 2px;
+	}
+
+	.file-button .icon {
+		width: 18px;
+		height: 18px;
 	}
 
 	.list {
@@ -442,6 +640,43 @@
 		border: 1px dashed var(--border);
 		border-radius: 12px;
 		color: var(--muted);
+	}
+
+	.drop {
+		position: fixed;
+		inset: 0;
+		z-index: 20;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 16px;
+		background: color-mix(in oklab, var(--bg) 85%, transparent);
+		pointer-events: none;
+	}
+
+	.drop p {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		box-sizing: border-box;
+		border: 2px dashed var(--accent);
+		border-radius: 16px;
+		font-family: var(--display-font);
+		font-weight: 500;
+		font-size: 24px;
+		color: var(--heading);
+		text-align: center;
+	}
+
+	.drop .icon {
+		flex: none;
+		width: 32px;
+		height: 32px;
+		color: var(--accent);
 	}
 
 	.toasts {

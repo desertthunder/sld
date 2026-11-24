@@ -21,13 +21,13 @@ export type DeckFrontmatter = Frontmatter & { title?: string; scheme?: string; a
 /** A deck split from its markdown: the deck's frontmatter, if any, and each slide's markdown. */
 export type SplitDeck = { frontmatter: DeckFrontmatter | undefined; slides: string[] };
 
-type Fence = { marker: '`' | '~'; length: number };
+type Fence = { marker: '`' | '~'; length: number; indent: string };
 
 const separator = '---';
 const delimiters: Record<FrontmatterFormat, string> = { yaml: '---', toml: '+++' };
 // A YAML block opens with a key, so a heading or a comment above `key: value` prose keeps it slide text.
 const firstLines: Record<FrontmatterFormat, RegExp> = { yaml: /^[A-Za-z_][\w-]*\s*:(?:\s|$)/, toml: /^[^\s#]/ };
-const fenceOpener = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const fenceOpener = /^( {0,3})(`{3,}|~{3,})(.*)$/;
 const atxHeading = /^ {0,3}#{1,6}(?:\s|$)/;
 const thematicBreak = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const setextUnderline = /^ {0,3}(?:=+|-+)[ \t]*$/;
@@ -63,8 +63,37 @@ export function splitDeck(markdown: string): SplitDeck {
 		start = top.end + 1;
 	}
 
+	const { slides } = scan(lines, start, []);
+
+	while (slides[0] === '') slides.shift();
+	while (slides.at(-1) === '') slides.pop();
+	return { frontmatter, slides };
+}
+
+/**
+ * Where a slide's markdown would break apart in a deck: the first line `splitDeck` would read as a separator, or as the
+ * `+++` opening a new slide's frontmatter, when the slide follows a separator, or undefined when there is none. Also
+ * the fence the slide leaves open at its end, as the line that would close it.
+ */
+export function slideBreak(slide: string): { line: number | undefined; closingFence: string | undefined } {
+	const lines = slide.split('\n');
+	const head = blockAt(lines, 0);
+	const start = head ? head.end + 1 : 0;
+	const { breaks, fence } = scan(lines, start, lines.slice(0, start));
+	return { line: breaks[0], closingFence: fence && `${fence.indent}${fence.marker.repeat(fence.length)}` };
+}
+
+/**
+ * Reads `lines` from `start` as `splitDeck` does, with `current` the slide's lines so far: each slide's markdown, the
+ * lines that start a new slide, and the fence left open at the end.
+ */
+function scan(
+	lines: string[],
+	start: number,
+	current: string[]
+): { slides: string[]; breaks: number[]; fence: Fence | undefined } {
 	const slides: string[] = [];
-	let current: string[] = [];
+	const breaks: number[] = [];
 	let fence: Fence | undefined;
 	let canSeparate = true;
 	let isInContainer = false;
@@ -78,6 +107,7 @@ export function splitDeck(markdown: string): SplitDeck {
 		}
 		const block = blockAt(lines, index);
 		if (line === separator && canSeparate) {
+			breaks.push(index);
 			isInContainer = false;
 			slides.push(trimBlankLines(current));
 			if (block?.frontmatter.format === 'yaml') {
@@ -87,6 +117,7 @@ export function splitDeck(markdown: string): SplitDeck {
 				current = [];
 			}
 		} else if (block?.frontmatter.format === 'toml' && current.every((row) => row.trim() === '')) {
+			breaks.push(index);
 			current = lines.slice(index, block.end + 1);
 			index = block.end;
 			canSeparate = true;
@@ -95,10 +126,9 @@ export function splitDeck(markdown: string): SplitDeck {
 			fence = openFence(line);
 			current.push(line);
 			const isBlank = line.trim() === '';
-			if (isBlank) isInContainer = false;
-			else if (!thematicBreak.test(line) && (canSeparate ? containerStart : interruptingContainer).test(line)) {
-				isInContainer = true;
-			}
+			// Paragraph text after a heading, a rule or a fence is no longer in the list or blockquote above them.
+			if (isBlank || fence || atxHeading.test(line) || thematicBreak.test(line)) isInContainer = false;
+			else if ((canSeparate ? containerStart : interruptingContainer).test(line)) isInContainer = true;
 			canSeparate =
 				fence === undefined &&
 				(isBlank ||
@@ -109,10 +139,7 @@ export function splitDeck(markdown: string): SplitDeck {
 		}
 	}
 	slides.push(trimBlankLines(current));
-
-	while (slides[0] === '') slides.shift();
-	while (slides.at(-1) === '') slides.pop();
-	return { frontmatter, slides };
+	return { slides, breaks, fence };
 }
 
 /**
@@ -266,9 +293,9 @@ function parseMapping(
 function openFence(line: string): Fence | undefined {
 	const match = fenceOpener.exec(line);
 	if (!match) return undefined;
-	const [, run, info] = match;
+	const [, indent, run, info] = match;
 	const marker = run[0] as Fence['marker'];
-	return marker === '`' && info.includes('`') ? undefined : { marker, length: run.length };
+	return marker === '`' && info.includes('`') ? undefined : { marker, length: run.length, indent };
 }
 
 function isFenceClose(fence: Fence, line: string): boolean {

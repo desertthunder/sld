@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { keyLabel, shortcutRows } from '#lib/presenter-navigation.ts';
 
+	const linksAndImagesUrl = 'https://github.com/desertthunder/sld/blob/main/docs/design.md#links-and-images';
+
 	let { open, onclose }: { open: boolean; onclose: () => void } = $props();
 
 	let dialog: HTMLDialogElement | undefined = $state();
@@ -50,6 +52,9 @@
 				<dd>{description}</dd>
 			{/each}
 		</dl>
+		<p class="more">
+			<a href={linksAndImagesUrl} target="_blank" rel="noreferrer">Links and images a slide keeps</a>
+		</p>
 	</section>
 </dialog>
 
@@ -130,6 +135,14 @@
 	dd {
 		margin: 0;
 		color: var(--body);
+	}
+
+	.more {
+		margin: 20px 0 0;
+	}
+
+	.more a {
+		color: var(--link);
 	}
 
 	@media (max-width: 480px) {

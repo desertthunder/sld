@@ -78,7 +78,7 @@ Checks for what you touched, if you don't run `make ci`:
 - A PR description is one paragraph of prose, at most four sentences and under 100 words before `Fixes SLD-n`. Say what the change does and anything the reviewer must decide. Leave out how it was checked, a list of commits, tours of files or packages, and explanations of build warnings; those belong in the review reports or the code. Name files, commands and values in backticks. Follow the writing skill. End with `Fixes SLD-n` for each issue it closes.
 - After the PR is open, the workflow leaves its title and description alone. When later commits change what the PR does, edit the description on the PR (GitHub MCP `update_pull_request`). The body is the description only: add nothing after `Fixes SLD-n`.
 - Commits on those branches are authored by the agent and may carry its attribution trailers.
-- Work an issue with `/implement SLD-n` (the `implement` skill). The session orchestrates four fresh subagents in turn: the `implementer` writes the change and pushes, the `reviewer` reviews then revises, the `adversarial-reviewer` reviews adversarially then revises, and the `verifier` runs the final head the way a person would, publishes a Verification artifact and comments on the issue with its verdict and link. The reviewers post their reports and answers as the bot. A PR stays a draft until all four are done; then the session marks it ready with `comment.yml`'s `ready=true`, linking the artifact, waits for `ci` on that head, and fixes it if it fails before reporting to Owais. The orchestrating session never writes or reviews the change itself.
+- Work an issue with `/implement SLD-n` (the `implement` skill). The session orchestrates fresh subagents in turn: the `implementer` writes the change and pushes, the `reviewer` reviews then revises, the `adversarial-reviewer` reviews adversarially then revises, except on a small issue (docs, copy, CSS or config, as the skill defines it), and the `verifier` runs the final head the way a person would, publishes a Verification artifact and comments on the issue with its verdict and link. The reviewers post their reports and answers as the bot. A PR stays a draft until every pass that applies is done; then the session marks it ready with `comment.yml`'s `ready=true`, linking the artifact, waits for `ci` on that head, and fixes it if it fails before reporting to Owais. The orchestrating session never writes or reviews the change itself.
 - `CODEOWNERS` requests Owais's review on every PR once it's ready. Only Owais merges. Never merge a PR or turn on auto-merge, from a session or a workflow. He squash-merges by hand, removing the agent trailers and adding his own, so nothing on `main` carries AI attribution. Don't add attribution to anything that lands on `main` directly, such as release tags.
 - When Owais requests changes, the session subscribed to the PR revises: it dispatches the `reviser` subagent with his comments and their ids, confirms the push, and posts the answers with `comment.yml`'s `answers=true`, so the bot replies in each thread and resolves the fixed ones. If no session is subscribed, Owais asks one to pick the PR up. No GitHub Action runs Claude.
 - Sessions never comment on GitHub with their own access: that posts as Owais. Dispatch the Bot comment workflow instead, so the comment comes from desertthunder-bot: GitHub MCP `actions_run_trigger` with method `run_workflow`, workflow `comment.yml`, ref `main`, and inputs `pr` and `body` (or `gh workflow run comment.yml -f pr=<n> -f body=...`). Add `review=<full head sha>` to post a review report (lines like `high · path:line — finding` land on the diff), `answers=true` to post `<comment id> · <outcome>` lines as thread replies, or `ready=true` to mark the draft ready for review and post the body as a comment. Post only what the `implement` skill's **Posting** section lists. If you can't dispatch it, tell Owais in the session instead of commenting. Never approve a review.
@@ -107,19 +107,22 @@ Each feature is a project, and a project carries the label of the version it bel
 Working an issue:
 
 1. Read the issue and its comments (`get_issue`, `list_comments`). Read the project's description and documents.
-2. Move it to **In Progress** when you start.
-3. Open the PR by pushing the branch. Move the issue to **In Review** if Linear hasn't already.
-4. The issue moves to **Done** when the PR merges. If acceptance criteria are left over, say so in an issue comment instead of closing it.
+2. Start only an issue in **Todo**: Todo means ready. If it isn't in Todo, or its **Open questions** don't read "None.", ask Owais rather than starting it. An issue with no **Open questions** section counts as "None."
+3. Move it to **In Progress** when you start.
+4. Open the PR by pushing the branch. Move the issue to **In Review** if Linear hasn't already.
+5. The issue moves to **Done** when the PR merges. If acceptance criteria are left over, say so in an issue comment instead of closing it.
 
 Creating issues:
 
 - Check for duplicates with `list_issues` first.
 - Assign it to the driver when you create it. For now the driver is Owais.
 - Set team `SLD`, the project and the version label. Add blocked-by relations when they're known.
+- One issue holds one behavior. A durability, security or design choice gets its own issue.
 - One issue is one pull request. Add sub-issues only for pieces that must land in the same pull request. Projects group related issues: a big area gets its own project, not a parent issue with many sub-issues.
 - Sibling sub-issues block one another in the order to work them. A sub-issue is never blocked by its parent.
 - A design issue (the artboards for a look) stands on its own. Never make it a sibling sub-issue of the issue that builds the look; it blocks the issues that build it.
-- Structure: a dated **Decision** line first when the issue records one (see [Decisions](#decisions)), then **Why**, **Scope**, **Acceptance criteria**, **Out of scope**, then a collapsible **Agent notes** section for implementation detail.
+- Structure: a dated **Decision** line first when the issue records one (see [Decisions](#decisions)), then **Why**, **Scope**, **Acceptance criteria**, **Out of scope**, **Open questions**, then a collapsible **Agent notes** section for implementation detail.
+- **Open questions** lists what the issue leaves undecided. Answer each before the issue moves to **Todo**, record the answer as a **Decision** line, and leave the section reading "None."
 - Product requirements stay in Linear. Development docs go in `docs/`.
 
 ## Design work
