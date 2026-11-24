@@ -179,6 +179,54 @@ test('Escape keeps the scheme in use and shows it again', async ({ page }) => {
 	await expect.poll(() => background(previewStage(page))).toBe(base00.nord);
 });
 
+test("opening the picker right after typing keeps the typing, each slide's undo history, and saves", async ({
+	page
+}) => {
+	const id = await createDeck(page, ['# One', '# Two']);
+	await openDeck(page, id);
+	const editor = page.getByRole('textbox', { name: /^Markdown for slide/ });
+	const slide = (number: number) =>
+		page.getByRole('navigation', { name: 'Slides' }).getByRole('button', { name: new RegExp(`^Slide ${number}`) });
+	await slide(2).click();
+	await editor.click();
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.type('!');
+	await slide(1).click();
+	await editor.click();
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.type(' typed');
+	await schemeButton(page).click();
+	await expect(search(page)).toBeVisible();
+	await expect(editor).toBeHidden();
+	await page.keyboard.press('Escape');
+	await expect(editor).toHaveText('# One typed');
+	await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 30_000 });
+
+	await editor.click();
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(editor).toHaveText('# One');
+	await page.keyboard.press('ControlOrMeta+Shift+z');
+	await expect(editor).toHaveText('# One typed');
+	await slide(2).click();
+	await expect(editor).toHaveText('# Two!');
+	await editor.click();
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(editor).toHaveText('# Two');
+	await page.keyboard.press('ControlOrMeta+Shift+z');
+	await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 30_000 });
+
+	const stored = await page.evaluate(
+		async ({ urls, id }) => {
+			const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
+			const { getDeck } = (await import(urls.decks)) as typeof DecksModule;
+			const deck = await getDeck(await openDatabase(), id);
+			return deck?.slides.map(({ markdown }) => markdown);
+		},
+		{ urls: modules, id }
+	);
+	expect(stored).toEqual(['# One typed', '# Two!']);
+});
+
 test('Escape works from the filters and the Close button too', async ({ page }) => {
 	const id = await createDeck(page, ['# One'], 'nord');
 	await openDeck(page, id);
@@ -253,7 +301,7 @@ test('the editor preview and thumbnails use the deck scheme, a slide scheme in i
 		.getByRole('navigation', { name: 'Slides' })
 		.getByRole('button', { name: /^Slide 3/ })
 		.click();
-	await expect(warnings).toHaveText("The scheme isn't text, so the slide uses the deck's.");
+	await expect(warnings).toHaveText("The scheme isn't text, so the slide uses the deck's. Go to line");
 	await page
 		.getByRole('navigation', { name: 'Slides' })
 		.getByRole('button', { name: /^Slide 2/ })

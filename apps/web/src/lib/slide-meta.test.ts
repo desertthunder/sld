@@ -160,3 +160,16 @@ describe('slideClasses', () => {
 		).toEqual(['slide', 'layout-section', 'wide', 'dark']);
 	});
 });
+
+describe('readSlideMeta warning lines', () => {
+	it("gives each field warning the slide's line that sets the field", () => {
+		const yamlSlide = slideFrontmatter('---\ntitle: x\nlayout: hero\nclass:\n  - slide\nnotes: 3\n---\n# One');
+		expect(readSlideMeta(yamlSlide).warnings).toEqual([
+			{ kind: 'unknown-layout', value: 'hero', line: 3 },
+			{ kind: 'invalid-notes', value: 3, line: 6 },
+			{ kind: 'reserved-class', value: 'slide', line: 4 }
+		]);
+		const tomlSlide = slideFrontmatter('+++\nscheme = 3\n+++\n# One');
+		expect(readSlideMeta(tomlSlide).warnings).toEqual([{ kind: 'invalid-scheme', value: 3, line: 2 }]);
+	});
+});

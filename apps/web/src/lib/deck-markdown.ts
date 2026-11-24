@@ -1,4 +1,4 @@
-import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
+import { parse as parseToml, stringify as stringifyToml, TomlError } from 'smol-toml';
 import { parseDocument } from 'yaml';
 import { errorText } from '#lib/error-text.ts';
 
@@ -8,8 +8,12 @@ export type FrontmatterFormat = 'yaml' | 'toml';
 /** A frontmatter block: its text between the delimiter lines, its language, and every field it parses to. */
 export type Frontmatter = { format: FrontmatterFormat; raw: string; data: Record<string, unknown> };
 
-/** Why a block shaped as frontmatter doesn't parse: its language and the parser's message. */
-export type FrontmatterError = { format: FrontmatterFormat; message: string };
+/**
+ * Why a block shaped as frontmatter doesn't parse: its language, the parser's message, and the line of the slide the
+ * parser points at, counted from 1, where the block's opening delimiter is line 1. A parser that names no line points
+ * at the opening delimiter.
+ */
+export type FrontmatterError = { format: FrontmatterFormat; message: string; line: number };
 
 /** A deck's frontmatter, with the fields sld reads typed where they hold a string. Every field stays in `data`. */
 export type DeckFrontmatter = Frontmatter & { title?: string; scheme?: string; aspect?: string };
@@ -202,7 +206,10 @@ export function slideFrontmatterError(slide: string): FrontmatterError | undefin
 	const candidate = candidateAt(slide.split('\n'), 0);
 	if (candidate === undefined) return undefined;
 	const parsed = parseMapping(candidate.format, candidate.raw);
-	return 'error' in parsed ? { format: candidate.format, message: parsed.error } : undefined;
+	if (!('error' in parsed)) return undefined;
+	// The block's text starts on the line after its opening delimiter.
+	const line = parsed.line === undefined ? 1 : Math.min(parsed.line, candidate.end) + 1;
+	return { format: candidate.format, message: parsed.error, line };
 }
 
 /** The delimited text at `start` that could be a frontmatter block, before it is parsed. */
@@ -227,19 +234,29 @@ function blockAt(lines: string[], start: number): { frontmatter: Frontmatter; en
 	return 'data' in parsed ? { frontmatter: { format, raw, data: parsed.data }, end } : undefined;
 }
 
-function parseMapping(format: FrontmatterFormat, raw: string): { data: Record<string, unknown> } | { error: string } {
+/** `raw` parsed as a mapping, or the parser's message and the line of `raw` it points at, counted from 1. */
+function parseMapping(
+	format: FrontmatterFormat,
+	raw: string
+): { data: Record<string, unknown> } | { error: string; line?: number } {
 	let data: unknown;
 	try {
 		if (format === 'yaml') {
-			const document = parseDocument(raw);
-			if (document.errors.length > 0) return { error: document.errors[0].message };
+			// Plain messages, since the parser would count lines from the block's text rather than the slide's.
+			const document = parseDocument(raw, { prettyErrors: false });
+			if (document.errors.length > 0) {
+				const [{ message, pos }] = document.errors;
+				return { error: message, line: raw.slice(0, pos[0]).split('\n').length };
+			}
 			// Throws on an unresolved alias or too many alias expansions, which parsing alone doesn't report.
 			data = document.toJS();
 		} else {
 			data = parseToml(raw);
 		}
 	} catch (error) {
-		return { error: errorText(error) };
+		// smol-toml's message ends with the lines around the error, numbered from the block's text, after its first line.
+		const line = error instanceof TomlError ? error.line : undefined;
+		return { error: line === undefined ? errorText(error) : errorText(error).split('\n', 1)[0]!, line };
 	}
 	return typeof data === 'object' && data !== null && !Array.isArray(data)
 		? { data: { ...(data as Record<string, unknown>) } }

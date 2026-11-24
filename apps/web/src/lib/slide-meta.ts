@@ -30,14 +30,17 @@ export type SlideMeta = { layout: Layout; notes: string | undefined; classes: st
  * - `invalid-class`: `class` isn't a string or a list of strings, or `value` isn't a valid class token.
  * - `reserved-class`: `value` would clash with the slide's own classes.
  * - `invalid-scheme`: `scheme` isn't a string, so the slide uses the deck's.
+ *
+ * `line` is the line of the slide the warning is about, counted from 1, when it is known: where the parser stopped, or
+ * the line that sets the field.
  */
 export type SlideWarning =
 	| ({ kind: 'invalid-frontmatter' } & FrontmatterError)
-	| { kind: 'unknown-layout'; value: unknown }
-	| { kind: 'invalid-notes'; value: unknown }
-	| { kind: 'invalid-class'; value: unknown }
-	| { kind: 'reserved-class'; value: string }
-	| { kind: 'invalid-scheme'; value: unknown };
+	| { kind: 'unknown-layout'; value: unknown; line?: number }
+	| { kind: 'invalid-notes'; value: unknown; line?: number }
+	| { kind: 'invalid-class'; value: unknown; line?: number }
+	| { kind: 'reserved-class'; value: string; line?: number }
+	| { kind: 'invalid-scheme'; value: unknown; line?: number };
 
 /** A slide's validated meta and the warnings reading it raised. */
 export type ReadSlideMeta = { meta: SlideMeta; warnings: SlideWarning[] };
@@ -72,8 +75,26 @@ export function readSlideMeta(frontmatter: Frontmatter | undefined): ReadSlideMe
 			classes: readClasses(field('class'), warnings),
 			scheme: readScheme(field('scheme'), warnings)
 		},
-		warnings
+		warnings: frontmatter ? warnings.map((warning) => withLine(frontmatter, warning)) : warnings
 	};
+}
+
+const warningKeys: Record<Exclude<SlideWarning['kind'], 'invalid-frontmatter'>, string> = {
+	'unknown-layout': 'layout',
+	'invalid-notes': 'notes',
+	'invalid-class': 'class',
+	'reserved-class': 'class',
+	'invalid-scheme': 'scheme'
+};
+
+/** `warning` with the line of the slide that sets its field, when the field's key opens a line of the block. */
+function withLine({ format, raw }: Frontmatter, warning: SlideWarning): SlideWarning {
+	if (warning.kind === 'invalid-frontmatter') return warning;
+	const key = warningKeys[warning.kind];
+	const opener = new RegExp(String.raw`^\s*(["']?)${key}\1\s*${format === 'yaml' ? ':' : '='}`);
+	const index = raw.split('\n').findIndex((line) => opener.test(line));
+	// A slide's frontmatter opens on its first line, so the block's text starts on line 2.
+	return index === -1 ? warning : { ...warning, line: index + 2 };
 }
 
 function readLayout(value: unknown, warnings: SlideWarning[]): Layout {
