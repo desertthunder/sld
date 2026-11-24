@@ -127,7 +127,12 @@
 
 	async function importFiles(files: File[]) {
 		const { store } = opened;
-		if (!store || library.isCreating || files.length === 0) return;
+		if (files.length === 0) return;
+		if (!store || library.isCreating) {
+			const reason = store ? 'another deck is still being made' : 'the library is still loading';
+			library.error = importFailure(files.map(({ name }) => ({ name, reason })));
+			return;
+		}
 		library.isCreating = true;
 		library.error = undefined;
 		const { ids, failures } = await importDeckFiles(files, {

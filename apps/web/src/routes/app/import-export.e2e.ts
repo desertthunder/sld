@@ -77,32 +77,34 @@ const previewSlide = (page: Page) => page.getByRole('region', { name: 'Preview' 
 const editor = (page: Page) => page.getByRole('textbox', { name: /^Markdown for slide/ });
 const ran = (page: Page) => page.evaluate(() => globalThis.sldRan ?? []);
 
-test('DOMPurify keeps safe HTML byte for byte and takes scripts and handlers out of the rest', async ({ page }) => {
-	await openLibrary(page);
-	const cleaned = await page.evaluate(
+/** Each slide's markdown as an import stores it. */
+function cleanSlides(page: Page, slides: string[]) {
+	return page.evaluate(
 		async ({ url, slides }) => {
 			const { cleanImportedSlide } = (await import(url)) as typeof ImportedHtmlModule;
 			return slides.map((slide) => cleanImportedSlide(slide));
 		},
-		{
-			url: modules.importedHtml,
-			slides: [
-				lines('<div class=cols>', '', '**Left**', '', '</div>', '', 'A <br/> and <kbd>Ctrl</kbd>'),
-				'<iframe src="https://example.com/embed" width="560" height="315" allowfullscreen></iframe>',
-				lines('<script>steal()</script>', '', 'Text'),
-				'An <img src="a.png" onerror="steal()"> image',
-				lines('<div class="cols" onclick="steal()">', '', '**Left**', '', '</div>'),
-				'<a href="javascript:steal()">link</a> and <svg><circle onload="steal()" r="4"></circle></svg>',
-				'<iframe srcdoc="<script>steal()</script>"></iframe>',
-				lines('<svg>', '', '<style><img src=x onerror="steal()"></style>'),
-				lines('> <p', '> onclick="steal()">quoted</p>'),
-				lines('Write `<script>` like this:', '', '```html', '<img src=x onerror="steal()">', '```')
-			]
-		}
+		{ url: modules.importedHtml, slides }
 	);
+}
+
+test('DOMPurify keeps safe HTML byte for byte and takes scripts and handlers out of the rest', async ({ page }) => {
+	await openLibrary(page);
+	const cleaned = await cleanSlides(page, [
+		lines('<div class=cols>', '', '**Left**', '', '</div>', '', 'A <br/> and <kbd>Ctrl</kbd>'),
+		'<iframe src="https://example.com/embed" width="560" height="315" allowfullscreen sandbox="allow-scripts allow-presentation allow-popups"></iframe>',
+		lines('<script>steal()</script>', '', 'Text'),
+		'An <img src="a.png" onerror="steal()"> image',
+		lines('<div class="cols" onclick="steal()">', '', '**Left**', '', '</div>'),
+		'<a href="javascript:steal()">link</a> and <svg><circle onload="steal()" r="4"></circle></svg>',
+		'<iframe srcdoc="<script>steal()</script>"></iframe>',
+		lines('<svg>', '', '<style><img src=x onerror="steal()"></style>'),
+		lines('> <p', '> onclick="steal()">quoted</p>'),
+		lines('Write `<script>` like this:', '', '```html', '<img src=x onerror="steal()">', '```')
+	]);
 	expect(cleaned.slice(0, 2)).toEqual([
 		lines('<div class=cols>', '', '**Left**', '', '</div>', '', 'A <br/> and <kbd>Ctrl</kbd>'),
-		'<iframe src="https://example.com/embed" width="560" height="315" allowfullscreen></iframe>'
+		'<iframe src="https://example.com/embed" width="560" height="315" allowfullscreen sandbox="allow-scripts allow-presentation allow-popups"></iframe>'
 	]);
 	expect(cleaned[2]).toBe(lines('', '', 'Text'));
 	expect(cleaned[3]).toBe('An <img src="a.png"> image');
@@ -115,12 +117,58 @@ test('DOMPurify keeps safe HTML byte for byte and takes scripts and handlers out
 	}
 });
 
+test('DOMPurify keeps inline HTML that is safe as a whole, comments and link targets byte for byte', async ({
+	page
+}) => {
+	await openLibrary(page);
+	const slides = [
+		'Watch <video src="https://example.com/a.mp4" controls></video> now',
+		'An <svg viewBox="0 0 10 10" width="40"><circle cx="5" cy="5" r="4"/></svg> icon',
+		'<math><mi>x</mi><mo>=</mo><mn>2</mn></math>',
+		'<audio controls src="a.mp3"></audio> and <picture><source srcset="a.webp"><img src="a.png" alt=""></picture>',
+		lines('<!-- a note to self -->', '', '# Title'),
+		'<a href="https://example.com" target="_blank">site</a>'
+	];
+	expect(await cleanSlides(page, slides)).toEqual(slides);
+	expect(
+		await cleanSlides(page, [
+			'<template><img src=x onerror="steal()"></template>',
+			'An <svg width="10"><circle r="4" onload="steal()"/></svg> icon'
+		])
+	).toEqual([expect.not.stringMatching(/steal/), expect.not.stringMatching(/steal/)]);
+});
+
+test('an imported iframe stays only with an https address, sandboxed without its own origin', async ({ page }) => {
+	await openLibrary(page);
+	const sandbox = 'sandbox="allow-scripts allow-presentation allow-popups"';
+	expect(
+		await cleanSlides(page, [
+			// eslint-disable-next-line unicorn/prefer-https -- An http address is what this refuses.
+			'<iframe src="http://example.com/"></iframe>',
+			'<iframe src="/app"></iframe>',
+			'<iframe srcdoc="<p>hi</p>"></iframe>',
+			'<iframe src="https://example.com/" srcdoc="<p>hi</p>"></iframe>',
+			'<iframe src="https://example.com/" sandbox="allow-scripts allow-same-origin"></iframe>',
+			'<iframe src="https://example.com/" allow="camera; autoplay; microphone; fullscreen"></iframe>',
+			`<iframe src="https://example.com/" ${sandbox}></iframe>`
+		])
+	).toEqual([
+		'',
+		'',
+		'',
+		`<iframe src="https://example.com/" ${sandbox}></iframe>`,
+		`<iframe src="https://example.com/" ${sandbox}></iframe>`,
+		`<iframe src="https://example.com/" allow="autoplay; fullscreen" ${sandbox}></iframe>`,
+		`<iframe src="https://example.com/" ${sandbox}></iframe>`
+	]);
+});
+
 test('an imported file with a script and handlers makes a deck where neither runs, and code still shows them', async ({
 	page
 }) => {
 	await openLibrary(page);
 	await chooseFiles(page, [markdownFile('Hostile.md', hostile)]);
-	await expect(page).toHaveURL(/\/app\/deck\/[\da-f-]{36}$/, { timeout: 30_000 });
+	await expect(page).toHaveURL(/\/app\/deck\/[\da-f-]{36}(\?|$)/, { timeout: 30_000 });
 
 	const [deck] = await storedDecks(page);
 	expect(deck!.title).toBe('Hostile');
@@ -180,13 +228,13 @@ test('exporting a deck and importing the file gives the same deck', async ({ pag
 
 	await page.getByRole('button', { name: 'More actions for Q3: plans' }).click();
 	const downloading = page.waitForEvent('download');
-	await page.getByRole('menuitem', { name: 'Export' }).click();
+	await page.getByRole('menuitem', { name: 'Export as markdown' }).click();
 	const file = await downloading;
 	expect(file.suggestedFilename()).toBe('Q3 plans.md');
 	const markdown = await readFile((await file.path())!, 'utf8');
 
 	await chooseFiles(page, [markdownFile(file.suggestedFilename(), markdown)]);
-	await expect(page).toHaveURL(/\/app\/deck\/[\da-f-]{36}$/, { timeout: 30_000 });
+	await expect(page).toHaveURL(/\/app\/deck\/[\da-f-]{36}(\?|$)/, { timeout: 30_000 });
 	const [imported, original] = await storedDecks(page);
 	expect(imported!.id).not.toBe(original!.id);
 	for (const deck of [imported!, original!]) {

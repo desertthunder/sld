@@ -3,11 +3,17 @@ import { slideParts } from '#lib/deck-markdown.ts';
 /** A raw HTML node in a slide's markdown: where its source starts and ends, and the HTML it passes through. */
 export type RawHtml = { start: number; end: number; value: string };
 
+/**
+ * What a parser finds: one raw HTML node, or a run of inline nodes in the same line of text, such as
+ * `<video src="…"></video>`, with the HTML the run passes through, its text included, and the nodes in it.
+ */
+export type FoundHtml = RawHtml & { parts?: RawHtml[] };
+
 /** What a check makes of one raw HTML node: safe as it is, or safe only as `replacement`. */
 export type HtmlVerdict = { isSafe: true } | { isSafe: false; replacement: string };
 
 /** The parts `cleanRawHtml` works with: a markdown parser that finds raw HTML, and a check for each node it finds. */
-export type HtmlCleaner = { find: (markdown: string) => RawHtml[]; check: (html: string) => HtmlVerdict };
+export type HtmlCleaner = { find: (markdown: string) => FoundHtml[]; check: (html: string) => HtmlVerdict };
 
 // Replacing a node can change how the markdown around it parses, so the result is checked again, and after this many
 // passes what is still unsafe is escaped into text.
@@ -17,7 +23,9 @@ const maxPasses = 4;
 /**
  * A slide's markdown with each raw HTML node, block or inline, that `check` finds unsafe replaced by its safe form, and
  * everything else, code spans and fenced code included, left byte for byte. The slide's frontmatter is left alone.
- * Throws when the HTML can't be made safe, which a correct check never leaves.
+ * A run of inline nodes that is safe as a whole stays, since a node in it may leave open an element the next one closes;
+ * otherwise each node in it is checked on its own. Throws when the HTML can't be made safe, which a correct check
+ * never leaves.
  */
 export function cleanRawHtml(slide: string, { find, check }: HtmlCleaner): string {
 	const { body: original } = slideParts(slide);
@@ -25,9 +33,13 @@ export function cleanRawHtml(slide: string, { find, check }: HtmlCleaner): strin
 	let body = original;
 	for (let pass = 0; pass < maxPasses; pass++) {
 		const unsafe: (RawHtml & { replacement: string })[] = [];
-		for (const node of find(body)) {
-			const verdict = check(node.value);
-			if (!verdict.isSafe) unsafe.push({ ...node, replacement: verdict.replacement });
+		for (const found of find(body)) {
+			if (found.parts && check(found.value).isSafe) continue;
+			const nodes = found.parts ?? [found];
+			for (const { start, end, value } of nodes) {
+				const verdict = check(value);
+				if (!verdict.isSafe) unsafe.push({ start, end, value, replacement: verdict.replacement });
+			}
 		}
 		if (unsafe.length === 0) return head + body;
 		unsafe.sort((a, b) => a.start - b.start);

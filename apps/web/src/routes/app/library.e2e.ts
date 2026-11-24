@@ -248,7 +248,7 @@ for (const viewport of [
 		]);
 		await menuButton(page, 'Sleep diary').click();
 		const items = page.getByRole('menu', { name: 'More actions for Sleep diary' }).getByRole('menuitem');
-		await expect(items).toHaveText(['Rename', 'Duplicate', 'Export', 'Delete']);
+		await expect(items).toHaveText(['Rename', 'Duplicate', 'Export as markdown', 'Delete']);
 		const all = await items.all();
 		for (const item of all) {
 			await item.scrollIntoViewIfNeeded();

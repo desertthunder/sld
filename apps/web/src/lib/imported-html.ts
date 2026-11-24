@@ -1,15 +1,55 @@
 import createDOMPurify, { type Config, type DOMPurify } from 'dompurify';
 import { markdownToMdast } from 'satteri';
-import { cleanRawHtml, type HtmlVerdict, type RawHtml } from '#lib/raw-html.ts';
+import { cleanRawHtml, type FoundHtml, type HtmlVerdict, type RawHtml } from '#lib/raw-html.ts';
 import { markdownFeatures } from '#lib/slide-render.ts';
 
-// Iframes stay, as slides embed pages with them; DOMPurify drops `srcdoc` and checks `src` like any URL. A page in
-// another origin can't reach this one's storage.
+// Iframes stay, as slides embed pages with them, but only from an https address, sandboxed in an origin of their own,
+// and with only the features an embedded video or slide deck uses. `srcdoc` never stays.
 const config: Config = {
 	FORCE_BODY: true,
-	ADD_TAGS: ['iframe'],
-	ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'loading', 'referrerpolicy']
+	ADD_TAGS: ['iframe', '#comment'],
+	ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'loading', 'referrerpolicy', 'target'],
+	FORBID_ATTR: ['srcdoc'],
+	// `isEqualNode` doesn't compare a template's content, so the check couldn't see what DOMPurify took out of it.
+	FORBID_TAGS: ['template']
 };
+
+/** The sandbox every imported iframe gets. Without `allow-same-origin`, its page can't reach sld's storage. */
+const frameSandbox = 'allow-scripts allow-presentation allow-popups';
+
+const frameFeatures = new Set([
+	'accelerometer',
+	'autoplay',
+	'clipboard-write',
+	'encrypted-media',
+	'fullscreen',
+	'gyroscope',
+	'picture-in-picture',
+	'web-share'
+]);
+
+/** An iframe's `allow` list with only the features in `frameFeatures`, or undefined when none is left. */
+function frameAllow(allow: string): string | undefined {
+	const kept = allow
+		.split(';')
+		.map((directive) => directive.trim())
+		.filter((directive) => frameFeatures.has(directive.split(/\s/, 1)[0]!.toLowerCase()));
+	return kept.length > 0 ? kept.join('; ') : undefined;
+}
+
+function guardFrame(node: Element): void {
+	if (node.localName !== 'iframe') return;
+	if (!/^https:\/\//i.test(node.getAttribute('src') ?? '')) {
+		node.remove();
+		return;
+	}
+	node.setAttribute('sandbox', frameSandbox);
+	const allow = node.getAttribute('allow');
+	if (allow === null) return;
+	const kept = frameAllow(allow);
+	if (kept === undefined) node.removeAttribute('allow');
+	else if (kept !== allow) node.setAttribute('allow', kept);
+}
 
 // The elements a raw HTML node may leave open for the markdown after it, as `<div class="columns">` on a line of its
 // own does. Each parses what follows it as ordinary HTML, unlike foreign content such as SVG or raw text such as
@@ -23,25 +63,73 @@ const openable = new Set(
 const purifier: { instance?: DOMPurify } = {};
 
 function purify(): DOMPurify {
-	purifier.instance ??= createDOMPurify();
+	if (!purifier.instance) {
+		purifier.instance = createDOMPurify();
+		purifier.instance.addHook('afterSanitizeAttributes', guardFrame);
+	}
 	return purifier.instance;
 }
 
-/** The raw HTML nodes in a slide's markdown, as Sätteri parses it when it shows the slide, in order. */
-export function findRawHtml(markdown: string): RawHtml[] {
+// The nodes whose children are a line of text, where raw HTML nodes next to each other show as one piece of HTML.
+const phrasing = new Set([
+	'paragraph',
+	'heading',
+	'tableCell',
+	'emphasis',
+	'strong',
+	'delete',
+	'link',
+	'linkReference'
+]);
+
+const escapeText = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+/**
+ * The raw HTML nodes in a slide's markdown, as Sätteri parses it when it shows the slide, in order. Inline nodes with
+ * only text between them come as one run, with the HTML Sätteri writes for the run.
+ */
+export function findRawHtml(markdown: string): FoundHtml[] {
 	type Node = {
 		type: string;
 		value?: string;
 		position?: { start: { offset: number }; end: { offset: number } };
 		children?: Node[];
 	};
-	const found: RawHtml[] = [];
-	const visit = (node: Node) => {
-		if (node.type === 'html' && node.position && typeof node.value === 'string') {
-			found.push({ start: node.position.start.offset, end: node.position.end.offset, value: node.value });
+	const found: FoundHtml[] = [];
+	const raw = (node: Node): RawHtml | undefined =>
+		node.type === 'html' && node.position && typeof node.value === 'string'
+			? { start: node.position.start.offset, end: node.position.end.offset, value: node.value }
+			: undefined;
+	const addRun = (run: Node[]) => {
+		const first = run.findIndex((node) => raw(node));
+		const last = run.findLastIndex((node) => raw(node));
+		const inRun = run.slice(first, last + 1);
+		const parts = inRun.map((node) => raw(node)).filter((part) => part !== undefined);
+		if (parts.length < 2) {
+			found.push(...parts);
+			return;
 		}
+		const value = inRun.map((node) => raw(node)?.value ?? escapeText(node.value ?? '')).join('');
+		found.push({ start: parts[0]!.start, end: parts.at(-1)!.end, value, parts });
+	};
+	const visit = (node: Node) => {
+		const isPhrasing = phrasing.has(node.type);
 		const children = node.children ?? [];
-		for (const child of children) visit(child);
+		let run: Node[] = [];
+		for (const child of children) {
+			if (child.type === 'html' || (isPhrasing && child.type === 'text')) {
+				run.push(child);
+				if (!isPhrasing) {
+					addRun(run);
+					run = [];
+				}
+			} else {
+				addRun(run);
+				run = [];
+				visit(child);
+			}
+		}
+		addRun(run);
 	};
 	visit(markdownToMdast(markdown, { features: markdownFeatures }) as Node);
 	return found;

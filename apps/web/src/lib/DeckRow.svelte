@@ -188,7 +188,7 @@
 						<span class="i-ri-file-copy-line icon" aria-hidden="true"></span>Duplicate
 					</button>
 					<button type="button" role="menuitem" tabindex="-1" onclick={exportDeck}>
-						<span class="i-ri-markdown-line icon" aria-hidden="true"></span>Export
+						<span class="i-ri-markdown-line icon" aria-hidden="true"></span>Export as markdown
 					</button>
 					<hr />
 					<button class="danger" type="button" role="menuitem" tabindex="-1" onclick={remove}>
