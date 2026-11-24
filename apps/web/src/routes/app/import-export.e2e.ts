@@ -207,7 +207,8 @@ test('exporting a deck and importing the file gives the same deck', async ({ pag
 	const slides = [
 		lines('---', 'layout: center', 'class: big', '---', '', '# Talk'),
 		lines('```md', '', '---', '', '```'),
-		'<div class="cols">'
+		'<div class="cols">',
+		lines('A rule kept in the slide:', '', '---', '', 'After it')
 	];
 	await page.evaluate(
 		async ({ urls, slides }) => {
@@ -237,7 +238,12 @@ test('exporting a deck and importing the file gives the same deck', async ({ pag
 	await expect(page).toHaveURL(/\/app\/deck\/[\da-f-]{36}(\?|$)/, { timeout: 30_000 });
 	const [imported, original] = await storedDecks(page);
 	expect(imported!.id).not.toBe(original!.id);
-	for (const deck of [imported!, original!]) {
+	// The rule comes back as `***`, which draws the same rule but doesn't split the slide.
+	const ruled = slides.map((slide) => slide.replace('\n\n---\n\nAfter', '\n\n***\n\nAfter'));
+	for (const [deck, expected] of [
+		[imported!, ruled],
+		[original!, slides]
+	] as const) {
 		expect({
 			title: deck.title,
 			scheme: deck.scheme,
@@ -249,7 +255,7 @@ test('exporting a deck and importing the file gives the same deck', async ({ pag
 			scheme: 'gruvbox-dark',
 			aspect: '4:3',
 			settings: { slideNumber: true },
-			slides
+			slides: expected
 		});
 	}
 });

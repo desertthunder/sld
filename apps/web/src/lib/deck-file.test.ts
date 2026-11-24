@@ -115,6 +115,57 @@ describe('exporting then importing', () => {
 		}
 	});
 
+	// Slides as the editor can leave them, which no split made: a rule kept when a split is declined or undone, rules
+	// in lists and quotes, fences left open. Each block is what the editor holds and what the file should give back.
+	const blocks: [editor: string, file: string][] = [
+		['# Title', '# Title'],
+		['Some text', 'Some text'],
+		['---', '***'],
+		['Setext heading\n---', 'Setext heading\n---'],
+		['```\n---\n```', '```\n---\n```'],
+		['~~~\n+++\na = 1\n+++\n~~~', '~~~\n+++\na = 1\n+++\n~~~'],
+		['- item\n---', '- item\n***'],
+		['> quote\n---', '> quote\n***'],
+		['- item\n# Heading\ntext\n---', '- item\n# Heading\ntext\n---'],
+		['| a | b |\n| --- | --- |', '| a | b |\n| --- | --- |']
+	];
+	// Blocks that would open a slide's frontmatter on its first line, so they only come after another block.
+	const laterBlocks: [string, string][] = [
+		['---\nlayout: center\n---', '***\nlayout: center\n---'],
+		['---\nitems:\n  - one\n---', '***\nitems:\n  - one\n***']
+	];
+	const openings: [string, string][] = [
+		['+++\nlayout = "center"\n+++', '+++\nlayout = "center"\n+++'],
+		['\n+++\nlayout = "center"\n+++', '\\+++\nlayout = "center"\n+++'],
+		['---\nlayout: center\nclass: big\n---', '---\nlayout: center\nclass: big\n---']
+	];
+	const ending: [string, string] = ['```js\nconst a = 1;', '```js\nconst a = 1;\n```'];
+	const editorSlide = (): [string, string] => {
+		const parts: [string, string][] = [];
+		if (random() < 0.3) parts.push(pick(openings));
+		parts.push(pick(blocks));
+		for (let count = Math.floor(random() * 4); count > 0; count--) parts.push(pick([...blocks, ...laterBlocks]));
+		if (random() < 0.15) parts.push(ending);
+		return [parts.map(([editor]) => editor).join('\n\n'), parts.map(([, file]) => file).join('\n\n')];
+	};
+	const editorDecks = Array.from({ length: 1000 }, () =>
+		Array.from({ length: 1 + Math.floor(random() * 5) }, () => editorSlide())
+	);
+
+	it('gives back slides the editor made, with each rule that would split written as *** and nothing else changed', () => {
+		expect(editorDecks.flat().filter(([editor, file]) => editor !== file).length).toBeGreaterThan(500);
+		for (const slides of editorDecks) {
+			const deck: DeckFile = { title: 'Talk', aspect: '16:9', slides: slides.map(([editor]) => editor) };
+			const markdown = deckMarkdown(deck);
+			expect(imported('Talk.md', markdown).slides, markdown).toEqual(slides.map(([, file]) => file));
+		}
+	});
+
+	it('drops empty slides at either end, and keeps those in the middle', () => {
+		const deck: DeckFile = { title: 'Talk', aspect: '16:9', slides: ['', '# One', '', '# Two', ''] };
+		expect(imported('Talk.md', deckMarkdown(deck)).slides).toEqual(['# One', '', '# Two']);
+	});
+
 	it('keeps an empty deck, and a first slide with frontmatter of its own', () => {
 		// eslint-disable-next-line unicorn/no-null -- The database stores a deck with no scheme or settings as null.
 		const empty: DeckFile = { title: 'Empty', scheme: null, aspect: '16:9', settings: null, slides: [] };
@@ -162,9 +213,15 @@ describe('deckFileName', () => {
 		expect(deckFileName('tab\there\nand there')).toBe('tab here and there.md');
 	});
 
-	it('trims dots and spaces at either end and cuts a long title', () => {
+	it('trims dots and spaces at either end and cuts a long title to 200 bytes', () => {
 		expect(deckFileName('  ..hidden. ')).toBe('hidden.md');
-		expect(deckFileName('😀'.repeat(200))).toBe(`${'😀'.repeat(120)}.md`);
+		expect(deckFileName('😀'.repeat(200))).toBe(`${'😀'.repeat(50)}.md`);
+		expect(deckFileName('x'.repeat(300))).toBe(`${'x'.repeat(200)}.md`);
+	});
+
+	it('takes out direction marks that could make the name read as another extension', () => {
+		expect(deckFileName('Invoice\u{202E}fdp.')).toBe('Invoice fdp.md');
+		expect(deckFileName('a\u{200F}b\u{2066}c')).toBe('a b c.md');
 	});
 
 	it('falls back to deck.md when nothing usable is left', () => {
@@ -172,6 +229,8 @@ describe('deckFileName', () => {
 		expect(deckFileName('/:*?')).toBe('deck.md');
 		expect(deckFileName('...')).toBe('deck.md');
 		expect(deckFileName('CON')).toBe('deck.md');
+		expect(deckFileName('con.notes')).toBe('deck.md');
+		expect(deckFileName('Console')).toBe('Console.md');
 	});
 });
 
@@ -184,6 +243,10 @@ describe('uniqueFileNames', () => {
 			'Other.md',
 			'Talk (2) (2).md'
 		]);
+	});
+
+	it('numbers names that differ only by how an accent is encoded', () => {
+		expect(uniqueFileNames(['Caf\u{E9}', 'Cafe\u{301}'])).toEqual(['Caf\u{E9}.md', 'Cafe\u{301} (2).md']);
 	});
 
 	it('numbers titles that only differ by characters a file name drops', () => {
