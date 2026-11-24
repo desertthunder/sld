@@ -55,17 +55,21 @@ describe('isAllowedUrl', () => {
 		}
 	});
 
-	it('keeps raster data URLs in an image and refuses the rest', () => {
+	it('keeps PNG, JPEG, GIF, WebP and AVIF data URLs in an image and refuses the rest', () => {
 		for (const type of ['png', 'jpeg', 'gif', 'webp', 'avif']) {
 			expect(isAllowedUrl(`data:image/${type};base64,AAAA`, 'image'), type).toBe(true);
 		}
 		expect(isAllowedUrl('DATA:Image/PNG;base64,AAAA', 'image')).toBe(true);
 		expect(isAllowedUrl('data:image/png,raw', 'image')).toBe(true);
+		expect(isAllowedUrl(' data:image/png \n', 'image')).toBe(true);
 		const refused = [
 			'data:image/svg+xml,<svg onload="alert(1)"/>',
 			'data:image/svg+xml;base64,PHN2Zz4=',
 			'data:text/html,<script>alert(1)</script>',
 			'data:image/pngx;base64,AAAA',
+			'data:image/jpg;base64,AAAA',
+			'data:image/bmp;base64,AAAA',
+			'data:image/x-icon;base64,AAAA',
 			'data:,AAAA',
 			'data:text/javascript,alert(1)'
 		];

@@ -9,15 +9,13 @@ const scriptSchemes = new Set(['javascript', 'vbscript']);
 export const imageDataTypes: readonly string[] = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'];
 
 /**
- * `url` as a browser's URL parser reads it: without the spaces and control characters around it, and without the tabs
- * and newlines inside it.
+ * `url` as a browser's URL parser reads its scheme and media type: without the spaces and control characters before
+ * it, and without the tabs and newlines inside it. Those a browser also strips from the end never reach either part.
  */
 function browserForm(url: string): string {
 	let start = 0;
-	let end = url.length;
-	while (start < end && url.codePointAt(start)! <= 0x20) start++;
-	while (end > start && url.codePointAt(end - 1)! <= 0x20) end--;
-	return url.slice(start, end).replaceAll(/[\t\n\r]/g, '');
+	while (start < url.length && url.codePointAt(start)! <= 0x20) start++;
+	return url.slice(start).replaceAll(/[\t\n\r]/g, '');
 }
 
 /** A URL's scheme in lowercase, or undefined for a relative URL, which a browser resolves against the page. */
