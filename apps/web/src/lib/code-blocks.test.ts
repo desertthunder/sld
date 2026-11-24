@@ -50,7 +50,7 @@ describe('code blocks', () => {
 		);
 		const css = readFileSync(new URL('code-block.css', import.meta.url), 'utf8');
 		expect(css).toMatch(
-			/\[data-label\]::before \{[^}]*\tcontent: attr\(data-label\);[^}]*\tcolor: var\(--muted\);[^}]*\tfont-family: 'Mona Sans Variable'/
+			/\[data-label\]::before \{[^}]*\tcontent: attr\(data-label\);[^}]*\tcolor: var\(--muted\);[^}]*\tfont-family: var\(--font-body\)/
 		);
 		expect(css).toMatch(
 			/\[data-label\]::before \{[^}]*\ttop: 19px;\n\tright: var\(--label-right\);[^}]*\tfont-size: 20px;[^}]*\tfont-weight: 500;\n\tletter-spacing: 0\.02em;/
@@ -126,9 +126,8 @@ describe('code blocks', () => {
 		expect(css).toMatch(/\.line \{[^}]*\tdisplay: inline-block;[^}]*\tmin-height: 1lh;[^}]*\tvertical-align: top;/);
 	});
 
-	it('keep a gap above and below a block, band highlighted lines inset with rounded ends, and number lines in the comment color', () => {
+	it('band highlighted lines inset with rounded ends, and number lines in the comment color', () => {
 		const css = readFileSync(new URL('code-block.css', import.meta.url), 'utf8');
-		expect(css).toMatch(/pre\.code-block \{[^}]*\tmargin: 46px 0;/);
 		expect(css).toMatch(/\.line \{[^}]*\tborder-radius: 6px;/);
 		expect(css).toMatch(/pre\.code-block \{[^}]*\t--code-inline: 44px;/);
 		expect(css).toMatch(/pre\.code-block \{[^}]*\t--band-inset: 23px;/);

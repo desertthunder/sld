@@ -1,7 +1,13 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import '@fontsource-variable/hubot-sans/wght.css';
+	import '@fontsource-variable/mona-sans/wght.css';
+	import '@fontsource/monaspace-neon/latin-400.css';
+	import '@fontsource/monaspace-neon/latin-400-italic.css';
+	import '#lib/slide.css';
 	import '#lib/code-block.css';
 	import type { Scheme } from '#lib/scheme-compiler.ts';
+	import { fitSlide, sizeEvents } from '#lib/slide-fit.ts';
 	import { slideClasses } from '#lib/slide-meta.ts';
 	import type { RenderedSlide } from '#lib/slide-render.ts';
 	import Stage from '#lib/Stage.svelte';
@@ -13,6 +19,7 @@
 		scheme,
 		schemes = [],
 		overflowing = $bindable(false),
+		fit = $bindable(1),
 		overlay
 	}: {
 		slide: RenderedSlide;
@@ -21,45 +28,48 @@
 		scheme?: Scheme;
 		schemes?: readonly Scheme[];
 		overflowing?: boolean;
+		/** How far the slide shrank its text to fit, from 1 down to `minFit`. */
+		fit?: number;
 		overlay?: Snippet;
 	} = $props();
+
+	let article: HTMLElement | undefined = $state();
+
+	// The slide fits again whenever what it shows or how wide it is changes, once its fonts, images or videos load, and
+	// when a disclosure opens or closes, since those change its height without changing its HTML. Fitting
+	// writes only custom properties, which none of these watch, so it never sets itself off, and the slide's HTML is
+	// never drawn again. A resize of the window scales the stage without changing its layout, so it fits nothing.
+	$effect(() => {
+		if (!article) return;
+		const element = article;
+		let isCurrent = true;
+		const refit = () => {
+			// eslint-disable-next-line unicorn/no-top-level-assignment-in-function -- Svelte writes a bindable prop by assignment.
+			if (isCurrent) fit = fitSlide(element).fit;
+		};
+		const mutations = new MutationObserver(refit);
+		mutations.observe(element, { subtree: true, childList: true, characterData: true, attributeFilter: ['class'] });
+		const resizes = new ResizeObserver(refit);
+		resizes.observe(element);
+		for (const type of sizeEvents) element.addEventListener(type, refit, { capture: true });
+		// TODO: spread a font load's refits over frames: it refits every thumbnail in the list in one task.
+		document.fonts.addEventListener('loadingdone', refit);
+		void document.fonts.ready.then(refit);
+		refit();
+		return () => {
+			isCurrent = false;
+			mutations.disconnect();
+			resizes.disconnect();
+			for (const type of sizeEvents) element.removeEventListener(type, refit, { capture: true });
+			document.fonts.removeEventListener('loadingdone', refit);
+		};
+	});
 </script>
 
 <Stage {aspect} scheme={schemes.find(({ slug }) => slug === slide.meta.scheme) ?? scheme} bind:overflowing>
 	<!-- Raw HTML in a slide passes through: the markdown is the person's own. -->
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-	<article class={slideClasses(slide.meta)}>{@html slide.html}</article>
+	<article class={slideClasses(slide.meta)} bind:this={article}>{@html slide.html}</article>
 	<!-- Drawn on the stage in its pixels, above the slide, and not measured as the slide's content. -->
 	{@render overlay?.()}
 </Stage>
-
-<style>
-	/*
-	 * Slides draw in the stage's pixels, so a slide looks the same at every size. The text settings are set here rather
-	 * than inherited, so a slide looks the same in the editor's panes as when it presents.
-	 */
-	.slide {
-		box-sizing: border-box;
-		padding: 64px 96px;
-		color: var(--body);
-		font-family: var(--ui-font);
-		font-size: 32px;
-		font-style: normal;
-		font-weight: 400;
-		line-height: normal;
-		letter-spacing: normal;
-		text-align: start;
-		white-space: normal;
-		overflow-wrap: anywhere;
-	}
-
-	.slide :global(:is(img, video)) {
-		max-width: 100%;
-		height: auto;
-	}
-
-	/* A trailing margin would make a slide that fits measure taller than the stage. */
-	:where(.slide) :global(:last-child) {
-		margin-bottom: 0;
-	}
-</style>

@@ -215,8 +215,8 @@
 
 	.number {
 		position: absolute;
-		right: 61px;
-		bottom: 39px;
+		right: 120px;
+		bottom: 44px;
 		font-family: var(--code-font);
 		font-size: 26px;
 		color: var(--muted);

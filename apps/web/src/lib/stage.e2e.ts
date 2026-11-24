@@ -203,7 +203,7 @@ test('resizing the window rescales the slide without drawing its HTML again', as
 	expect(kept).toEqual({ sameSlide: true, sameHeading: true, nodes });
 });
 
-test('a slide taller than the stage is clipped and flagged as overflowing', async ({
+test('a slide taller than the stage is clipped at its bottom margin and flagged as overflowing', async ({
 	browser,
 	browserName,
 	playwright
@@ -220,10 +220,11 @@ test('a slide taller than the stage is clipped and flagged as overflowing', asyn
 	await article.evaluate((slide) => (slide.innerHTML = '<p>Short</p>'));
 	await expect(frame).toHaveAttribute('data-overflowing', 'false');
 
+	// The stage is 360 px tall, 180 px from the top, so its bottom margin starts at 180 + 984 / 3 = 508 px.
 	await article.evaluate((slide) => slide.insertAdjacentHTML('beforeend', '<div id="tall" style="height: 1200px">'));
 	await expect(frame).toHaveAttribute('data-overflowing', 'true');
-	expect(await isTallAt(530)).toBe(true);
-	expect(await isTallAt(550)).toBe(false);
+	expect(await isTallAt(500)).toBe(true);
+	expect(await isTallAt(515)).toBe(false);
 
 	await page.locator('#tall').evaluate((tall) => tall.remove());
 	await expect(frame).toHaveAttribute('data-overflowing', 'false');
@@ -235,15 +236,15 @@ test('a slide that fits is not flagged for the margin under its last block', asy
 	const article = page.locator('article.slide');
 	await expect(article).toBeVisible({ timeout: 30_000 });
 
-	// 952 px fills the stage between the slide's padding, and the list's own bottom margin would push it 32 px past.
+	// 880 px fills the stage between the slide's margins, and a bottom margin on the list would push it past.
 	await article.evaluate(
-		(slide) => (slide.innerHTML = '<ul style="margin-top: 0"><li style="height: 952px"></li></ul>')
+		(slide) => (slide.innerHTML = '<ul style="margin: 0 0 32px"><li style="height: 880px"></li></ul>')
 	);
 	await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
 	expect(await page.locator('.content').evaluate((content) => content.clientHeight)).toBe(1080);
 });
 
-test('a slide is flagged only when its content runs past the stage, not into its bottom padding', async ({
+test('a slide is flagged once its content runs into its bottom margin', async ({
 	browser,
 	browserName,
 	playwright
@@ -257,14 +258,14 @@ test('a slide is flagged only when its content runs past the stage, not into its
 	const article = page.locator('article.slide');
 	const isBlockAt = (y: number) => page.evaluate((y) => document.elementFromPoint(320, y)?.id === 'block', y);
 
-	await article.evaluate((slide) => (slide.innerHTML = '<div id="block" style="height: 1017px">'));
+	await article.evaluate((slide) => (slide.innerHTML = '<div id="block" style="height: 881px">'));
 	await expect(frame).toHaveAttribute('data-overflowing', 'true');
 
-	// The slide's top padding is 64 px, so a block 1016 px tall ends at the stage's edge, inside the bottom padding.
-	await page.locator('#block').evaluate((block) => (block.style.height = '1016px'));
+	// The slide's margins are 104 px at the top and 96 px at the bottom, so a block 880 px tall ends on the bottom margin.
+	await page.locator('#block').evaluate((block) => (block.style.height = '880px'));
 	await expect(frame).toHaveAttribute('data-overflowing', 'false');
 
-	await page.locator('#block').evaluate((block) => (block.style.height = '1000px'));
+	await page.locator('#block').evaluate((block) => (block.style.height = '860px'));
 	await expect(frame).toHaveAttribute('data-overflowing', 'false');
 	expect(await isBlockAt(354)).toBe(true);
 	await close();

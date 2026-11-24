@@ -1,12 +1,33 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { appRoles, roleCss, slideRoles, slots, tokenRoles, type Role } from '#lib/color-roles.ts';
+import {
+	appRoles,
+	contrast,
+	mix,
+	roleCss,
+	slideRoles,
+	slots,
+	textFloor,
+	tokenRoles,
+	type Palette,
+	type Role
+} from '#lib/color-roles.ts';
 import type { SchemeFile } from '#lib/scheme-compiler.ts';
 import { loadSchemes } from '#lib/schemes.ts';
 
 const cssRoles = (roles: Record<string, Role>) =>
 	Object.fromEntries(Object.entries(roles).map(([name, role]) => [name, roleCss(role)]));
+
+/** The color a role's CSS, `var(--baseNN)` or a `color-mix()` of two of them, draws in a palette. */
+function roleColor(css: string, colors: Palette): string {
+	const slot = (name: string) => colors[`base${name}` as keyof Palette];
+	const plain = /^var\(--base([\dA-F]{2})\)$/.exec(css);
+	if (plain) return slot(plain[1]);
+	const mixed = /^color-mix\(in oklab, var\(--base([\dA-F]{2})\) (\d+)%, var\(--base([\dA-F]{2})\)\)$/.exec(css);
+	if (!mixed) throw new Error(`Not a role: ${css}`);
+	return mix(slot(mixed[1]), slot(mixed[3]), Number(mixed[2]));
+}
 
 const file = JSON.parse(readFileSync(new URL('schemes/base16.json', import.meta.url), 'utf8')) as SchemeFile;
 
@@ -51,6 +72,35 @@ describe('the compiled Base16 schemes', () => {
 			'vulcan',
 			'zenbones'
 		]);
+	});
+
+	it('keep body, muted and link text at 4.5:1 on base00 and base01, except in the schemes listed here', () => {
+		const below = file.schemes
+			.map(({ slug, colors, roles }) => ({
+				slug,
+				ratio: Math.min(
+					...[roles.body, roles.muted, roles.link].flatMap((text) =>
+						[roles.bg, roles.surface].map((ground) =>
+							contrast(roleColor(text, colors), roleColor(ground, colors))
+						)
+					)
+				)
+			}))
+			.filter(({ ratio }) => ratio < textFloor)
+			.map(({ slug, ratio }) => `${slug} ${ratio.toFixed(2)}:1`);
+		expect(below).toMatchInlineSnapshot(`
+			[
+			  "brogrammer 2.97:1",
+			  "digital-rain 3.45:1",
+			  "jellybeans 3.11:1",
+			  "nova 3.83:1",
+			  "papel 3.62:1",
+			  "shades-of-purple 1.98:1",
+			  "tango 2.04:1",
+			  "vulcan 3.37:1",
+			  "zenbones 1.65:1",
+			]
+		`);
 	});
 
 	it('keep the upstream license beside the data', () => {

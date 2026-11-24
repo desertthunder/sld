@@ -511,8 +511,14 @@ test('the line numbers below the split offer stay beside their lines', async ({ 
 			return lines!.length;
 		})
 		.toBe(7);
-	const [lines, numbers] = await positions();
-	expect(numbers).toEqual(lines);
+	const [lines] = await positions();
+	// The offer is in the page before CodeMirror measures it, in the next frame, and only then moves the gutter.
+	await expect
+		.poll(async () => {
+			const [, numbers] = await positions();
+			return numbers;
+		})
+		.toEqual(lines);
 });
 
 test('keeping the --- as a rule closes the offer and adds the new line', async ({ page }) => {

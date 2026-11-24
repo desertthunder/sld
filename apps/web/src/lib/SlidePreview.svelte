@@ -23,6 +23,8 @@
 		notices?: readonly Notice[];
 	} = $props();
 
+	const fitting = $state({ fit: 1, overflowing: false });
+
 	// The last render stays on the stage while the next one renders, so typing and moving between slides don't flash.
 	const view: { state: PreviewState | undefined } = $state({ state: undefined });
 
@@ -53,7 +55,19 @@
 		{#if !view.state}
 			<p class="waiting" role="status">Getting slides ready…</p>
 		{:else if view.state.shown}
-			<SlideStage slide={view.state.shown} {aspect} {scheme} {schemes} />
+			<SlideStage
+				slide={view.state.shown}
+				{aspect}
+				{scheme}
+				{schemes}
+				bind:fit={fitting.fit}
+				bind:overflowing={fitting.overflowing} />
+			<!-- Only the editor says how a slide fits: presenting shows the slide as it is. -->
+			{#if fitting.overflowing}
+				<p class="fit-note too-long" role="status">Too long to fit, split or trim</p>
+			{:else if fitting.fit < 1}
+				<p class="fit-note" role="status">Shrunk to {Math.floor(fitting.fit * 100)}%</p>
+			{/if}
 		{:else if view.state.failure}
 			<p class="waiting" role="alert">
 				{#each view.state.failure.parts as part, at (at)}
@@ -74,6 +88,7 @@
 	}
 
 	.surface {
+		position: relative;
 		flex: 1;
 		min-height: 0;
 		display: grid;
@@ -90,6 +105,26 @@
 		box-shadow:
 			0 2px 3px var(--shadow),
 			0 16px 36px var(--shadow);
+	}
+
+	.fit-note {
+		position: absolute;
+		top: 36px;
+		right: 36px;
+		margin: 0;
+		padding: 2px 8px;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: var(--surface);
+		color: var(--muted);
+		font-family: var(--code-font);
+		font-size: 12px;
+		line-height: 1.5;
+	}
+
+	.fit-note.too-long {
+		border-color: var(--rule);
+		color: var(--heading);
 	}
 
 	.waiting {

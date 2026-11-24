@@ -126,11 +126,13 @@ describe('safe URLs in a rendered slide', () => {
 	});
 
 	it('keeps a raster data image', async () => {
-		expect(await render(`![dot](${png})`)).toBe(`<p><img src="${png}" alt="dot"></p>`);
+		expect(await render(`![dot](${png})`)).toBe(`<p class="lone-image"><img src="${png}" alt="dot"></p>`);
 	});
 
 	it('checks an image inside a link and the link apart', async () => {
-		expect(await render(`[![dot](${png})](javascript:alert(1))`)).toBe(`<p><img src="${png}" alt="dot"></p>`);
+		expect(await render(`[![dot](${png})](javascript:alert(1))`)).toBe(
+			`<p class="lone-image"><img src="${png}" alt="dot"></p>`
+		);
 		expect(await render('[![x](javascript:alert(1))](https://example.com)')).toBe(
 			'<p><a href="https://example.com">x</a></p>'
 		);

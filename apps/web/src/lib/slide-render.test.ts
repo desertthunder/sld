@@ -4,6 +4,11 @@ import { renderCount, renderSlide } from '#lib/slide-render.ts';
 
 const lines = (...rows: string[]) => rows.join('\n');
 
+async function html(markdown: string): Promise<string> {
+	const slide = await renderSlide(markdown);
+	return slide.html;
+}
+
 describe('renderSlide', () => {
 	it('turns the sample slide into HTML and reads its frontmatter', async () => {
 		const slide = await renderSlide(sampleSlide);
@@ -11,7 +16,6 @@ describe('renderSlide', () => {
 		expect(slide.html).toMatchInlineSnapshot(`
 			"<h1>Welcome to sld</h1>
 			<p>Each slide is <strong>markdown</strong>, with <a href="https://commonmark.org">links</a>, <code>code</code> and <del>mistakes</del>.</p>
-			<h2>Lists</h2>
 			<ul>
 			<li>Edit a slide
 			<ol>
@@ -42,7 +46,7 @@ describe('renderSlide', () => {
 			</tbody>
 			</table>
 			<pre class="code-block" data-language="ts" data-label="TypeScript"><code><span class="line"><span class="line-code" data-label="TypeScript"><span class="code-keyword">const</span> deck = <span class="code-function">splitDeck</span>(markdown);</span></span></code></pre>
-			<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAABaCAYAAAA/xl1SAAABJUlEQVR42u3XsQnDMABE0StcegwVGsCFy+w/VVBQgrEhlS01T/AWOD5CSq5nTVKT7ElecIO9N7Xmz1mSFGPxsNJbu8S3GYdBtnOEbj5m3IS/N59BmOHzJqyGYJLWnt8uU3/HhmAqIyBABAgCRIAgQAQIAkSAIEAECAJEgCBABAgCRIAgQAQIAkSAIEAECAJEgCBABAgCRIAgQAQIAkSACBAEiABBgAgQBIgAQYAIEASIAEGACBAEiABBgAgQBIgAQYAIEASIAEGACBAEiABBgAgQBIgAwQAIEAGCABEgCBABggARIAgQAcJTAe5GYJLWXqohmKS1l9UQTNLa+5xiDAYrOZwlyWYUBtl6czlH6CZkxM13ie941v449Dvmzt9uPb75vucNBaEDQx6UFokAAAAASUVORK5CYII=" alt="A 16:9 frame"></p>
+			<p class="lone-image"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAABaCAYAAAA/xl1SAAABJUlEQVR42u3XsQnDMABE0StcegwVGsCFy+w/VVBQgrEhlS01T/AWOD5CSq5nTVKT7ElecIO9N7Xmz1mSFGPxsNJbu8S3GYdBtnOEbj5m3IS/N59BmOHzJqyGYJLWnt8uU3/HhmAqIyBABAgCRIAgQAQIAkSAIEAECAJEgCBABAgCRIAgQAQIAkSAIEAECAJEgCBABAgCRIAgQAQIAkSACBAEiABBgAgQBIgAQYAIEASIAEGACBAEiABBgAgQBIgAQYAIEASIAEGACBAEiABBgAgQBIgAwQAIEAGCABEgCBABggARIAgQAcJTAe5GYJLWXqohmKS1l9UQTNLa+5xiDAYrOZwlyWYUBtl6czlH6CZkxM13ie941v449Dvmzt9uPb75vucNBaEDQx6UFokAAAAASUVORK5CYII=" alt="A 16:9 frame"></p>
 			"
 		`);
 	});
@@ -104,6 +108,15 @@ describe('renderSlide', () => {
 	it('leaves directives as text', async () => {
 		const slide = await renderSlide(lines(':::note', 'One', ':::'));
 		expect(slide.html).toBe('<p>:::note\nOne\n:::</p>\n');
+	});
+
+	it('marks a paragraph holding only an image, and no paragraph with anything else', async () => {
+		expect(await html('![A chart](chart.png)')).toBe(
+			'<p class="lone-image"><img src="chart.png" alt="A chart"></p>\n'
+		);
+		expect(await html('See ![A chart](chart.png)')).toBe('<p>See <img src="chart.png" alt="A chart"></p>\n');
+		expect(await html('![One](1.png) ![Two](2.png)')).not.toContain('lone-image');
+		expect(await html('[![A chart](chart.png)](https://example.com)')).not.toContain('lone-image');
 	});
 
 	it('counts every call, cached ones included', async () => {
