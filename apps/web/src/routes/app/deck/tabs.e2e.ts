@@ -266,6 +266,31 @@ test('a change no signal told of shows once the tab shows again', async ({ page 
 	await runSql(a, `UPDATE slides SET markdown = '# Two, quietly' WHERE deck_id = '${id}' AND position = 1`);
 	await b.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
 	await expect(slideItems(b)).toHaveText(['Slide 1 One', 'Slide 2 Two, quietly'], withinASecond);
+
+	// A page back from the back-forward cache reads the deck again too.
+	await runSql(a, `UPDATE slides SET markdown = '# One, quietly' WHERE deck_id = '${id}' AND position = 0`);
+	await b.evaluate(() => dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+	await expect(slideItems(b)).toHaveText(['Slide 1 One, quietly', 'Slide 2 Two, quietly'], withinASecond);
+});
+
+test('a hidden tab reads what another tab stored once it shows again', async ({ page }) => {
+	const { a, b } = await openTwice(page, ['# One', '# Two']);
+	const setHidden = (isHidden: boolean) =>
+		b.evaluate((isHidden) => {
+			Object.defineProperty(document, 'visibilityState', {
+				configurable: true,
+				get: () => (isHidden ? 'hidden' : 'visible')
+			});
+			document.dispatchEvent(new Event('visibilitychange'));
+		}, isHidden);
+	await setHidden(true);
+	await a.getByRole('button', { name: 'New slide' }).click();
+	await expect(slideItems(a)).toHaveCount(3);
+	await expect(saveState(a)).toHaveText('Saved');
+	await b.waitForTimeout(1000);
+	await expect(slideItems(b)).toHaveCount(2);
+	await setHidden(false);
+	await expect(slideItems(b)).toHaveText(['Slide 1 One', 'Slide 2 Untitled slide', 'Slide 3 Two'], withinASecond);
 });
 
 test('a rename, a scheme and deleting the deck in another tab show in the open editor', async ({ page }) => {
@@ -296,5 +321,30 @@ test('a rename, a scheme and deleting the deck in another tab show in the open e
 	);
 	await expect(b.getByRole('heading', { level: 1, name: 'Deck deleted' })).toBeVisible(withinASecond);
 	await expect(b.getByText('Another tab deleted this deck while it was open here.')).toBeVisible();
+	await expect(b.getByText(/not yet saved/)).toHaveCount(0);
 	await expect(b.getByRole('link', { name: 'Back to decks' })).toHaveAttribute('href', '/app');
+});
+
+test('a deck another tab deletes while changes here are not yet saved says they were lost', async ({ page }) => {
+	const { id, a, b } = await openTwice(page, ['# One']);
+	await runSql(
+		b,
+		`CREATE OR REPLACE FUNCTION refuse() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'refused'; END $$ LANGUAGE plpgsql;
+		CREATE TRIGGER refuse BEFORE UPDATE ON slides FOR EACH ROW WHEN (NEW.markdown LIKE '%refused%')
+		EXECUTE FUNCTION refuse();`
+	);
+	await editor(b).click();
+	await b.keyboard.press('ControlOrMeta+End');
+	await b.keyboard.type(' refused');
+	await expect(saveState(b)).toHaveText('Not saved');
+	await a.evaluate(
+		async ({ urls, id }) => {
+			const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
+			const { removeDeck } = (await import(urls.decks)) as typeof DecksModule;
+			await removeDeck(await openDatabase(), id);
+		},
+		{ urls: modules, id }
+	);
+	await expect(b.getByRole('heading', { level: 1, name: 'Deck deleted' })).toBeVisible(withinASecond);
+	await expect(b.getByText('Changes made here and not yet saved were lost with it.')).toBeVisible();
 });

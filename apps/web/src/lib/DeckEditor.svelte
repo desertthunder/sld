@@ -32,7 +32,7 @@
 		withChange
 	} from '#lib/deck-editor.ts';
 	import { slideParts } from '#lib/deck-markdown.ts';
-	import { listenForDeckChanges } from '#lib/deck-signal.ts';
+	import type { DeckChanges } from '#lib/deck-signal.ts';
 	import { applyDeckChanges, getDeck, type DeckChange, type DeckWithSlides } from '#lib/decks.ts';
 	import DeckTitle from '#lib/DeckTitle.svelte';
 	import EditorFrame from '#lib/EditorFrame.svelte';
@@ -55,9 +55,18 @@
 	let {
 		database,
 		deck,
+		deckChanges,
 		schemes,
 		onmissing
-	}: { database: Database; deck: DeckWithSlides; schemes: readonly Scheme[]; onmissing: () => void } = $props();
+	}: {
+		database: Database;
+		deck: DeckWithSlides;
+		/** Another tab's writes to the deck, heard since before it was read. */
+		deckChanges: DeckChanges;
+		schemes: readonly Scheme[];
+		/** Shows that the deck is gone, and whether changes made here and not yet stored went with it. */
+		onmissing: (isUnsaved: boolean) => void;
+	} = $props();
 
 	function readStored(storage: () => Storage, key: string): string | undefined {
 		try {
@@ -356,18 +365,22 @@
 		}
 		if (changes.isDestroyed) return;
 		if (!stored) {
-			onmissing();
+			onmissing(hasUnsaved());
 			return;
 		}
 		changes.stored = stored.slides.map(({ id, markdown }) => ({ id, markdown }));
 		show(changes.stored, true);
 	}
 
+	/** Whether a change made here is waiting, being written, or failed to be. */
+	const hasUnsaved = () => editor.status !== 'saved' || changes.unwritten.length > 0;
+
 	// Signals that arrive close together, such as another tab's batch and its rename, share one read.
 	const remote: { isDue: boolean; timer?: ReturnType<typeof setTimeout> } = { isDue: false };
 
 	function hearRemoteChange() {
-		if (remote.isDue) return;
+		// A hidden tab reads the deck once it shows again.
+		if (remote.isDue || document.visibilityState === 'hidden') return;
 		remote.isDue = true;
 		remote.timer = setTimeout(() => void saver.between(catchUp), 100);
 	}
@@ -389,7 +402,7 @@
 		}
 		if (changes.isDestroyed) return;
 		if (!stored) {
-			onmissing();
+			onmissing(hasUnsaved());
 			return;
 		}
 		const unwritten = new Set(changes.unwritten.map(({ change }) => change.kind));
@@ -708,7 +721,7 @@
 		addEventListener('pagehide', flush);
 		addEventListener('pageshow', onPageShow);
 		document.addEventListener('visibilitychange', onVisibilityChange);
-		const stopListening = listenForDeckChanges(deckId, hearRemoteChange);
+		const stopListening = deckChanges.hear(hearRemoteChange);
 		return () => {
 			changes.isDestroyed = true;
 			stopListening();
