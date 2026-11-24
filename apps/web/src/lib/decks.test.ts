@@ -13,6 +13,7 @@ import {
 	insertSlide,
 	listDeckSummaries,
 	listDecks,
+	listDecksWithSlides,
 	moveSlide,
 	removeDeck,
 	renameDeck,
@@ -602,6 +603,23 @@ describe('deck queries', { timeout: 30_000 }, () => {
 				['Empty', 0]
 			]);
 			expect(listed[0]).toEqual({ ...notes, slideCount: 1 });
+		});
+
+		it('lists every deck with its slides in order, the most recently changed first', async () => {
+			const talk = await threeSlides();
+			const empty = await createDeck(database, { title: 'Empty' });
+			await createDeck(database, { title: 'Notes', slides: ['# One'] });
+			await ageDeck(talk);
+			await database.execute(
+				sql`update decks set updated_at = now() - interval '2 hours' where id = ${empty.id}`
+			);
+			const listed = await listDecksWithSlides(database);
+			expect(listed.map(({ title, slides }) => [title, slides.map(({ markdown }) => markdown)])).toEqual([
+				['Notes', ['# One']],
+				['Talk', await markdowns(talk.id)],
+				['Empty', []]
+			]);
+			expect(listed[1]).toEqual(await getDeck(database, talk.id));
 		});
 
 		it('duplicates a deck with its settings and slides in order, as a new deck changed now', async () => {

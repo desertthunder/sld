@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { presentSettings, settingsFromFrontmatter } from '#lib/deck-settings.ts';
+import { presentSettings, settingsFromFrontmatter, settingsFrontmatter } from '#lib/deck-settings.ts';
 import { splitDeck } from '#lib/deck-markdown.ts';
 
 describe('presentSettings', () => {
@@ -41,5 +41,19 @@ describe('settingsFromFrontmatter', () => {
 		expect(settingsFromFrontmatter(undefined)).toBeUndefined();
 		expect(settingsFromFrontmatter({ title: 'Talk' })).toBeUndefined();
 		expect(settingsFromFrontmatter({ slideNumber: 'yes' })).toBeUndefined();
+	});
+});
+
+describe('settingsFrontmatter', () => {
+	it('writes the settings sld knows, which settingsFromFrontmatter reads back', () => {
+		expect(settingsFrontmatter({ slideNumber: true })).toEqual({ slideNumber: true });
+		expect(settingsFromFrontmatter(settingsFrontmatter({ slideNumber: false }))).toEqual({ slideNumber: false });
+	});
+
+	it('writes nothing for no settings, unknown settings or a setting of the wrong type', () => {
+		// eslint-disable-next-line unicorn/no-null -- A deck with no settings stores null.
+		expect(settingsFrontmatter(null)).toEqual({});
+		expect(settingsFrontmatter({ theme: 'dark', slideNumber: 'yes' })).toEqual({});
+		expect(settingsFrontmatter([true])).toEqual({});
 	});
 });

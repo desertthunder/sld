@@ -272,6 +272,16 @@ export function listDeckSummaries(database: Database): Promise<DeckSummary[]> {
 	});
 }
 
+/** Lists every deck with its slides in order, the most recently changed first, as exporting every deck needs them. */
+export function listDecksWithSlides(database: Database): Promise<DeckWithSlides[]> {
+	return database.transaction(async (tx) => {
+		const rows = await tx.select().from(decks).orderBy(desc(decks.updatedAt), asc(decks.title));
+		const all = await tx.select().from(slides).orderBy(asc(slides.deckId), asc(slides.position));
+		const byDeck = Map.groupBy(all, ({ deckId }) => deckId);
+		return rows.map((deck) => ({ ...deck, slides: byDeck.get(deck.id) ?? [] }));
+	});
+}
+
 /**
  * Copies a deck, its settings and its slides in order, as a new deck titled `title`, and returns the copy, or
  * `undefined` when there is no such deck.
