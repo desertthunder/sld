@@ -138,7 +138,10 @@ test("typing not yet stored stays through another tab's changes, and its write t
 	await editor(a).fill('# One, from A');
 	await expect(saveState(a)).toHaveText('Saved');
 	await slideItems(a).nth(1).click();
+	// Text filled in before the editor shows the slide clicked can land at the start of its text instead of replacing it.
+	await expect(editor(a)).toHaveText('# Two');
 	await editor(a).fill('# Two, from A');
+	await expect(editor(a)).toHaveText('# Two, from A');
 	await a.getByRole('button', { name: 'New slide' }).click();
 	await expect(saveState(a)).toHaveText('Saved');
 
@@ -264,7 +267,9 @@ test('a new slide whose slide another tab deleted lands after the one before it,
 		EXECUTE FUNCTION hold_slow();`
 	);
 	await slideItems(b).first().click();
+	await expect(editor(b)).toHaveText('# One');
 	await editor(b).fill('# One, slow');
+	await expect(editor(b)).toHaveText('# One, slow');
 	await editor(b).blur();
 	await expect(saveState(b)).toHaveText('Saving…');
 	await slideItems(b).nth(1).click();
