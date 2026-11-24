@@ -366,13 +366,13 @@
 	white-space: nowrap;
 }
 
-.slide > section.footnotes ol {
+.slide > section.footnotes > ol {
 	padding-left: 0;
 	list-style: none;
 	counter-reset: footnote;
 }
 
-.slide > section.footnotes li {
+.slide > section.footnotes > ol > li {
 	padding-left: 0;
 	counter-increment: footnote;
 }
@@ -382,7 +382,7 @@
 }
 
 /* A footnote opens with its number drawn like its marker in the text, then a space's width in the 30px body face. */
-.slide > section.footnotes li > :first-child::before {
+.slide > section.footnotes > ol > li > :first-child::before {
 	content: counter(footnote);
 	margin-right: 7px;
 	color: var(--link);

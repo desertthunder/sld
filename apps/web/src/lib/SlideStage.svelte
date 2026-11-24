@@ -11,7 +11,7 @@
 	import { slideClasses } from '#lib/slide-meta.ts';
 	import type { RenderedSlide } from '#lib/slide-render.ts';
 	import Stage from '#lib/Stage.svelte';
-	import { defaultAspect, type Aspect } from '#lib/stage.ts';
+	import { defaultAspect, type Aspect, type Fit } from '#lib/stage.ts';
 
 	let {
 		slide,
@@ -20,6 +20,7 @@
 		schemes = [],
 		overflowing = $bindable(false),
 		fit = $bindable(1),
+		placement = $bindable({ scale: 0, x: 0, y: 0 }),
 		overlay
 	}: {
 		slide: RenderedSlide;
@@ -30,6 +31,8 @@
 		overflowing?: boolean;
 		/** How far the slide shrank its text to fit, from 1 down to `minFit`. */
 		fit?: number;
+		/** Where the stage sits in its frame, as `Stage` places it. */
+		placement?: Fit;
 		overlay?: Snippet;
 	} = $props();
 
@@ -66,7 +69,11 @@
 	});
 </script>
 
-<Stage {aspect} scheme={schemes.find(({ slug }) => slug === slide.meta.scheme) ?? scheme} bind:overflowing>
+<Stage
+	{aspect}
+	scheme={schemes.find(({ slug }) => slug === slide.meta.scheme) ?? scheme}
+	bind:overflowing
+	bind:placement>
 	<!-- Raw HTML in a slide passes through: the markdown is the person's own. -->
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	<article class={slideClasses(slide.meta)} bind:this={article}>{@html slide.html}</article>

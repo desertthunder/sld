@@ -4,7 +4,7 @@
 	import { nextPreview, type PreviewState, type RenderOutcome } from '#lib/slide-preview.ts';
 	import type { Notice } from '#lib/slide-notices.ts';
 	import SlideStage from '#lib/SlideStage.svelte';
-	import { fitStage, stageSize, type Aspect } from '#lib/stage.ts';
+	import type { Aspect } from '#lib/stage.ts';
 
 	let {
 		slideId,
@@ -23,18 +23,7 @@
 		notices?: readonly Notice[];
 	} = $props();
 
-	const fitting = $state({ fit: 1, overflowing: false });
-
-	// The surface's padding, which the stage fits inside.
-	const inset = 28;
-	const surface = $state({ width: 0, height: 0 });
-	// Where the stage sits on the surface, as the stage places itself, so the fit note can sit on its corner.
-	const placed = $derived(
-		fitStage(stageSize(aspect), {
-			width: Math.max(0, surface.width - 2 * inset),
-			height: Math.max(0, surface.height - 2 * inset)
-		})
-	);
+	const fitting = $state({ fit: 1, overflowing: false, placement: { scale: 0, x: 0, y: 0 } });
 
 	// The last render stays on the stage while the next one renders, so typing and moving between slides don't flash.
 	const view: { state: PreviewState | undefined } = $state({ state: undefined });
@@ -62,13 +51,7 @@
 </script>
 
 <div class="preview">
-	<div
-		class="surface"
-		style:--inset="{inset}px"
-		style:--stage-x="{placed.x}px"
-		style:--stage-y="{placed.y}px"
-		bind:clientWidth={surface.width}
-		bind:clientHeight={surface.height}>
+	<div class="surface" style:--stage-x="{fitting.placement.x}px" style:--stage-y="{fitting.placement.y}px">
 		{#if !view.state}
 			<p class="waiting" role="status">Getting slides ready…</p>
 		{:else if view.state.shown}
@@ -78,7 +61,8 @@
 				{scheme}
 				{schemes}
 				bind:fit={fitting.fit}
-				bind:overflowing={fitting.overflowing} />
+				bind:overflowing={fitting.overflowing}
+				bind:placement={fitting.placement} />
 			<!-- Only the editor says how a slide fits: presenting shows the slide as it is. -->
 			{#if fitting.overflowing}
 				<p class="fit-note too-long" role="status">Too long to fit, split or trim</p>
@@ -105,6 +89,7 @@
 	}
 
 	.surface {
+		--inset: 28px;
 		position: relative;
 		flex: 1;
 		min-height: 0;

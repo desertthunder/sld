@@ -207,6 +207,18 @@ test.describe('matching the artboards', () => {
 		await expect(page.locator('.slide section.footnotes ol')).toHaveCSS('list-style-type', 'none');
 	});
 
+	test('a numbered list inside a footnote keeps its own numbers', async ({ page }) => {
+		await show(page, 'Two steps.[^1]\n\n[^1]: The steps:\n\n    1. Wake at seven\n\n    2. Skip late coffee');
+		const nested = page.locator('.slide section.footnotes li ol');
+		await expect(nested).toHaveCSS('list-style-type', 'decimal');
+		expect(
+			await nested
+				.locator('li > p')
+				.first()
+				.evaluate((paragraph) => getComputedStyle(paragraph, '::before').content)
+		).toBe('none');
+	});
+
 	test('an open disclosure leaves a gap under its summary', async ({ page }) => {
 		await show(page, '<details open><summary>More</summary>\n\nWhat the diary said\n\n</details>');
 		expect(await gapUnder(page, '.slide summary')).toBe(40);
