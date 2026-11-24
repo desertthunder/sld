@@ -12,7 +12,7 @@ function rendered(html: string, warnings: SlideWarning[] = []): RenderedSlide {
 	};
 }
 
-const broken: SlideWarning = { kind: 'invalid-frontmatter', format: 'yaml', message: 'Bad indentation' };
+const broken: SlideWarning = { kind: 'invalid-frontmatter', format: 'yaml', message: 'Bad indentation', line: 2 };
 
 describe('nextPreview', () => {
 	it('shows each render that has no error, and remembers it as the last good one', () => {
@@ -30,19 +30,21 @@ describe('nextPreview', () => {
 		});
 		expect(state.shown).toBe(good);
 		expect(state.good).toBe(good);
-		expect(state.notices).toEqual([[`The frontmatter couldn't be read, so it's ignored: Bad indentation`]]);
+		expect(state.notices).toEqual([
+			{ parts: [`The frontmatter couldn't be read, so it's ignored: Bad indentation`], line: 2 }
+		]);
 	});
 
 	it('keeps the last good render when a render fails', () => {
 		const good = rendered('<h1>Good</h1>');
 		const state = nextPreview(nextPreview(undefined, 'a', { slide: good }), 'a', { error: new Error('Boom') });
 		expect(state.shown).toBe(good);
-		expect(state.notices).toEqual([["This slide couldn't be shown: Boom"]]);
+		expect(state.notices).toEqual([{ parts: ["This slide couldn't be shown: Boom"] }]);
 	});
 
 	it("says in the stage's place that slides couldn't be loaded, only while there is no good render", () => {
 		const loadError = new RendererLoadError(new Error('Offline'));
-		const message = ["Slides couldn't be loaded. Reload the page to try again: Offline"];
+		const message = { parts: ["Slides couldn't be loaded. Reload the page to try again: Offline"] };
 		const failed = nextPreview(undefined, 'a', { error: loadError });
 		expect(failed).toMatchObject({ shown: undefined, failure: message, notices: [message] });
 

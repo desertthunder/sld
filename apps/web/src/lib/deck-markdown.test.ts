@@ -337,13 +337,29 @@ describe('slideFrontmatterError', () => {
 	it("returns the parser's message for a block shaped as frontmatter that doesn't parse", () => {
 		expect(slideFrontmatterError(lines('---', 'layout: [title', '---', '# Two'))).toEqual({
 			format: 'yaml',
-			message: expect.stringMatching(/\S/) as string
+			message: expect.stringMatching(/\S/) as string,
+			line: 2
 		});
 		expect(slideFrontmatterError(lines('+++', 'layout =', '+++'))).toEqual({
 			format: 'toml',
-			message: expect.stringMatching(/\S/) as string
+			message: expect.stringMatching(/\S/) as string,
+			line: 2
 		});
 		expect(slideFrontmatterError(lines('---', 'a: *missing', '---'))?.format).toBe('yaml');
+	});
+
+	it("points at the slide's line the parser names, counting the opening delimiter as line 1", () => {
+		const yaml = slideFrontmatterError(lines('---', 'layout: center', 'title: [Open', '---'));
+		expect(yaml).toMatchObject({ format: 'yaml', line: 3 });
+		expect(yaml?.message).not.toMatch(/line \d/);
+		const toml = slideFrontmatterError(lines('+++', 'layout = "center"', 'title = = 2', '+++'));
+		expect(toml).toMatchObject({ format: 'toml', line: 3 });
+		expect(toml?.message).not.toContain('\n');
+	});
+
+	it('points at the opening delimiter when the parser names no line', () => {
+		expect(slideFrontmatterError(lines('---', 'a: *missing', '---'))?.line).toBe(1);
+		expect(slideFrontmatterError(lines('+++', 'a = 1', '+++'))).toBeUndefined();
 	});
 
 	it('finds no error in a block that parses, or in markdown that holds no block', () => {

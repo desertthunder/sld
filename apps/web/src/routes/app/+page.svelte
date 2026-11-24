@@ -25,6 +25,7 @@
 	import LibraryHeader from '#lib/LibraryHeader.svelte';
 	import NewDeck from '#lib/NewDeck.svelte';
 	import { sampleDeck } from '#lib/sample-deck.ts';
+	import { pruneJournals } from '#lib/slide-journal.ts';
 	import UndoToast from '#lib/UndoToast.svelte';
 
 	type Store = { database: Database; queries: typeof DecksModule };
@@ -67,6 +68,10 @@
 		const { store } = opened;
 		if (!store) return;
 		library.decks = await store.queries.listDeckSummaries(store.database);
+		pruneJournals(
+			() => localStorage,
+			library.decks.map(({ id }) => id)
+		);
 		if (!library.hasLoadFailed) return;
 		library.hasLoadFailed = false;
 		library.error = undefined;

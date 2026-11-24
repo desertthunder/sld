@@ -60,10 +60,10 @@ test('selecting a slide puts it in the URL, and a reload keeps it', async ({ pag
 	await expect(slideItems(page)).toHaveText(['Slide 1 One', 'Slide 2 Two', 'Slide 3 Three']);
 	await slideItems(page).nth(2).click();
 	await expect(page).toHaveURL(/\?slide=3$/);
-	await expect(editor(page)).toHaveValue('# Three');
+	await expect(editor(page)).toHaveText('# Three');
 	await page.reload();
 	await expect(selectedItem(page)).toHaveText('Slide 3 Three', { timeout: 30_000 });
-	await expect(editor(page)).toHaveValue('# Three');
+	await expect(editor(page)).toHaveText('# Three');
 });
 
 test('an out-of-range slide number selects the nearest slide', async ({ page }) => {
@@ -81,7 +81,7 @@ test('an edit that shows Saved survives a reload', async ({ page }) => {
 	await editor(page).fill('# Two, edited');
 	await expect(page.getByText('Saved', { exact: true })).toBeVisible();
 	await page.reload();
-	await expect(editor(page)).toHaveValue('# Two, edited', { timeout: 30_000 });
+	await expect(editor(page)).toHaveText('# Two, edited', { timeout: 30_000 });
 	await expect(selectedItem(page)).toHaveText('Slide 2 Two, edited');
 });
 
@@ -200,8 +200,349 @@ test('keys typed in the editor do not reach the slide list', async ({ page }) =>
 	await openDeck(page, id);
 	await editor(page).fill('');
 	await editor(page).pressSequentially('nd');
-	await expect(editor(page)).toHaveValue('nd');
-	await expect(slideItems(page)).toHaveCount(2);
+	await expect(editor(page)).toHaveText('nd');
+	await expect(slideItems(page)).toHaveText(['Slide 1 nd', 'Slide 2 Two']);
+});
+
+test('switching slides and coming back keeps the text and its undo history', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One', '# Two']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.type(' and more');
+	await slideItems(page).nth(1).click();
+	await expect(editor(page)).toHaveText('# Two');
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.type('!');
+	await slideItems(page).nth(0).click();
+	await expect(editor(page)).toHaveText('# One and more');
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(editor(page)).toHaveText('# One');
+	await slideItems(page).nth(1).click();
+	await expect(editor(page)).toHaveText('# Two!');
+	await expect(saveState(page)).toHaveText('Saved');
+	expect(await storedSlides(page, id)).toEqual(['# One', '# Two!']);
+});
+
+test('closing the tab right after typing loses nothing', async ({ page, context }) => {
+	const id = await createDeck(page, 'Talk', ['# One', '# Two']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+End');
+	// With writes held, the database can't store the typing before the tab is gone.
+	await holdWrites(page);
+	await page.keyboard.type(' and more');
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(editor(next)).toHaveText('# One and more');
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# One and more', '# Two']);
+	expect(await next.evaluate((key) => localStorage.getItem(key), `sld:journal:${id}`)).toBeNull();
+});
+
+test('typing a closed tab left unsaved never writes over newer text from another tab', async ({ page, context }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+End');
+	await holdWrites(page);
+	await page.keyboard.type(' and more');
+	await page.close();
+	const next = await context.newPage();
+	await next.goto('/app');
+	await waitForApp(next);
+	await next.evaluate(
+		async ({ urls, id }) => {
+			const { openDatabase } = (await import(urls.database)) as typeof DatabaseModule;
+			const { applyDeckChanges, getDeck } = (await import(urls.decks)) as typeof DecksModule;
+			const database = await openDatabase();
+			const [slide] = (await getDeck(database, id))!.slides;
+			await applyDeckChanges(database, id, [{ kind: 'update', id: slide!.id, markdown: '# One, elsewhere' }]);
+		},
+		{ urls: modules, id }
+	);
+	await openDeck(next, id);
+	await expect(editor(next)).toHaveText('# One, elsewhere');
+	expect(await next.evaluate((key) => localStorage.getItem(key), `sld:journal:${id}`)).toBeNull();
+	expect(await storedSlides(next, id)).toEqual(['# One, elsewhere']);
+});
+
+test('Tab indents, and Esc then Tab leaves the editor, as the hint says', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await expect(editor(page)).toHaveAccessibleDescription('Esc then Tab leaves the editor');
+	await expect(page.getByText('Esc then Tab leaves the editor')).toBeVisible();
+	await editor(page).click();
+	await page.keyboard.press('Home');
+	await page.keyboard.press('Tab');
+	await expect(editor(page)).toBeFocused();
+	await expect(saveState(page)).toHaveText('Saved');
+	expect(await storedSlides(page, id)).toEqual([expect.stringMatching(/^\s+# One$/)]);
+	await page.keyboard.press('Escape');
+	await page.keyboard.press('Tab');
+	await expect(editor(page)).not.toBeFocused();
+});
+
+test('hiding the page writes the typing at once, without waiting for a pause', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.type(' and more');
+	await page.evaluate(() => {
+		Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+		document.dispatchEvent(new Event('visibilitychange'));
+	});
+	// The read waits behind the write the page started, and would come back before a write waiting for a pause.
+	expect(await storedSlides(page, id)).toEqual(['# One and more']);
+});
+
+test('Enter after a --- line offers to split the slide, and Enter again splits it', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One', '# Last']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.press('Enter');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('---');
+	await page.keyboard.press('Enter');
+	const offer = page.getByRole('group', { name: 'Split slide' });
+	await expect(offer).toHaveText(
+		/^Split into two slides here\? The lines below become slide 2\.\s*Split\s*Enter\s*Keep as a rule\s*Esc$/
+	);
+	await page.keyboard.press('Enter');
+	await expect(offer).toBeHidden();
+	await expect(slideItems(page)).toHaveText(['Slide 1 One', 'Slide 2 Untitled slide', 'Slide 3 Last']);
+	await expect(selectedItem(page)).toHaveText(/^Slide 2/);
+	await expect(editor(page)).toBeFocused();
+	await page.keyboard.type('# Two');
+	await expect(slideItems(page)).toHaveText(['Slide 1 One', 'Slide 2 Two', 'Slide 3 Last']);
+	await expect(saveState(page)).toHaveText('Saved');
+	expect(await storedSlides(page, id)).toEqual(['# One', '# Two', '# Last']);
+	await slideItems(page).nth(0).click();
+	await expect(editor(page)).toHaveText('# One');
+});
+
+test('closing the tab before a split is stored keeps the lines below the rule', async ({ page, context }) => {
+	const id = await createDeck(page, 'Talk', ['# One\n\n---\n\nTail text']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+Home');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('End');
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('group', { name: 'Split slide' })).toBeVisible();
+	await holdWrites(page);
+	await page.keyboard.press('Enter');
+	await expect(slideItems(page)).toHaveText(['Slide 1 One', 'Slide 2 Tail text']);
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(editor(next)).toHaveText('# One---Tail text');
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# One\n\n---\n\nTail text']);
+});
+
+test('closing the tab right after typing and splitting keeps every typed and stored line', async ({
+	page,
+	context
+}) => {
+	const id = await createDeck(page, 'Talk', ['# Agenda\n\nkeep me\n\nmove me', '# Tail']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+Home');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('End');
+	await holdWrites(page);
+	await page.keyboard.type(' EXTRA');
+	await page.keyboard.press('Enter');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('---');
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('group', { name: 'Split slide' })).toBeVisible();
+	await page.keyboard.press('Enter');
+	await expect(slideItems(page)).toHaveText(['Slide 1 Agenda', 'Slide 2 move me', 'Slide 3 Tail']);
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(slideItems(next)).toHaveText(['Slide 1 Agenda', 'Slide 2 Tail']);
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# Agenda\n\nkeep me EXTRA\n\n---\n\nmove me', '# Tail']);
+});
+
+/** Puts a `---` line under the end of the slide in the editor and splits there. */
+async function splitAtEnd(page: Page) {
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.press('Enter');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('---');
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('group', { name: 'Split slide' })).toBeVisible();
+	await page.keyboard.press('Enter');
+}
+
+test('closing the tab right after typing into a split made on the last line keeps the rule', async ({
+	page,
+	context
+}) => {
+	const id = await createDeck(page, 'Talk', ['# Solo\n\nlast line', '# Other']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await holdWrites(page);
+	await splitAtEnd(page);
+	await page.keyboard.type('Next');
+	await expect(slideItems(page)).toHaveText(['Slide 1 Solo', 'Slide 2 Next', 'Slide 3 Other']);
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(slideItems(next)).toHaveText(['Slide 1 Solo', 'Slide 2 Other']);
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# Solo\n\nlast line\n\n---\n\nNext', '# Other']);
+	const preview = next.getByRole('region', { name: 'Preview' }).locator('article.slide');
+	await expect(preview.locator('hr')).toHaveCount(1, { timeout: 30_000 });
+	await expect(preview.locator('p').last()).toHaveText('Next');
+});
+
+test('closing the tab after a second split on the last line of a new slide keeps both rules', async ({
+	page,
+	context
+}) => {
+	const id = await createDeck(page, 'Talk', ['# Solo', '# Other']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await holdWrites(page);
+	await splitAtEnd(page);
+	await page.keyboard.type('move me');
+	await splitAtEnd(page);
+	await page.keyboard.type('THIRD');
+	await expect(slideItems(page)).toHaveText(['Slide 1 Solo', 'Slide 2 move me', 'Slide 3 THIRD', 'Slide 4 Other']);
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# Solo\n\n---\n\nmove me\n\n---\n\nTHIRD', '# Other']);
+});
+
+test('typing in a split before and after it is stored survives closing the tab', async ({ page, context }) => {
+	const id = await createDeck(page, 'Talk', ['# Agenda\n\n---\n\nmove me', '# Tail']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+Home');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('End');
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('group', { name: 'Split slide' })).toBeVisible();
+	const release = await holdWrites(page);
+	await page.keyboard.press('Enter');
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.type(' too');
+	await expect(slideItems(page)).toHaveText(['Slide 1 Agenda', 'Slide 2 move me too', 'Slide 3 Tail']);
+	await release();
+	await expect.poll(() => storedSlides(page, id)).toEqual(['# Agenda', 'move me too', '# Tail']);
+	await expect(saveState(page)).toHaveText('Saved');
+	await holdWrites(page);
+	await page.keyboard.type(' later');
+	await expect(slideItems(page)).toHaveText(['Slide 1 Agenda', 'Slide 2 move me too later', 'Slide 3 Tail']);
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(slideItems(next)).toHaveText(['Slide 1 Agenda', 'Slide 2 move me too later', 'Slide 3 Tail']);
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# Agenda', 'move me too later', '# Tail']);
+});
+
+test('typing in a split not yet stored stays in the one slide when the tab closes', async ({ page, context }) => {
+	const id = await createDeck(page, 'Talk', ['# Agenda\n\n---\n\nmove me', '# Tail']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+Home');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('End');
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('group', { name: 'Split slide' })).toBeVisible();
+	await holdWrites(page);
+	await page.keyboard.press('Enter');
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.type(' too');
+	await slideItems(page).nth(0).click();
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.type('!');
+	await expect(slideItems(page)).toHaveText(['Slide 1 Agenda!', 'Slide 2 move me too', 'Slide 3 Tail']);
+	await page.close();
+	const next = await context.newPage();
+	await openDeck(next, id);
+	await expect(saveState(next)).toHaveText('Saved');
+	expect(await storedSlides(next, id)).toEqual(['# Agenda!\n\n---\n\nmove me too', '# Tail']);
+});
+
+test('the line numbers below the split offer stay beside their lines', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One\n\n---\n\nA\n\nB']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+Home');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('End');
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('group', { name: 'Split slide' })).toBeVisible();
+	// The top of each line of text, and of each line number, in the order they show.
+	const positions = () =>
+		page.evaluate(
+			(selectors) =>
+				selectors.map((selector) =>
+					[...document.querySelectorAll(selector)]
+						.map((element) => element.getBoundingClientRect())
+						.filter(({ height }) => height > 0)
+						.map(({ top }) => Math.round(top))
+				),
+			['.cm-content > .cm-line', '.cm-lineNumbers .cm-gutterElement']
+		);
+	await expect
+		.poll(async () => {
+			const [lines] = await positions();
+			return lines!.length;
+		})
+		.toBe(7);
+	const [lines, numbers] = await positions();
+	expect(numbers).toEqual(lines);
+});
+
+test('keeping the --- as a rule closes the offer and adds the new line', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One']);
+	await openDeck(page, id);
+	await editor(page).click();
+	await page.keyboard.press('ControlOrMeta+End');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('---');
+	await page.keyboard.press('Enter');
+	const offer = page.getByRole('group', { name: 'Split slide' });
+	await offer.getByRole('button', { name: 'Keep as a rule' }).click();
+	await expect(offer).toBeHidden();
+	await page.keyboard.type('More');
+	await expect(editor(page)).toHaveText('# One---More');
+	await expect(slideItems(page)).toHaveCount(1);
+	await expect(saveState(page)).toHaveText('Saved');
+	expect(await storedSlides(page, id)).toEqual(['# One\n---\nMore']);
+});
+
+test('the editor colors its markdown with the scheme variables', async ({ page }) => {
+	const id = await createDeck(page, 'Talk', ['# One\n\n[link](https://example.com)']);
+	await openDeck(page, id);
+	await expect(editor(page)).toBeVisible();
+	await page.evaluate(() => {
+		document.documentElement.style.setProperty('--heading', 'rgb(1, 2, 3)');
+		document.documentElement.style.setProperty('--link', 'rgb(4, 5, 6)');
+	});
+	await expect(editor(page).getByText('One', { exact: true })).toHaveCSS('color', 'rgb(1, 2, 3)');
+	await expect(editor(page).getByText('link', { exact: true })).toHaveCSS('color', 'rgb(4, 5, 6)');
 });
 
 test('deleting the selected slide selects its neighbor, and the last slide stays', async ({ page }) => {
@@ -274,7 +615,7 @@ test('an edit to a slide another tab deleted shows what is stored', async ({ pag
 	);
 	await editor(page).fill('# Two, edited');
 	await expect(slideItems(page)).toHaveText(['Slide 1 One']);
-	await expect(editor(page)).toHaveValue('# One');
+	await expect(editor(page)).toHaveText('# One');
 	await expect(saveState(page)).toHaveText('Not saved');
 });
 
@@ -360,7 +701,7 @@ test('going back while a link waits for the changes stays where back went', asyn
 		document.body.append(link);
 	}, second);
 	await page.locator('#to-second').dispatchEvent('click');
-	await expect(editor(page)).toHaveValue('# Second');
+	await expect(editor(page)).toHaveText('# Second');
 	const release = await holdWrites(page);
 	await selectedItem(page).focus();
 	await page.keyboard.press('n');
@@ -404,7 +745,7 @@ test('a link that cannot store the changes first asks, and Stay keeps the editor
 	await expect(decks).toBeFocused();
 	await expect(page).toHaveURL(new RegExp(`/app/deck/${id}`));
 	await expect(saveState(page)).toHaveText('Not saved');
-	await expect(editor(page)).toHaveValue('# One, edited');
+	await expect(editor(page)).toHaveText('# One, edited');
 	await decks.click();
 	await expect(leaveDialog(page)).toBeVisible();
 	await leaveDialog(page).getByRole('button', { name: 'Leave' }).click();
@@ -500,7 +841,7 @@ test('saving the title by clicking away leaves focus where it went', async ({ pa
 	await page.getByRole('textbox', { name: 'Deck title' }).fill('Field notes');
 	await editor(page).click();
 	await page.keyboard.type(' and more');
-	await expect(editor(page)).toHaveValue('# One and more');
+	await expect(editor(page)).toHaveText('# One and more');
 	await expect(page.getByRole('button', { name: 'Rename deck: Field notes' })).toBeVisible();
 });
 
@@ -563,7 +904,7 @@ test('P typed in the markdown stays text', async ({ page }) => {
 	await markdown.fill('# One');
 	await markdown.press('End');
 	await markdown.press('p');
-	await expect(markdown).toHaveValue('# Onep');
+	await expect(markdown).toHaveText('# Onep');
 	await expect(page).toHaveURL(/\?slide=1$/);
 });
 
@@ -711,7 +1052,7 @@ test.describe('at phone width', () => {
 
 		await slideItems(page).nth(1).click();
 		await expect(page.getByRole('tab', { name: 'Edit' })).toHaveAttribute('aria-selected', 'true');
-		await expect(editor(page)).toHaveValue(/^# Very long heading/);
+		await expect(editor(page)).toHaveText(/^# Very long heading/);
 		expect(await hasNoHorizontalScroll(page)).toBe(true);
 
 		await page.getByRole('tab', { name: 'Preview' }).click();
