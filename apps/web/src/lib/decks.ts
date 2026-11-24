@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gt, gte, sql } from 'drizzle-orm';
 import { writeDurably, type Database } from '#lib/database.ts';
+import { announceDeckChange, type DeckChangeKind } from '#lib/deck-signal.ts';
 import type { DeckSettings } from '#lib/deck-settings.ts';
 import { decks, slides } from '#lib/schema.ts';
 import { isUuid } from '#lib/uuid.ts';
@@ -28,6 +29,15 @@ type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 // Every write below goes through `writeDurably`, so a write that resolves is in IndexedDB.
 function write<T>(database: Database, change: (tx: Transaction) => Promise<T>): Promise<T> {
 	return writeDurably(database, (database) => database.transaction(change));
+}
+
+// Each write that changed a deck then tells the other tabs, which may have it open.
+function announced<T extends { id: string } | { deckId: string } | undefined>(
+	row: T,
+	changed: readonly DeckChangeKind[]
+): T {
+	if (row) announceDeckChange('deckId' in row ? row.deckId : row.id, changed);
+	return row;
 }
 
 function touchDeck(tx: Transaction, deckId: string) {
@@ -63,11 +73,11 @@ function clampPosition(position: number, last: number): number {
 }
 
 /** Creates a deck, with its slides when `slides` lists their markdown, and returns it. */
-export function createDeck(
+export async function createDeck(
 	database: Database,
 	{ slides: markdowns = [], title, scheme, aspect, ...fields }: NewDeck
 ): Promise<Deck> {
-	return write(database, async (tx) => {
+	const deck = await write(database, async (tx) => {
 		const [deck] = await tx
 			.insert(decks)
 			.values({
@@ -83,6 +93,7 @@ export function createDeck(
 		);
 		return deck!;
 	});
+	return announced(deck, ['created']);
 }
 
 /** Lists every deck, the most recently changed first. */
@@ -102,8 +113,8 @@ export async function getDeck(database: Database, id: string): Promise<DeckWithS
 }
 
 /** Renames a deck and returns it, or `undefined` when there is no such deck. */
-export function renameDeck(database: Database, id: string, title: string): Promise<Deck | undefined> {
-	return write(database, async (tx) => {
+export async function renameDeck(database: Database, id: string, title: string): Promise<Deck | undefined> {
+	const renamed = await write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [deck] = await tx
 			.update(decks)
@@ -112,11 +123,12 @@ export function renameDeck(database: Database, id: string, title: string): Promi
 			.returning();
 		return deck;
 	});
+	return announced(renamed, ['title']);
 }
 
 /** Sets the slug of a deck's scheme and returns the deck, or `undefined` when there is no such deck. */
-export function setDeckScheme(database: Database, id: string, scheme: string): Promise<Deck | undefined> {
-	return write(database, async (tx) => {
+export async function setDeckScheme(database: Database, id: string, scheme: string): Promise<Deck | undefined> {
+	const changed = await write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [deck] = await tx
 			.update(decks)
@@ -125,34 +137,37 @@ export function setDeckScheme(database: Database, id: string, scheme: string): P
 			.returning();
 		return deck;
 	});
+	return announced(changed, ['scheme']);
 }
 
 /** Deletes a deck and its slides, and returns the deck, or `undefined` when there is no such deck. */
-export function deleteDeck(database: Database, id: string): Promise<Deck | undefined> {
-	return write(database, async (tx) => {
+export async function deleteDeck(database: Database, id: string): Promise<Deck | undefined> {
+	const deleted = await write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [deck] = await tx.delete(decks).where(eq(decks.id, id)).returning();
 		return deck;
 	});
+	return announced(deleted, ['deleted']);
 }
 
 /**
  * Inserts a slide into a deck at `position`, moving the slides from there on one place later, and returns it. A
  * position past the end appends the slide. It returns `undefined` when there is no such deck.
  */
-export function insertSlide(
+export async function insertSlide(
 	database: Database,
 	deckId: string,
 	position: number,
 	markdown: string
 ): Promise<Slide | undefined> {
-	return write(database, async (tx) => {
+	const slide = await write(database, async (tx) => {
 		if (!isUuid(deckId)) return;
 		const touched = await touchDeck(tx, deckId).returning({ id: decks.id });
 		if (touched.length === 0) return;
 		const at = clampPosition(position, await slideCount(tx, deckId));
 		return insertAt(tx, deckId, at, storable(markdown));
 	});
+	return announced(slide, ['slides']);
 }
 
 async function insertAt(tx: Transaction, deckId: string, position: number, markdown: string): Promise<Slide> {
@@ -165,8 +180,8 @@ async function insertAt(tx: Transaction, deckId: string, position: number, markd
 }
 
 /** Replaces a slide's markdown and returns the slide, or `undefined` when there is no such slide. */
-export function updateSlide(database: Database, id: string, markdown: string): Promise<Slide | undefined> {
-	return write(database, async (tx) => {
+export async function updateSlide(database: Database, id: string, markdown: string): Promise<Slide | undefined> {
+	const updated = await write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [slide] = await tx
 			.update(slides)
@@ -176,14 +191,15 @@ export function updateSlide(database: Database, id: string, markdown: string): P
 		if (slide) await touchDeck(tx, slide.deckId);
 		return slide;
 	});
+	return announced(updated, ['text']);
 }
 
 /**
  * Deletes a slide, moving the slides after it one place earlier, and returns it. It returns `undefined`, and deletes
  * nothing, when there is no such slide or the slide is its deck's only one, since a deck always keeps a slide.
  */
-export function deleteSlide(database: Database, id: string): Promise<Slide | undefined> {
-	return write(database, async (tx) => {
+export async function deleteSlide(database: Database, id: string): Promise<Slide | undefined> {
+	const deleted = await write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [found] = await tx.select({ deckId: slides.deckId }).from(slides).where(eq(slides.id, id));
 		if (!found || (await slideCount(tx, found.deckId)) <= 1) return;
@@ -196,17 +212,19 @@ export function deleteSlide(database: Database, id: string): Promise<Slide | und
 		await touchDeck(tx, slide.deckId);
 		return slide;
 	});
+	return announced(deleted, ['slides']);
 }
 
 /** Copies a slide to the place right after it and returns the copy, or `undefined` when there is no such slide. */
-export function duplicateSlide(database: Database, id: string): Promise<Slide | undefined> {
-	return write(database, async (tx) => {
+export async function duplicateSlide(database: Database, id: string): Promise<Slide | undefined> {
+	const copy = await write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [slide] = await tx.select().from(slides).where(eq(slides.id, id));
 		if (!slide) return;
 		await touchDeck(tx, slide.deckId);
 		return insertAt(tx, slide.deckId, slide.position + 1, slide.markdown);
 	});
+	return announced(copy, ['slides']);
 }
 
 /**
@@ -214,8 +232,8 @@ export function duplicateSlide(database: Database, id: string): Promise<Slide | 
  * the deck's slides in their new order, or `undefined` when there is no such slide. A position past the end moves it
  * to the end.
  */
-export function moveSlide(database: Database, id: string, position: number): Promise<Slide[] | undefined> {
-	return write(database, async (tx) => {
+export async function moveSlide(database: Database, id: string, position: number): Promise<Slide[] | undefined> {
+	const moved = await write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [slide] = await tx.select().from(slides).where(eq(slides.id, id));
 		if (!slide) return;
@@ -237,6 +255,8 @@ export function moveSlide(database: Database, id: string, position: number): Pro
 		}
 		return tx.select().from(slides).where(eq(slides.deckId, deckId)).orderBy(asc(slides.position));
 	});
+	announced(moved?.[0], ['slides']);
+	return moved;
 }
 
 /** A deck with how many slides it has, as the library lists it. */
@@ -256,8 +276,8 @@ export function listDeckSummaries(database: Database): Promise<DeckSummary[]> {
  * Copies a deck, its settings and its slides in order, as a new deck titled `title`, and returns the copy, or
  * `undefined` when there is no such deck.
  */
-export function duplicateDeck(database: Database, id: string, title: string): Promise<Deck | undefined> {
-	return write(database, async (tx) => {
+export async function duplicateDeck(database: Database, id: string, title: string): Promise<Deck | undefined> {
+	const copy = await write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [source] = await tx.select().from(decks).where(eq(decks.id, id));
 		if (!source) return;
@@ -273,14 +293,15 @@ export function duplicateDeck(database: Database, id: string, title: string): Pr
 		);
 		return copy!;
 	});
+	return announced(copy, ['created']);
 }
 
 /**
  * Deletes a deck and its slides, and returns them as they were, for `restoreDecks` to put back, or `undefined` when
  * there is no such deck.
  */
-export function removeDeck(database: Database, id: string): Promise<DeckWithSlides | undefined> {
-	return write(database, async (tx) => {
+export async function removeDeck(database: Database, id: string): Promise<DeckWithSlides | undefined> {
+	const removed = await write(database, async (tx) => {
 		if (!isUuid(id)) return;
 		const [deck] = await tx.select().from(decks).where(eq(decks.id, id));
 		if (!deck) return;
@@ -288,6 +309,7 @@ export function removeDeck(database: Database, id: string): Promise<DeckWithSlid
 		await tx.delete(decks).where(eq(decks.id, id));
 		return { ...deck, slides: rows };
 	});
+	return announced(removed, ['deleted']);
 }
 
 /**
@@ -295,8 +317,8 @@ export function removeDeck(database: Database, id: string): Promise<DeckWithSlid
  * order. It returns the decks in the order given, and rejects, restoring none of them, when a deck with one of their ids
  * exists.
  */
-export function restoreDecks(database: Database, removed: readonly DeckWithSlides[]): Promise<Deck[]> {
-	return write(database, async (tx) => {
+export async function restoreDecks(database: Database, removed: readonly DeckWithSlides[]): Promise<Deck[]> {
+	const restored = await write(database, async (tx) => {
 		const restored: Deck[] = [];
 		for (const { slides: rows, ...deck } of removed) {
 			const [row] = await tx.insert(decks).values(deck).returning();
@@ -305,15 +327,18 @@ export function restoreDecks(database: Database, removed: readonly DeckWithSlide
 		}
 		return restored;
 	});
+	for (const deck of restored) announced(deck, ['created']);
+	return restored;
 }
 
 /**
- * One change to a deck, as `applyDeckChanges` takes it: an edit to a slide's markdown, a new slide at a position, a
- * copy of a slide right after it, a slide to delete, a new title, or the slug of a new scheme.
+ * One change to a deck, as `applyDeckChanges` takes it: an edit to a slide's markdown, a new slide right after the
+ * slide `after`, a copy of a slide right after it, a slide to delete, a new title, or the slug of a new scheme. A change
+ * names slides by id, never by position, so it lands where it was asked for whatever another tab did to the order.
  */
 export type DeckChange =
 	| { kind: 'update'; id: string; markdown: string }
-	| { kind: 'insert'; id: string; position: number; markdown: string }
+	| { kind: 'insert'; id: string; after: string; markdown: string }
 	| { kind: 'duplicate'; of: string; id: string; markdown: string }
 	| { kind: 'delete'; id: string }
 	| { kind: 'rename'; title: string }
@@ -324,16 +349,16 @@ type BatchSlide = { id: string; isNew: boolean; markdown?: string };
 
 /**
  * Applies `changes` to a deck in order, in one transaction made durable once, and resolves to whether each one applied.
- * A change doesn't apply when its slide is gone, when it would delete the deck's last slide, or when the deck is gone,
+ * A change doesn't apply when its slide, or the slide an insert follows, is gone, when it would delete the deck's last slide, or when the deck is gone,
  * which applies none. After a change that doesn't apply, the inserts, copies and deletes are skipped too, since they
  * were asked for on a list that no longer matches; edits, renames and schemes still apply. A failure rolls back every change.
  */
-export function applyDeckChanges(
+export async function applyDeckChanges(
 	database: Database,
 	deckId: string,
 	changes: readonly DeckChange[]
 ): Promise<boolean[]> {
-	return write(database, async (tx) => {
+	const applied = await write(database, async (tx) => {
 		const applied: boolean[] = changes.map(() => false);
 		if (!isUuid(deckId) || changes.length === 0) return applied;
 		const title = changes.findLast((change) => change.kind === 'rename')?.title;
@@ -370,7 +395,21 @@ export function applyDeckChanges(
 		await writeList(tx, deckId, stored, list, deleted);
 		return applied;
 	});
+	announceDeckChange(
+		deckId,
+		changes.filter((_, index) => applied[index]).map(({ kind }) => signalKinds[kind])
+	);
+	return applied;
 }
+
+const signalKinds: Record<DeckChange['kind'], DeckChangeKind> = {
+	update: 'text',
+	insert: 'slides',
+	duplicate: 'slides',
+	delete: 'slides',
+	rename: 'title',
+	scheme: 'scheme'
+};
 
 const listFreeKinds: ReadonlySet<DeckChange['kind']> = new Set(['update', 'rename', 'scheme']);
 
@@ -401,13 +440,9 @@ function didApplyToList(list: BatchSlide[], deleted: string[], change: DeckChang
 			if (slide) slide.markdown = change.markdown;
 			return slide !== undefined;
 		}
-		case 'insert': {
-			const at = clampPosition(change.position, list.length);
-			list.splice(at, 0, { id: change.id, isNew: true, markdown: change.markdown });
-			return true;
-		}
+		case 'insert':
 		case 'duplicate': {
-			const at = list.findIndex(({ id }) => id === change.of);
+			const at = list.findIndex(({ id }) => id === (change.kind === 'insert' ? change.after : change.of));
 			if (at === -1) return false;
 			list.splice(at + 1, 0, { id: change.id, isNew: true, markdown: change.markdown });
 			return true;

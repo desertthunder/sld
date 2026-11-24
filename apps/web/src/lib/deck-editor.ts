@@ -1,3 +1,5 @@
+import type { DeckChange } from '#lib/decks.ts';
+
 /** The search parameter that holds the selected slide's number, counted from 1. */
 export const slideParameter = 'slide';
 
@@ -19,6 +21,45 @@ export function slideParameterValue(index: number): string {
 /** The index, from 0, of the slide to select once the slide at `index` is deleted from a deck of `count` slides. */
 export function indexAfterDelete(index: number, count: number): number {
 	return Math.max(Math.min(index, count - 2), 0);
+}
+
+/**
+ * The index in `next` of the slide nearest the one at `index` in `previous` that `next` still holds: the first one from
+ * there on, or else the last one before it.
+ */
+export function nearestKept(previous: readonly string[], next: readonly string[], index: number): number {
+	const kept = new Map(next.map((id, at) => [id, at]));
+	const found =
+		previous.slice(index).find((id) => kept.has(id)) ?? previous.slice(0, index).findLast((id) => kept.has(id));
+	return found === undefined ? Math.min(index, Math.max(next.length - 1, 0)) : kept.get(found)!;
+}
+
+/** A slide as the editor lists it. */
+export type SlideItem = { id: string; markdown: string };
+
+/**
+ * `list` with `change` made to it, as `applyDeckChanges` makes it to the stored slides. A change that wouldn't apply
+ * there, such as one whose slide is gone, leaves `list` as it was.
+ */
+export function withChange(list: readonly SlideItem[], change: DeckChange): SlideItem[] {
+	switch (change.kind) {
+		case 'rename':
+		case 'scheme': {
+			return [...list];
+		}
+		case 'update': {
+			return list.map((slide) => (slide.id === change.id ? { id: slide.id, markdown: change.markdown } : slide));
+		}
+		case 'insert':
+		case 'duplicate': {
+			const at = list.findIndex(({ id }) => id === (change.kind === 'insert' ? change.after : change.of));
+			return at === -1 ? [...list] : list.toSpliced(at + 1, 0, { id: change.id, markdown: change.markdown });
+		}
+		case 'delete': {
+			const at = list.findIndex(({ id }) => id === change.id);
+			return at === -1 || list.length <= 1 ? [...list] : list.toSpliced(at, 1);
+		}
+	}
 }
 
 /** Whether a deck of `count` slides may lose one: a deck always keeps at least one slide. */

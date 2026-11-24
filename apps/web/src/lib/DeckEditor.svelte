@@ -14,6 +14,8 @@
 		editorTabs,
 		indexAfterDelete,
 		joinSplit,
+		nearestKept,
+		type SlideItem,
 		type SlideParts,
 		paneLimits,
 		paneWidthsKey,
@@ -25,9 +27,11 @@
 		slideParameterValue,
 		tabLabels,
 		type EditorTab,
-		type PaneWidths
+		type PaneWidths,
+		withChange
 	} from '#lib/deck-editor.ts';
 	import { slideParts } from '#lib/deck-markdown.ts';
+	import { listenForDeckChanges } from '#lib/deck-signal.ts';
 	import { applyDeckChanges, getDeck, type DeckChange, type DeckWithSlides } from '#lib/decks.ts';
 	import DeckTitle from '#lib/DeckTitle.svelte';
 	import EditorFrame from '#lib/EditorFrame.svelte';
@@ -83,7 +87,6 @@
 	// svelte-ignore state_referenced_locally
 	const aspect = deckAspect(deck.aspect);
 	let notices: readonly Notice[] = $state([]);
-	type SlideItem = { id: string; markdown: string };
 	const journal = createSlideJournal(() => localStorage, deckId);
 	// Typing that a closed tab hadn't stored yet shows at once, and is saved once the editor mounts.
 	const journaled = journaledEdits(() => localStorage, deckId, slides);
@@ -120,11 +123,19 @@
 	// shows at once and waits its turn to be written; `generation` moves on whenever the list is replaced by what is
 	// stored, so the changes still waiting, made to the list that was replaced, are dropped. `takenBack` holds the edits
 	// of a failed batch to the new slides it took back: the saver queues them again, and they were reported already.
-	const changes: { stored: SlideItem[]; generation: number; isDestroyed: boolean; takenBack: Map<string, string> } = {
+	// `unwritten` holds the changes queued and not yet in a batch, in order, to make again over what another tab stored.
+	const changes: {
+		stored: SlideItem[];
+		generation: number;
+		isDestroyed: boolean;
+		takenBack: Map<string, string>;
+		unwritten: QueuedChange[];
+	} = {
 		stored: slides.map(({ id, markdown }) => ({ id, markdown })),
 		generation: 0,
 		isDestroyed: false,
-		takenBack: new Map()
+		takenBack: new Map(),
+		unwritten: []
 	};
 
 	// A change to the slides carries the generation it was made in, so a refresh since drops it, and the list it leaves.
@@ -207,6 +218,8 @@
 
 	/** Writes a batch of edits and changes in one transaction, resolving to whether nothing in it was lost. */
 	async function didStoreBatch(entries: SaverEntry<QueuedChange>[]): Promise<boolean> {
+		const sent = new Set(entries.map((entry) => entry.kind === 'change' && entry.change));
+		changes.unwritten = changes.unwritten.filter((queued) => !sent.has(queued));
 		const batch: QueuedChange[] = [];
 		let isDropped = false;
 		for (const entry of entries) {
@@ -316,6 +329,7 @@
 		const shown = new Map(editor.slides.map(({ id, markdown }) => [id, markdown]));
 		// The changes still waiting are dropped with the list they were made to, splits among them.
 		splits.length = 0;
+		changes.unwritten = changes.unwritten.filter(({ generation }) => generation === undefined);
 		editor.slides = list.map(({ id, markdown }) => ({
 			id,
 			markdown: saver.pending(id) ?? (isRead ? undefined : shown.get(id)) ?? markdown
@@ -348,6 +362,60 @@
 		show(changes.stored, true);
 	}
 
+	// Signals that arrive close together, such as another tab's batch and its rename, share one read.
+	const remote: { isDue: boolean; timer?: ReturnType<typeof setTimeout> } = { isDue: false };
+
+	function hearRemoteChange() {
+		if (remote.isDue) return;
+		remote.isDue = true;
+		remote.timer = setTimeout(() => void saver.between(catchUp), 100);
+	}
+
+	/**
+	 * Shows what another tab stored, with the changes this tab hasn't written yet made again over it by slide id, so
+	 * none of them is dropped. Text typed here and not yet stored stays as typed, and its write then replaces the other
+	 * tab's: the last write wins. Call it only between the saver's batches, so none of this tab's writes is half done.
+	 */
+	async function catchUp() {
+		remote.isDue = false;
+		if (changes.isDestroyed) return;
+		let stored: DeckWithSlides | undefined;
+		try {
+			stored = await getDeck(database, deckId);
+		} catch {
+			// The next signal, or this tab's next change, reads it again.
+			return;
+		}
+		if (changes.isDestroyed) return;
+		if (!stored) {
+			onmissing();
+			return;
+		}
+		const unwritten = new Set(changes.unwritten.map(({ change }) => change.kind));
+		if (!unwritten.has('rename')) editor.title = stored.title;
+		if (!unwritten.has('scheme')) editor.scheme = stored.scheme;
+		changes.stored = stored.slides.map(({ id, markdown }) => ({ id, markdown }));
+		let list = changes.stored;
+		for (const queued of changes.unwritten) {
+			if (queued.first) list = withChange(list, queued.first);
+			list = withChange(list, queued.change);
+			if (queued.list) queued.list = list;
+		}
+		const previous = editor.slides.map(({ id }) => id);
+		const { selected } = editor;
+		editor.slides = list.map(({ id, markdown }) => ({ id, markdown: saver.pending(id) ?? markdown }));
+		const next = editor.slides.map(({ id }) => id);
+		const index = next.indexOf(previous[selected]!);
+		select(index === -1 ? nearestKept(previous, next, selected) : index);
+		if (index === -1) await announce(`Slide ${selected + 1} was deleted in another tab.`);
+	}
+
+	/** Queues `queued` after the writes before it, as a change not yet written until its batch starts. */
+	function queueChange(queued: QueuedChange) {
+		changes.unwritten.push(queued);
+		return saver.change(queued);
+	}
+
 	/**
 	 * Shows `list` with the slide at `index` selected at once, then writes the change after the writes before it. When
 	 * the write fails, or another tab changed the deck first, the list goes back to what is stored.
@@ -356,7 +424,7 @@
 		const { generation } = changes;
 		editor.slides = list;
 		select(index);
-		void saver.change({
+		void queueChange({
 			change: write,
 			first,
 			generation,
@@ -371,7 +439,7 @@
 		return change(editor.slides.toSpliced(at, 0, { id, markdown: '' }), at, `Added slide ${at + 1}.`, {
 			kind: 'insert',
 			id,
-			position: at,
+			after: current.id,
 			markdown: ''
 		});
 	}
@@ -401,12 +469,12 @@
 
 	async function rename(next: string) {
 		editor.title = next;
-		await saver.change({ change: { kind: 'rename', title: next } });
+		await queueChange({ change: { kind: 'rename', title: next } });
 	}
 
 	async function useScheme(next: Scheme) {
 		editor.scheme = next.slug;
-		await saver.change({ change: { kind: 'scheme', scheme: next.slug } });
+		await queueChange({ change: { kind: 'scheme', scheme: next.slug } });
 	}
 
 	async function closePicker() {
@@ -447,7 +515,7 @@
 			editor.slides.toSpliced(from, 1, { id, markdown: before }, { id: copy, markdown: after }),
 			at,
 			`Split slide ${at} into slides ${at} and ${at + 1}.`,
-			{ kind: 'insert', id: copy, position: at, markdown: after },
+			{ kind: 'insert', id: copy, after: id, markdown: after },
 			{ kind: 'update', id, markdown: before }
 		);
 	}
@@ -620,8 +688,11 @@
 		};
 		addEventListener('pagehide', flush);
 		document.addEventListener('visibilitychange', onVisibilityChange);
+		const stopListening = listenForDeckChanges(deckId, hearRemoteChange);
 		return () => {
 			changes.isDestroyed = true;
+			stopListening();
+			clearTimeout(remote.timer);
 			removeEventListener('pagehide', flush);
 			document.removeEventListener('visibilitychange', onVisibilityChange);
 			saver.stop();

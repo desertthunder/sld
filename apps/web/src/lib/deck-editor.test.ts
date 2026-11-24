@@ -4,6 +4,8 @@ import {
 	clampPaneWidths,
 	defaultPaneWidths,
 	indexAfterDelete,
+	nearestKept,
+	withChange,
 	listCommand,
 	paneLimits,
 	parseEditorTab,
@@ -53,6 +55,58 @@ describe('deleting the selected slide', () => {
 		expect(canDeleteSlide(2)).toBe(true);
 		expect(canDeleteSlide(1)).toBe(false);
 		expect(canDeleteSlide(0)).toBe(false);
+	});
+});
+
+describe('nearestKept', () => {
+	it('keeps the slide at the index when it is still there, wherever it went', () => {
+		expect(nearestKept(['a', 'b', 'c'], ['x', 'a', 'b', 'c'], 1)).toBe(2);
+	});
+
+	it('takes the next slide still there, or else the last one before', () => {
+		expect(nearestKept(['a', 'b', 'c', 'd'], ['a', 'd'], 1)).toBe(1);
+		expect(nearestKept(['a', 'b', 'c'], ['a', 'x'], 2)).toBe(0);
+		expect(nearestKept(['a', 'b'], ['x', 'y'], 1)).toBe(1);
+		expect(nearestKept(['a', 'b', 'c'], ['x'], 2)).toBe(0);
+	});
+});
+
+const ids = (slides: { id: string }[]) => slides.map(({ id }) => id);
+
+describe('withChange', () => {
+	const list = [
+		{ id: 'a', markdown: '# A' },
+		{ id: 'b', markdown: '# B' }
+	];
+
+	it('places new slides and copies after the slide they name', () => {
+		expect(ids(withChange(list, { kind: 'insert', id: 'n', after: 'a', markdown: '' }))).toEqual(['a', 'n', 'b']);
+		expect(withChange(list, { kind: 'duplicate', of: 'b', id: 'c', markdown: '# B' })).toEqual([
+			...list,
+			{ id: 'c', markdown: '# B' }
+		]);
+	});
+
+	it('edits and deletes by id, and keeps the last slide', () => {
+		expect(withChange(list, { kind: 'update', id: 'b', markdown: '# Bee' })[1]).toEqual({
+			id: 'b',
+			markdown: '# Bee'
+		});
+		expect(ids(withChange(list, { kind: 'delete', id: 'a' }))).toEqual(['b']);
+		expect(withChange([list[0]!], { kind: 'delete', id: 'a' })).toEqual([list[0]]);
+	});
+
+	it('leaves the list as it was for a change whose slide is gone, or one that is not about slides', () => {
+		for (const change of [
+			{ kind: 'insert', id: 'n', after: 'x', markdown: '' },
+			{ kind: 'duplicate', of: 'x', id: 'n', markdown: '' },
+			{ kind: 'update', id: 'x', markdown: '' },
+			{ kind: 'delete', id: 'x' },
+			{ kind: 'rename', title: 'Talk' },
+			{ kind: 'scheme', scheme: 'nord' }
+		] as const) {
+			expect(withChange(list, change)).toEqual(list);
+		}
 	});
 });
 

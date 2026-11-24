@@ -3,7 +3,10 @@
 	import { appName } from '#lib/app-info.ts';
 	import EditorFrame from '#lib/EditorFrame.svelte';
 
-	const heading = 'Deck not found';
+	/** Whether the deck was open here when another tab deleted it. */
+	let { isDeleted = false }: { isDeleted?: boolean } = $props();
+
+	const heading = $derived(isDeleted ? 'Deck deleted' : 'Deck not found');
 </script>
 
 <svelte:head>
@@ -14,10 +17,14 @@
 	<main class="missing">
 		<div class="card">
 			<h1>{heading}</h1>
-			<p>
-				It may have been deleted, or the link came from another browser. Decks live only in the browser that
-				made them.
-			</p>
+			{#if isDeleted}
+				<p>Another tab deleted this deck while it was open here.</p>
+			{:else}
+				<p>
+					It may have been deleted, or the link came from another browser. Decks live only in the browser that
+					made them.
+				</p>
+			{/if}
 			<a class="primary" href={resolve('/app')}>Back to decks</a>
 		</div>
 	</main>

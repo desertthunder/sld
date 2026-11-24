@@ -10,7 +10,7 @@
 
 	type Loaded =
 		| { status: 'loading' }
-		| { status: 'missing' }
+		| { status: 'missing'; isDeleted?: boolean }
 		| { status: 'found'; database: Database; deck: DeckWithSlides; schemes: Scheme[] };
 
 	const view: { loaded: Loaded } = $state({ loaded: { status: 'loading' } });
@@ -50,10 +50,10 @@
 			database={view.loaded.database}
 			deck={view.loaded.deck}
 			schemes={view.loaded.schemes}
-			onmissing={() => (view.loaded = { status: 'missing' })} />
+			onmissing={() => (view.loaded = { status: 'missing', isDeleted: true })} />
 	{/key}
 {:else if view.loaded.status === 'missing'}
-	<DeckNotFound />
+	<DeckNotFound isDeleted={view.loaded.isDeleted} />
 {:else}
 	<EditorFrame>
 		<div aria-busy="true"></div>
