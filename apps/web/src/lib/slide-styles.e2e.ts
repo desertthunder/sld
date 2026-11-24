@@ -50,6 +50,13 @@ Text with a [link](https://example.com), \`inline code\`, **bold**, *italics* an
 - [ ] Try a weekend alarm
 
 [^1]: A footnote above the bottom margin.`,
+	quote: `> The best bedtime is the one that follows a fixed morning.
+>
+> <cite>From my diary, night 19</cite>
+
+Read the notes at [sleep-diary.example](https://sleep-diary.example), or run \`sld export\` for the markdown.[^1]
+
+[^1]: Sample text. Export lives in the app, not on a command line.`,
 	blocks: `## Every block
 
 | Week               | Hours |
@@ -129,6 +136,95 @@ function fontSize(page: Page, selector: string): Promise<number> {
 		.first()
 		.evaluate((element) => Number(getComputedStyle(element).fontSize.replace('px', '')));
 }
+
+/** The gap in stage pixels between the bottom of the element `above` and the top of the next element after it. */
+function gapUnder(page: Page, above: string): Promise<number> {
+	return page.locator(above).evaluate((element) => {
+		const next = element.nextElementSibling as HTMLElement;
+		const box = element.getBoundingClientRect();
+		const scale = box.width / (element as HTMLElement).offsetWidth;
+		return Math.round((next.getBoundingClientRect().top - box.bottom) / scale);
+	});
+}
+
+/** The computed styles that say how text is drawn: its color, face, size and weight, and where it sits on the line. */
+function textStyle(page: Page, selector: string, pseudo?: string) {
+	return page.locator(selector).evaluate((element, pseudo) => {
+		const style = getComputedStyle(element, pseudo);
+		return {
+			color: style.color,
+			face: style.fontFamily.split(',', 1)[0].replaceAll(/["']/g, ''),
+			size: style.fontSize,
+			weight: style.fontWeight,
+			align: style.verticalAlign
+		};
+	}, pseudo);
+}
+
+/** The color a slide color role such as `muted` resolves to on the slide. */
+function roleColor(page: Page, role: string): Promise<string> {
+	return page.locator('article.slide').evaluate((slide, role) => {
+		const probe = document.createElement('span');
+		probe.style.color = `var(--${role})`;
+		slide.append(probe);
+		const { color } = getComputedStyle(probe);
+		probe.remove();
+		return color;
+	}, role);
+}
+
+test.describe('matching the artboards', () => {
+	test.skip(({ browserName }) => browserName !== 'chromium', 'The artboards were measured in Chromium.');
+
+	test('a center slide leaves 40 px between its heading and the line under it', async ({ page }) => {
+		await show(page, slides.center);
+		expect(await gapUnder(page, '.slide h2')).toBe(40);
+	});
+
+	test('a cite in a quote is muted body text at 34 px', async ({ page }) => {
+		await show(page, slides.quote);
+		expect(await textStyle(page, '.slide blockquote cite')).toEqual({
+			color: await roleColor(page, 'muted'),
+			face: 'Mona Sans Variable',
+			size: '34px',
+			weight: '400',
+			align: 'baseline'
+		});
+	});
+
+	test('a footnote opens with its number drawn as the superscript that marks it in the text', async ({ page }) => {
+		await show(page, slides.quote);
+		const marker = { color: await roleColor(page, 'link'), face: 'Monaspace Neon', weight: '400', align: 'super' };
+		expect(await textStyle(page, '.slide p sup')).toEqual({ ...marker, size: '24.2px' });
+		expect(await textStyle(page, '.slide section.footnotes li > p', '::before')).toEqual({
+			...marker,
+			size: '16.5px'
+		});
+		expect(
+			await page
+				.locator('.slide section.footnotes li > p')
+				.evaluate((paragraph) => getComputedStyle(paragraph, '::before').content)
+		).toBe('counter(footnote)');
+		await expect(page.locator('.slide section.footnotes ol')).toHaveCSS('list-style-type', 'none');
+	});
+
+	test('a numbered list inside a footnote keeps its own numbers', async ({ page }) => {
+		await show(page, 'Two steps.[^1]\n\n[^1]: The steps:\n\n    1. Wake at seven\n\n    2. Skip late coffee');
+		const nested = page.locator('.slide section.footnotes li ol');
+		await expect(nested).toHaveCSS('list-style-type', 'decimal');
+		expect(
+			await nested
+				.locator('li > p')
+				.first()
+				.evaluate((paragraph) => getComputedStyle(paragraph, '::before').content)
+		).toBe('none');
+	});
+
+	test('an open disclosure leaves a gap under its summary', async ({ page }) => {
+		await show(page, '<details open><summary>More</summary>\n\nWhat the diary said\n\n</details>');
+		expect(await gapUnder(page, '.slide summary')).toBe(40);
+	});
+});
 
 /** A list of `count` items. */
 function items(count: number): string {

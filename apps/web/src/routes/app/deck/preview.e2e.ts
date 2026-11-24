@@ -467,3 +467,20 @@ test('the preview notes a slide that shrank to fit and one too long to fit, and 
 	await expect(page.locator('article.slide h1')).toHaveText('Too long', { timeout: 30_000 });
 	await expect(page.getByText(/shrunk to|too long to fit/i)).toHaveCount(0);
 });
+
+test('at phone width the fit note sits on the slide’s top right corner', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	const id = await createDeck(page, [`# Long\n\n${list(12)}`]);
+	await page.goto(`/app/deck/${id}`);
+	await page.getByRole('tab', { name: 'Preview' }).click({ timeout: 30_000 });
+	const pane = page.getByRole('tabpanel', { name: 'Preview' });
+	await expect(pane.locator('article.slide h1')).toHaveText('Long', { timeout: 30_000 });
+	await expect(pane.getByText(/^Shrunk to \d+%$/)).toBeVisible();
+	const [stage, note] = await Promise.all(
+		['.stage', '.fit-note'].map((selector) =>
+			pane.locator(selector).evaluate((element) => element.getBoundingClientRect())
+		)
+	);
+	expect(note.top - stage.top).toBe(8);
+	expect(Math.abs(stage.right - note.right - 8)).toBeLessThanOrEqual(1);
+});

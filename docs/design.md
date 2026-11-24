@@ -40,13 +40,13 @@ The default pairing is Hubot Sans for headings, Mona Sans for body text and Mona
 
 ## Margins
 
-A slide keeps 120 px at each side, 104 at the top and 96 at the bottom, which leaves a content area of 1680 by 880. Paragraphs, lists and quotes stop at 1400 px. Tables, code blocks, rules and images may use the full width. Blocks sit 40 px apart, and 56 px after a heading.
+A slide keeps 120 px at each side, 104 at the top and 96 at the bottom, which leaves a content area of 1680 by 880. Paragraphs, lists and quotes stop at 1400 px. Tables, code blocks, rules and images may use the full width. Blocks sit 40 px apart, and 56 px after a heading, except on a `center` slide. An open disclosure leaves 40 px under its summary.
 
 ## Layouts
 
 - `default`: the heading at the top left and content below it.
 - `title`: the heading at 136, centered vertically. A paragraph right after it is the subtitle, at 48. A last paragraph after that, such as a date and venue, is pinned to the bottom margin in muted 30 px text.
-- `center`: one statement centered both ways, its heading at 96. Paragraphs after the heading are muted.
+- `center`: one statement centered both ways, its heading at 96 and 40 px above the line under it. Paragraphs after the heading are muted.
 - `section`: the title at 120, sitting on the bottom margin with an accent bar under it. A paragraph right before the title is the part label, in accent code type at 34.
 
 ## Elements
@@ -54,18 +54,18 @@ A slide keeps 120 px at each side, 104 at the top and 96 at the bottom, which le
 - Lists mark items with accent squares, nested items with hollow squares, and numbers in muted code type.
 - Task lists draw their own boxes: muted outlines, filled with the accent and checked when done.
 - Tables have heading-face headers over a 3 px border-color rule, 2 px rules between rows, and tabular figures.
-- A quote shows a large accent quote mark and no side bar, its text in the heading face at 72.
+- A quote shows a large accent quote mark and no side bar, its text in the heading face at 72. A `<cite>` in it is muted body text at 34.
 - Inline code sits on the surface color with a 2 px border.
 - A code block is a base01 panel with a 16 px radius and 36 by 44 px padding.
 - A rule is a full-width, 3 px border-color line.
 - Images keep their aspect inside the content area. An image alone in its paragraph, with nothing else on the slide, fills the content area.
-- Footnotes sit above the bottom margin, under a border-color line.
+- Footnotes sit above the bottom margin, under a border-color line. Each opens with its number drawn like its marker in the text: link-colored code type, raised.
 
 ## Overflow
 
 A slide that runs past the bottom margin shrinks its text and spacing until it fits. Each size stops at a floor: 32 for body text, quotes and tables, and 72 for headings. Text already smaller than its floor, such as heading 3 or footnotes, keeps its size. Code blocks shrink down to 20 px, and a code block with a line too long for it shrinks its own code first, down to the same 20 px.
 
-Past the floors, the slide clips at the bottom margin. The editor's preview shows "Shrunk to 82%" while a slide is shrunk, and "Too long to fit, split or trim" with the `--rule` color once it clips. Presenting never shows either note.
+Past the floors, the slide clips at the bottom margin. The editor's preview shows "Shrunk to 82%" while a slide is shrunk, and "Too long to fit, split or trim" with the `--rule` color once it clips. Either note sits on the stage's top right corner. Presenting never shows either note.
 
 ## Links and images
 

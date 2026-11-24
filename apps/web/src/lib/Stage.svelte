@@ -9,8 +9,16 @@
 		aspect = defaultAspect,
 		scheme,
 		overflowing = $bindable(false),
+		placement = $bindable({ scale: 0, x: 0, y: 0 }),
 		children
-	}: { aspect?: Aspect; scheme?: Scheme; overflowing?: boolean; children: Snippet } = $props();
+	}: {
+		aspect?: Aspect;
+		scheme?: Scheme;
+		overflowing?: boolean;
+		/** Where the stage sits in its frame, for things drawn beside it in screen pixels. */
+		placement?: Fit;
+		children: Snippet;
+	} = $props();
 
 	const size = $derived(stageSize(aspect));
 	const container = $state({ width: 0, height: 0 });
@@ -65,6 +73,11 @@
 			for (const type of sizeEvents) wrapper.removeEventListener(type, measure, { capture: true });
 			document.fonts.removeEventListener('loadingdone', measure);
 		};
+	});
+
+	$effect(() => {
+		// eslint-disable-next-line unicorn/no-top-level-assignment-in-function -- Svelte writes a bindable prop by assignment.
+		placement = fit;
 	});
 
 	$effect(() => {

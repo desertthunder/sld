@@ -23,7 +23,7 @@
 		notices?: readonly Notice[];
 	} = $props();
 
-	const fitting = $state({ fit: 1, overflowing: false });
+	const fitting = $state({ fit: 1, overflowing: false, placement: { scale: 0, x: 0, y: 0 } });
 
 	// The last render stays on the stage while the next one renders, so typing and moving between slides don't flash.
 	const view: { state: PreviewState | undefined } = $state({ state: undefined });
@@ -51,7 +51,7 @@
 </script>
 
 <div class="preview">
-	<div class="surface">
+	<div class="surface" style:--stage-x="{fitting.placement.x}px" style:--stage-y="{fitting.placement.y}px">
 		{#if !view.state}
 			<p class="waiting" role="status">Getting slides ready…</p>
 		{:else if view.state.shown}
@@ -61,7 +61,8 @@
 				{scheme}
 				{schemes}
 				bind:fit={fitting.fit}
-				bind:overflowing={fitting.overflowing} />
+				bind:overflowing={fitting.overflowing}
+				bind:placement={fitting.placement} />
 			<!-- Only the editor says how a slide fits: presenting shows the slide as it is. -->
 			{#if fitting.overflowing}
 				<p class="fit-note too-long" role="status">Too long to fit, split or trim</p>
@@ -88,11 +89,12 @@
 	}
 
 	.surface {
+		--inset: 28px;
 		position: relative;
 		flex: 1;
 		min-height: 0;
 		display: grid;
-		padding: 28px;
+		padding: var(--inset);
 	}
 
 	/* The stage sits on the surface, lifted by a shadow, and the frame around it shows no bars of its own. */
@@ -109,8 +111,8 @@
 
 	.fit-note {
 		position: absolute;
-		top: 36px;
-		right: 36px;
+		top: calc(var(--inset) + var(--stage-y) + 8px);
+		right: calc(var(--inset) + var(--stage-x) + 8px);
 		margin: 0;
 		padding: 2px 8px;
 		border: 1px solid var(--border);
