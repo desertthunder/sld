@@ -505,16 +505,20 @@ test('the line numbers below the split offer stay beside their lines', async ({ 
 				),
 			['.cm-content > .cm-line', '.cm-lineNumbers .cm-gutterElement']
 		);
-	// CodeMirror draws the offer at an estimated height and moves the line numbers in its next measure, before the
-	// frame paints, so they line up once that measure has run.
 	await expect
 		.poll(async () => {
-			const [lines, numbers] = await positions();
-			return lines!.length === 7 ? numbers!.map((top, index) => top - lines![index]!) : lines!.length;
+			const [lines] = await positions();
+			return lines!.length;
 		})
-		.toEqual([0, 0, 0, 0, 0, 0, 0]);
-	const [lines, numbers] = await positions();
-	expect(numbers).toEqual(lines);
+		.toBe(7);
+	const [lines] = await positions();
+	// The offer is in the page before CodeMirror measures it, in the next frame, and only then moves the gutter.
+	await expect
+		.poll(async () => {
+			const [, numbers] = await positions();
+			return numbers;
+		})
+		.toEqual(lines);
 });
 
 test('keeping the --- as a rule closes the offer and adds the new line', async ({ page }) => {
