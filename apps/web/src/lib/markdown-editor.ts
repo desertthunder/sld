@@ -219,6 +219,15 @@ export function hold(isHeld: boolean): TransactionSpec {
 	return { effects: setHeld.of(isHeld) };
 }
 
+/**
+ * Holds the slide read-only with the cursor at the end of its text, where a person who carries on typing once it is
+ * let go means to add.
+ */
+export function holdAtEnd(state: EditorState): TransactionSpec {
+	const end = state.doc.length;
+	return { selection: { anchor: end }, effects: [setHeld.of(true), EditorView.scrollIntoView(end)] };
+}
+
 /** Lets a held slide go. */
 export const letGo: Command = (view) => {
 	if (!view.state.field(held)) return false;

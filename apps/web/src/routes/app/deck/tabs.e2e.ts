@@ -214,17 +214,39 @@ test('typing on a slide another tab deletes never lands in its neighbor, then or
 
 	// Escape lets the slide go, and typing then edits it as shown.
 	await b.keyboard.press('Escape');
-	await b.keyboard.type('Now ');
-	await expect(editor(b)).toHaveText('Now # Three');
+	await b.keyboard.type(' now');
+	await expect(editor(b)).toHaveText('# Three now');
 	await expect(saveState(b)).toHaveText('Saved');
-	expect(await storedSlides(b, id)).toEqual(['# One', 'Now # Three']);
+	expect(await storedSlides(b, id)).toEqual(['# One', '# Three now']);
 
 	await b.reload();
 	await expect(slideList(b)).toBeVisible({ timeout: 30_000 });
-	await expect(slideItems(b)).toHaveText(['Slide 1 One', 'Slide 2 Now # Three']);
-	await expect(editor(b)).toHaveText('Now # Three');
+	await expect(slideItems(b)).toHaveText(['Slide 1 One', 'Slide 2 Three now']);
+	await expect(editor(b)).toHaveText('# Three now');
 	await expect(saveState(b)).toHaveText('Saved');
-	expect(await storedSlides(b, id)).toEqual(['# One', 'Now # Three']);
+	expect(await storedSlides(b, id)).toEqual(['# One', '# Three now']);
+});
+
+test('a slide deleted in another tab while its own write is landing holds its neighbor too', async ({ page }) => {
+	const { id, a, b } = await openTwice(page, ['# One', '# Two', '# Three'], '?slide=2');
+	await slideItems(a).nth(1).click();
+	await editor(b).click();
+	await b.keyboard.press('ControlOrMeta+End');
+	await editor(b).pressSequentially(' half', { delay: 80 });
+	// Inside the saver's delay, so this tab's write of the keys is still on its way when the delete lands.
+	await b.waitForTimeout(120);
+	await a.getByRole('button', { name: 'Delete slide 2' }).click();
+	await expect(saveState(a)).toHaveText('Saved');
+	await expect(slideItems(b)).toHaveText(['Slide 1 One', 'Slide 2 Three']);
+	await b.waitForTimeout(1000);
+	await editor(b).pressSequentially(' resumed', { delay: 80 });
+	await expect(selectedItem(b)).toHaveText('Slide 2 Three');
+	await expect(b.getByText('The slide you were typing in was deleted in another tab.')).toBeVisible();
+	await expect(b.getByRole('status').filter({ hasText: 'Slide 2 was deleted in another tab.' })).toBeAttached();
+	await expect(editor(b)).toHaveText('# Three');
+	await b.waitForTimeout(500);
+	expect(await storedSlides(b, id)).toEqual(['# One', '# Three']);
+	await expect(slideItems(a)).toHaveText(['Slide 1 One', 'Slide 2 Three']);
 });
 
 test('a new slide whose slide another tab deleted lands after the one before it, or says it was not saved', async ({

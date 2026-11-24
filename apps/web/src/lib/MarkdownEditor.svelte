@@ -8,6 +8,7 @@
 		editorExtensions,
 		goToLine as goToLineSpec,
 		hold as holdSpec,
+		holdAtEnd,
 		syncSlideState,
 		type SplitParts
 	} from '#lib/markdown-editor.ts';
@@ -36,7 +37,7 @@
 	const shown: { view?: EditorView; id: string; states: Map<string, EditorState> } = { id: '', states: new Map() };
 
 	const hintId = $props.id();
-	const status = $state({ isHeld: false });
+	const status = $state({ isHeld: false, hint: '' });
 	const extensions = [
 		editorExtensions({
 			change: (text) => onchange(shown.id, text),
@@ -66,12 +67,14 @@
 
 	/**
 	 * Holds the slide shown read-only while the editor has focus, until a click, a focus from elsewhere or Escape lets
-	 * it go, so keys meant for a slide that just went away don't edit this one. Returns whether it held it.
+	 * it go, so keys meant for a slide that just went away don't edit this one, and shows `hint` while it holds. Returns
+	 * whether it held it.
 	 */
-	export function didHold(): boolean {
+	export function didHold(hint: string): boolean {
 		const { view } = shown;
 		if (!view?.hasFocus) return false;
-		view.dispatch(holdSpec(true));
+		status.hint = hint;
+		view.dispatch(holdAtEnd(view.state));
 		return true;
 	}
 
@@ -103,9 +106,7 @@
 
 <div class="markdown-editor" bind:this={host}></div>
 <p class="hint" class:held={status.isHeld} id={hintId}>
-	{status.isHeld
-		? 'The slide you were typing in was deleted in another tab. Click or press Escape to edit this one.'
-		: 'Esc then Tab leaves the editor'}
+	{status.isHeld ? status.hint : 'Esc then Tab leaves the editor'}
 </p>
 
 <style>

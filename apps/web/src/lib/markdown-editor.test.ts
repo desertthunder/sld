@@ -12,6 +12,7 @@ import {
 	goToLine,
 	held,
 	hold,
+	holdAtEnd,
 	keepRule,
 	letGo,
 	offerSplit,
@@ -289,6 +290,13 @@ describe('holding a slide', () => {
 		expect(view.state.field(held)).toBe(false);
 		expect(view.state.readOnly).toBe(false);
 		expect(letGo(view)).toBe(false);
+	});
+
+	it('puts the cursor at the end of the text, so typing once it is let go carries on there', () => {
+		const { view } = fakeView('# Three\n\nBody', 0);
+		view.dispatch(holdAtEnd(view.state));
+		expect(view.state.readOnly).toBe(true);
+		expect(view.state.selection.main.head).toBe('# Three\n\nBody'.length);
 	});
 
 	it('still takes markdown from outside while held', () => {

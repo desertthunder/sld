@@ -293,7 +293,7 @@
 	// CodeMirror loads only once a deck opens, in its own chunk.
 	const markdownEditor = import('#lib/MarkdownEditor.svelte');
 	const cursor = $state({ label: '' });
-	let markdownPane: { goToLine: (line: number) => void; didHold: () => boolean } | undefined = $state();
+	let markdownPane: { goToLine: (line: number) => void; didHold: (hint: string) => boolean } | undefined = $state();
 
 	const phone = new MediaQuery(`max-width: ${phoneWidth}px`);
 	let body: HTMLElement | undefined = $state();
@@ -313,10 +313,45 @@
 		replaceState(href, page.state);
 	}
 
-	function select(index: number, shouldOpen = false) {
+	// The slide selected, so that whatever takes it out of the list from under the editor holds the one in its place.
+	// A change this tab makes clears it first, since the person moved the selection then.
+	const selection: { id?: string } = { id: editor.slides[editor.selected]!.id };
+
+	/** Why a selected slide left the list without this tab's say: gone from what is stored, or never stored. */
+	type Loss = 'deleted' | 'unsaved';
+
+	const losses: Record<Loss, { said: (number: number) => string; hint: string }> = {
+		deleted: {
+			said: (number) => `Slide ${number} was deleted in another tab.`,
+			hint: 'The slide you were typing in was deleted in another tab. Click or press Escape to edit this one.'
+		},
+		unsaved: {
+			said: (number) => `Slide ${number} could not be saved.`,
+			hint: 'The slide you were typing in could not be saved. Click or press Escape to edit this one.'
+		}
+	};
+
+	/**
+	 * Selects the slide at `index`. When the slide selected before is gone from the list, the slide shown in its place
+	 * is held while the editor has focus, so the keys still coming, meant for the slide that went, edit nothing.
+	 */
+	function select(index: number, shouldOpen = false, loss: Loss = 'deleted') {
+		const from = editor.selected;
+		const isLost = selection.id !== undefined && editor.slides.every(({ id }) => id !== selection.id);
 		editor.selected = Math.min(Math.max(index, 0), editor.slides.length - 1);
+		selection.id = editor.slides[editor.selected]?.id;
 		showSelectedInUrl();
 		if (shouldOpen && phone.current) chooseTab('edit');
+		if (isLost) void holdInPlaceOf(from + 1, losses[loss]);
+	}
+
+	async function holdInPlaceOf(number: number, { said, hint }: (typeof losses)[Loss]) {
+		// The editor shows the slide now selected first, and lets go of any hold when it changes slide.
+		await tick();
+		const isHeld = markdownPane?.didHold(hint) ?? false;
+		await announce(
+			`${said(number)}${isHeld ? ` Click or press Escape to edit slide ${editor.selected + 1}.` : ''}`
+		);
 	}
 
 	function chooseTab(tab: EditorTab) {
@@ -332,10 +367,12 @@
 
 	/**
 	 * Shows `list` in place of the slides, keeping the selected slide selected while it is there. Edits not yet written
-	 * stay, and so does the markdown on screen when `list` was not just read from the database.
+	 * stay, and so does the markdown on screen when `list` was not just read from the database. `loss` says why the
+	 * selected slide went, when it is gone.
 	 */
-	function show(list: readonly SlideItem[], isRead: boolean) {
+	function show(list: readonly SlideItem[], isRead: boolean, loss: Loss) {
 		const selectedId = current.id;
+		const previous = editor.slides.map(({ id }) => id);
 		const shown = new Map(editor.slides.map(({ id, markdown }) => [id, markdown]));
 		// The changes still waiting are dropped with the list they were made to, splits among them.
 		splits.length = 0;
@@ -345,8 +382,9 @@
 			markdown: saver.pending(id) ?? (isRead ? undefined : shown.get(id)) ?? markdown
 		}));
 		changes.generation++;
-		const index = editor.slides.findIndex(({ id }) => id === selectedId);
-		select(index === -1 ? editor.selected : index);
+		const next = editor.slides.map(({ id }) => id);
+		const index = next.indexOf(selectedId);
+		select(index === -1 ? nearestKept(previous, next, editor.selected) : index, false, loss);
 	}
 
 	/**
@@ -360,7 +398,7 @@
 		try {
 			stored = await getDeck(database, deckId);
 		} catch {
-			if (!changes.isDestroyed) show(changes.stored, false);
+			if (!changes.isDestroyed) show(changes.stored, false, 'unsaved');
 			return;
 		}
 		if (changes.isDestroyed) return;
@@ -368,8 +406,9 @@
 			onmissing(hasUnsaved());
 			return;
 		}
+		const wasStored = changes.stored.some(({ id }) => id === current.id);
 		changes.stored = stored.slides.map(({ id, markdown }) => ({ id, markdown }));
-		show(changes.stored, true);
+		show(changes.stored, true, wasStored ? 'deleted' : 'unsaved');
 	}
 
 	/** Whether a change made here is waiting, being written, or failed to be. */
@@ -433,13 +472,6 @@
 		const next = editor.slides.map(({ id }) => id);
 		const index = next.indexOf(previous[selected]!);
 		select(index === -1 ? nearestKept(previous, next, selected) : index);
-		if (index !== -1) return;
-		// The keys still coming were meant for the deleted slide, so the slide shown in its place takes none of them.
-		await tick();
-		const isHeld = markdownPane?.didHold() ?? false;
-		await announce(
-			`Slide ${selected + 1} was deleted in another tab.${isHeld ? ` Click or press Escape to edit slide ${editor.selected + 1}.` : ''}`
-		);
 	}
 
 	/** Queues `queued` after the writes before it, as a change not yet written until its batch starts. */
@@ -455,6 +487,7 @@
 	async function change(list: SlideItem[], index: number, message: string, write: DeckChange, first?: DeckChange) {
 		const { generation } = changes;
 		editor.slides = list;
+		selection.id = undefined;
 		select(index);
 		void queueChange({
 			change: write,
