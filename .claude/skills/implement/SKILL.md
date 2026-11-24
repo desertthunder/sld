@@ -1,13 +1,13 @@
 ---
 name: implement
-description: Take a Linear issue (or an open draft pull request) to a reviewed pull request that is ready for Owais, by orchestrating four subagents in order - the implementer, a standard review-and-revise pass, an adversarial review-and-revise pass, and a verifier that runs the change for real. Use for /implement, or when asked to implement an issue end to end.
+description: Take a Linear issue (or an open draft pull request) to a reviewed pull request that is ready for Owais, by orchestrating subagents in order - the implementer, a standard review-and-revise pass, an adversarial review-and-revise pass that small issues skip, and a verifier that runs the change for real. Use for /implement, or when asked to implement an issue end to end.
 argument-hint: <SLD-n | pr-number>
 ---
 
 # Implement
 
 Orchestrate one issue from Linear to a pull request ready for Owais's review.
-This session dispatches, checks and reports; the work happens in four fresh
+This session dispatches, checks and reports; the work happens in fresh
 subagents, one after the other. Never write the change or review a diff in this
 session's own context: the separation is what makes the review worth having.
 
@@ -17,12 +17,16 @@ draft opened another way.
 ## Before dispatching
 
 1. Read the issue and its comments (`get_issue` with relations, `list_comments`).
-   Stop and ask if a blocked-by issue isn't Done, or if the acceptance criteria
-   need a decision the issue doesn't record.
+   Stop and ask Owais if the issue isn't in **Todo**, if its **Open questions**
+   don't read "None.", if a blocked-by issue isn't Done, or if the acceptance
+   criteria need a decision the issue doesn't record.
 2. Move the issue to **In Progress**.
 3. Copy out what every subagent needs, since they may not have the Linear
    tools: the issue id and title, its Why, Scope, Acceptance criteria and Out of
    scope, and any Agent notes.
+4. Decide whether the issue is small: docs, copy, CSS only, config, or a short
+   follow-up that its Agent notes mark as small. A small issue skips **III**;
+   every issue gets **IV**.
 
 ## I. Implementer
 
@@ -57,6 +61,8 @@ in the checkout, pushes, and posts its answers. Remove the worktree when it
 returns and confirm its push.
 
 ## III. Adversarial review and revise
+
+Skip this pass for a small issue and go to **IV**.
 
 Pin the new head, make a fresh worktree (`../<repo>-review-adv`), and dispatch
 the `adversarial-reviewer` agent with the same inputs plus pass II's report and
@@ -105,7 +111,7 @@ report what blocked it.
 - It still merges: `mergeable_state` is `clean`, `blocked`, `draft` or
   `unstable`. Read it again while GitHub answers `unknown`. On a conflict, merge
   `main` into the branch (never rebase), resolve, run `make ci`, push, and ask
-  whether to run III again.
+  whether to run the last review pass again.
 - Attach the Verification artifact to the issue (`save_issue` with `links`,
   titled after the artifact), and check that the verifier's comment on the
   issue shows the head IV last verified and its verdict. When the verifier
@@ -119,8 +125,8 @@ report what blocked it.
 
 Then post with `ready` set to `true` and a body whose first line is
 `Review loop finished at <full head sha>`, followed by one line per pass: what
-it found and what it fixed. The verify line links the Verification artifact
-and names any criterion that failed and the commit that fixed it, which no
+it found and what it fixed, or for III on a small issue, that it was skipped.
+The verify line links the Verification artifact and names any criterion that failed and the commit that fixed it, which no
 review pass read, or says in a few words why verification didn't apply. The bot marks the pull request ready,
 which requests Owais's review, then comments. Move the issue to **In Review**.
 
