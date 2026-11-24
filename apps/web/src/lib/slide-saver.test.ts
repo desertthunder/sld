@@ -174,4 +174,62 @@ describe('createSlideSaver', () => {
 		expect(batches).toEqual([]);
 		expect(statuses).toEqual([]);
 	});
+
+	it('runs a task between batches, never during one, with the status and waiting edits left alone', async () => {
+		const slides = saver();
+		const order: string[] = [];
+		let finish!: (isStored: boolean) => void;
+		commit = (entries) => {
+			batches.push(entries);
+			order.push('batch');
+			return new Promise<boolean>((resolve) => (finish = resolve));
+		};
+		const added = slides.change('add');
+		await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+		const ran = slides.between(async () => {
+			order.push('task');
+		});
+		slides.edit('a', '# A');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(order).toEqual(['batch']);
+		finish(true);
+		await ran;
+		expect(order).toEqual(['batch', 'task']);
+		expect(slides.pending('a')).toBe('# A');
+		await added;
+		expect(statuses).toEqual(['saving']);
+		commit = async (entries) => {
+			batches.push(entries);
+			return true;
+		};
+		await vi.advanceTimersByTimeAsync(300);
+		expect(batches).toEqual([[change('add')], [edit('a', '# A')]]);
+		expect(statuses).toEqual(['saving', 'saved']);
+		await slides.between(async () => {});
+		expect(statuses).toEqual(['saving', 'saved']);
+	});
+
+	it('says saving at once for a change queued while a task runs', async () => {
+		const slides = saver();
+		let finish!: () => void;
+		const ran = slides.between(() => new Promise<void>((resolve) => (finish = resolve)));
+		await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+		const added = slides.change('add');
+		expect(statuses).toEqual(['saving']);
+		finish();
+		await ran;
+		await added;
+		expect(batches).toEqual([[change('add')]]);
+		expect(statuses).toEqual(['saving', 'saved']);
+	});
+
+	it('keeps writing after a task that fails, and rejects with its error', async () => {
+		const slides = saver();
+		const failed = slides.between(() => Promise.reject(new Error('unread')));
+		const added = slides.change('add');
+		await expect(failed).rejects.toThrow('unread');
+		await added;
+		expect(batches).toEqual([[change('add')]]);
+		expect(statuses.at(-1)).toBe('saved');
+	});
 });
