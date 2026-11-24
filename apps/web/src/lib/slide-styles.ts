@@ -86,41 +86,74 @@ function scopeSelectors(list: string): string {
 	return selectors.join(', ');
 }
 
+type RuleType = abstract new () => CSSRule;
+
+/** The rule types named that the browser has: some, such as `@starting-style`'s, are newer than the app's oldest browsers. */
+function ruleTypes(...names: string[]): RuleType[] {
+	return names.flatMap((name) => {
+		const type: unknown = Reflect.get(globalThis, name);
+		return typeof type === 'function' ? [type as RuleType] : [];
+	});
+}
+
+const groupTypes = ruleTypes('CSSConditionRule', 'CSSLayerBlockRule', 'CSSScopeRule', 'CSSStartingStyleRule');
+const scopeTypes = ruleTypes('CSSScopeRule');
+const declarationTypes = ruleTypes('CSSNestedDeclarations');
+
+const isOfType = (rule: CSSRule, types: RuleType[]) => types.some((type) => rule instanceof type);
+
+/**
+ * Whether a slide may keep `rule`. Rules that select elements, and at-rules that only hold them, such as `@media`, go
+ * in the slide's `@scope`. Fonts, keyframes and counter styles are defined by name for the whole page wherever they
+ * sit, so the ones that would replace the app's own are refused. Any other rule, such as `@import`, `@property` or
+ * `@page`, would reach past the slide.
+ */
+function isKept(rule: CSSRule): boolean {
+	if (rule instanceof CSSFontFaceRule) return !appFontFamilies.has(familyName(rule));
+	if (rule instanceof CSSKeyframesRule) return !isAppAnimation(rule.name);
+	return (
+		rule instanceof CSSStyleRule ||
+		rule instanceof CSSLayerStatementRule ||
+		rule instanceof CSSCounterStyleRule ||
+		isOfType(rule, groupTypes) ||
+		isOfType(rule, declarationTypes)
+	);
+}
+
+/** Deletes each rule in `parent`, at any depth, that a slide may not keep. */
+function dropRules(parent: CSSStyleSheet | CSSGroupingRule): void {
+	const rules = parent.cssRules;
+	for (let index = rules.length - 1; index >= 0; index--) {
+		const rule = rules[index]!;
+		if (!isKept(rule)) parent.deleteRule(index);
+		else if (rule instanceof CSSGroupingRule) dropRules(rule);
+	}
+}
+
 /** Adds `inScope` to each style rule in `rules` that isn't nested in another, leaving a slide's own `@scope` alone. */
 function scopeRules(rules: CSSRuleList): void {
 	for (const rule of rules) {
 		if (rule instanceof CSSStyleRule) rule.selectorText = scopeSelectors(rule.selectorText);
-		else if (rule instanceof CSSGroupingRule && !(rule instanceof CSSScopeRule)) scopeRules(rule.cssRules);
+		else if (rule instanceof CSSGroupingRule && !isOfType(rule, scopeTypes)) scopeRules(rule.cssRules);
 	}
 }
 
 /**
- * `css` as the browser reads it, with every rule that selects elements, and every at-rule that holds rules, such as
- * `@media`, inside an `@scope` rooted at the slide, so a rule only matches the slide and what is in it. Fonts,
- * keyframes and counter styles are defined by name for the whole page, so they stay outside it, except fonts and
- * keyframes that would replace the app's own. Every other rule, such as `@import` or `@property`, would reach past the
- * slide and is dropped.
+ * `css` as the browser reads it, less the rules a slide may not keep, with fonts, keyframes and counter styles left
+ * for the whole page and every other rule inside an `@scope` rooted at the slide, so it only matches the slide and
+ * what is in it.
  */
 function scopedSheet(css: string, scope: string): string {
 	const sheet = new CSSStyleSheet();
 	sheet.replaceSync(css);
+	dropRules(sheet);
 	scopeRules(sheet.cssRules);
 	const named: string[] = [];
 	const scoped: string[] = [];
 	for (const rule of sheet.cssRules) {
-		if (rule instanceof CSSFontFaceRule) {
-			if (!appFontFamilies.has(familyName(rule))) named.push(rule.cssText);
-		} else if (rule instanceof CSSKeyframesRule) {
-			if (!isAppAnimation(rule.name)) named.push(rule.cssText);
-		} else if (rule instanceof CSSCounterStyleRule) {
-			named.push(rule.cssText);
-		} else if (
-			rule instanceof CSSStyleRule ||
-			rule instanceof CSSGroupingRule ||
-			rule instanceof CSSLayerStatementRule
-		) {
-			scoped.push(rule.cssText);
-		}
+		const isNamed =
+			rule instanceof CSSFontFaceRule || rule instanceof CSSKeyframesRule || rule instanceof CSSCounterStyleRule;
+		(isNamed ? named : scoped).push(rule.cssText);
 	}
 	if (scoped.length > 0) named.push(`@scope ([data-slide-scope="${scope}"]) {\n${scoped.join('\n')}\n}`);
 	// The browser writes a CSS escape such as `\3c` as the character, and `</style` in a string would end the element.
@@ -139,5 +172,6 @@ export function scopeSlideStyles(html: string): ScopedSlide {
 	if (styles.length === 0) return { html, scope: undefined };
 	const scope = scopeName(html);
 	for (const style of styles) style.textContent = scopedSheet(style.textContent, scope);
-	return { html: template.getHTML(), scope };
+	// eslint-disable-next-line unicorn/prefer-dom-node-html-methods -- `getHTML()` needs Safari 18, and the app supports 17.4.
+	return { html: template.innerHTML, scope };
 }

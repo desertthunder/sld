@@ -292,6 +292,90 @@ test("a slide's style sheet keeps no rule that reaches past the slide", async ({
 	]);
 });
 
+test('a rule that reaches past the slide is dropped wherever it is nested', async ({ page }) => {
+	await page.goto('/app');
+	await waitForApp(page);
+	const reaching = lines(
+		'@property --base05 { syntax: "<color>"; inherits: false; initial-value: red; }',
+		'@font-face { font-family: "Mona Sans Variable"; src: url("/comic.woff2"); }',
+		'@keyframes cm-blink { from { opacity: 0; } to { opacity: 0; } }',
+		'@page { margin: 0; }',
+		'@function --gap() { result: 1px; }'
+	);
+	const kept = lines(
+		'@font-face { font-family: Deck Serif; src: url("/serif.woff2"); }',
+		'@keyframes wobble { from { opacity: 0; } to { opacity: 1; } }',
+		'h1 { color: red; }'
+	);
+	const nested = [
+		`@media all { ${reaching} ${kept} }`,
+		`@supports (display: grid) { @media all { ${reaching} ${kept} } }`,
+		`@layer deck { ${reaching} ${kept} }`,
+		`@container (min-width: 1px) { ${reaching} ${kept} }`,
+		`@scope (h1) { @media all { ${reaching} ${kept} } }`,
+		`h1 { @media all { ${reaching} } color: red; }`
+	];
+	const results = await page.evaluate(
+		async ({ url, nested }) => {
+			const { scopeSlideStyles } = (await import(url)) as typeof SlideStylesModule;
+			return nested.map((css) => {
+				const template = document.createElement('template');
+				template.innerHTML = scopeSlideStyles(`<style>${css}</style><h1>Title</h1>`).html;
+				const sheet = new CSSStyleSheet();
+				sheet.replaceSync(template.content.querySelector('style')?.textContent ?? '');
+				const found: string[] = [];
+				const visit = (rules: CSSRuleList) => {
+					for (const rule of rules) {
+						if (rule instanceof CSSFontFaceRule)
+							found.push(`font ${rule.style.getPropertyValue('font-family')}`);
+						else if (rule instanceof CSSKeyframesRule) found.push(`keyframes ${rule.name}`);
+						else if (rule instanceof CSSStyleRule) found.push('style');
+						else if (!(rule instanceof CSSGroupingRule)) found.push(rule.constructor.name);
+						if (rule instanceof CSSGroupingRule) visit(rule.cssRules);
+					}
+				};
+				visit(sheet.cssRules);
+				return found;
+			});
+		},
+		{ url: modules.styles, nested }
+	);
+	const keptRules = ['font "Deck Serif"', 'keyframes wobble', 'style'];
+	expect(results).toEqual([keptRules, keptRules, keptRules, keptRules, keptRules, ['style']]);
+});
+
+test("a slide's nested at-rules leave the app's colors and fonts alone", async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const id = await createDeck(page, ['# One']);
+	await page.goto(`/app/deck/${id}`);
+	await expect(previewSlide(page).locator('h1')).toHaveText('One', { timeout: 30_000 });
+	const appLook = () =>
+		page.evaluate(() => ({
+			fonts: [...document.fonts].length,
+			colors: ['body', '.cm-editor', '.cm-content', 'nav button', '.thumb'].map((selector) => {
+				const style = getComputedStyle(document.querySelector(selector)!);
+				return `${selector}: ${style.color} on ${style.backgroundColor}`;
+			})
+		}));
+	const before = await appLook();
+	await editor(page).fill(
+		lines(
+			'<style>',
+			'@media all {',
+			'  @property --base05 { syntax: "<color>"; inherits: false; initial-value: rgb(255, 0, 0); }',
+			'  @property --base00 { syntax: "<color>"; inherits: false; initial-value: rgb(255, 0, 0); }',
+			'  @font-face { font-family: "Monaspace Neon"; src: local("Comic Sans MS"); }',
+			'}',
+			'h1 { color: rgb(0, 128, 0); }',
+			'</style>',
+			'',
+			'# Styled'
+		)
+	);
+	await expect(previewSlide(page).locator('h1')).toHaveCSS('color', green, { timeout: 30_000 });
+	expect(await appLook()).toEqual(before);
+});
+
 test("the app's own fonts and keyframes are ones a slide can't redefine", async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	const id = await createDeck(page, ['# One']);
