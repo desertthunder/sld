@@ -32,6 +32,12 @@ export type SlideSaver<C> = {
 	 * resolves once the batch it was written in is done. A failure is reported as the status, never thrown.
 	 */
 	change(change: C): Promise<void>;
+	/**
+	 * Runs `task` between batches: after the batch being written, if any, and before the next, so no write lands while
+	 * it runs. Waiting edits keep waiting, and the status doesn't change for it. It resolves once `task` is done, and
+	 * rejects when `task` does, without stopping the writes queued behind it.
+	 */
+	between(task: () => Promise<void>): Promise<void>;
 	/** Stops the timer. Waiting edits stay waiting until `flush`. */
 	stop(): void;
 };
@@ -46,16 +52,24 @@ export function createSlideSaver<C>({ commit, onStatus, delay }: SlideSaverOptio
 	const waiting = new Map<string, string>();
 	const writing = new Map<string, string>();
 	const queue: SaverEntry<C>[] = [];
+	const tasks: (() => Promise<void>)[] = [];
 	const state: {
 		draining?: Promise<void>;
+		isWriting: boolean;
 		hasFailed: boolean;
 		reported?: SaveStatus;
 		timer?: ReturnType<typeof setTimeout>;
-	} = { hasFailed: false };
+	} = { isWriting: false, hasFailed: false, reported: 'saved' };
 
 	const report = () => {
-		const isBusy = waiting.size > 0 || queue.length > 0;
-		const status: SaveStatus = state.draining ? 'saving' : state.hasFailed ? 'failed' : isBusy ? 'saving' : 'saved';
+		const isWriting = state.isWriting || queue.length > 0;
+		const status: SaveStatus = isWriting
+			? 'saving'
+			: state.hasFailed
+				? 'failed'
+				: waiting.size > 0
+					? 'saving'
+					: 'saved';
 		if (status === state.reported) return;
 		state.reported = status;
 		onStatus(status);
@@ -87,12 +101,26 @@ export function createSlideSaver<C>({ commit, onStatus, delay }: SlideSaverOptio
 	};
 
 	const drain = async (): Promise<void> => {
-		if (state.draining) return state.draining;
-		if (queue.length === 0) return;
+		if (state.draining) {
+			report();
+			return state.draining;
+		}
+		if (queue.length === 0 && tasks.length === 0) return;
 		const { promise, resolve } = Promise.withResolvers<void>();
 		state.draining = promise;
 		report();
-		while (queue.length > 0) await writeBatch(queue.splice(0));
+		while (queue.length > 0 || tasks.length > 0) {
+			const task = tasks.shift();
+			if (task) {
+				await task();
+				continue;
+			}
+			state.isWriting = true;
+			const batch = queue.splice(0);
+			report();
+			await writeBatch(batch);
+			state.isWriting = false;
+		}
 		state.draining = undefined;
 		report();
 		resolve();
@@ -125,6 +153,19 @@ export function createSlideSaver<C>({ commit, onStatus, delay }: SlideSaverOptio
 			queueWaiting();
 			queue.push({ kind: 'change', change });
 			return drain();
+		},
+		between(task) {
+			const { promise, resolve, reject } = Promise.withResolvers<void>();
+			tasks.push(async () => {
+				try {
+					await task();
+					resolve();
+				} catch (error) {
+					reject(error);
+				}
+			});
+			void drain();
+			return promise;
 		},
 		stop
 	};
