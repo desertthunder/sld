@@ -57,14 +57,25 @@ export function deletedMessage(titles: readonly string[]): string {
 }
 
 /**
- * The library's error messages: the decks that couldn't be listed, a deck that couldn't be made, or a change to one
- * that couldn't be saved.
+ * The library's error messages: the decks that couldn't be listed, a deck that couldn't be made, a change to one that
+ * couldn't be saved, or a deck or every deck that couldn't be exported.
  */
 export const errorLeads = {
 	load: "Your decks didn't load:",
 	deck: "The deck couldn't be saved:",
-	change: "That change couldn't be saved:"
+	change: "That change couldn't be saved:",
+	export: "The deck couldn't be exported:",
+	exportAll: "Your decks couldn't be exported:"
 } as const;
+
+/** What the library's error says about files that didn't import, each by its name and why. */
+export function importFailure(failures: readonly { name: string; reason: string }[]): { lead: string; text: string } {
+	if (failures.length === 1) return { lead: `“${failures[0]!.name}” wasn't imported:`, text: failures[0]!.reason };
+	return {
+		lead: `${failures.length} files weren't imported:`,
+		text: failures.map(({ name, reason }) => `${name}: ${reason}`).join('; ')
+	};
+}
 
 const textEntry = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 

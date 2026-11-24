@@ -27,9 +27,9 @@ Run `make ci` and get it green before you push. Push with
 `main`, never force-push, and never delete the branch or push it again only to
 retrigger a workflow; report a failed run in Notes instead.
 
-Don't review your own change and don't post anything to GitHub; the next two
-passes review it. Stop whatever you started (dev servers) and delete scratch
-files before you return.
+Don't review your own change and don't post anything to GitHub; the review
+passes that follow review it. Stop whatever you started (dev servers) and delete
+scratch files before you return.
 
 Return:
 

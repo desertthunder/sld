@@ -4,8 +4,9 @@ import type * as StageFixtureModule from '#lib/stage-fixture.ts';
 // The dev server serves the app's modules at their source paths.
 const stageFixtureModule = '/src/lib/stage-fixture.ts';
 
+// A 320 by 120 PNG of a rounded rectangle in 30% black. A slide drops an SVG data image.
 const chart =
-	'<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120"><rect width="320" height="120" rx="24" fill-opacity=".3"/></svg>';
+	'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAAB4CAYAAACDziveAAAE9ElEQVR42u3cQW9U1xmA4XfugN2SkEA2pWlCoYtUXaZdpFL/v6pskkVbVd2UKKkU2koJIQnIDma6mHPJxMXYGCTwzPNIaGR55hrZ0qvzzTlzF53PolptfH2lul5dG4971ZvHngNw3t58Vx1WX1f3xuODZzTpzBc+b/j2qxvV+9VbI3rz91fVY3834CWZRl/mxhxW96svqrvVwXlCuDjHf2S/ul3dGiu/VXV0LHgLfy/gJVsdC+JytOZB9Vl1ZyOELy2Am0X9TfXb6ufVo43oCR7wqoI4VZeqh9U/qn+edTV4WrjmC+xXv69+uRE+0QNepxjOIfyy+mSsBp8ZweUZ4vdO9afWmxs/WPEBr6G5SUfV29WvWm+UPHxWr5anxO9m9dGo6iPhAy5ACI9ab8r+egTwm5PatTwlfn/oxw0O8QMuSgTn/Yn3Wm+SPDWCyxPid73644jfSvyACxjB+Ujeu9V/njYOT8deNG94fLTxtfgBFzmCjabtd2xDZDr25KoPWx9zORI/YAsieDSa9uGx1j0ZgedS3qo+aL3bK37ANkXw2hiD7819mzZG3b3qd9ntBbYzgo9G4/bmUXjaiN3t1h9t8xleYBs9Ho27PUdx2lj93Tb6Alu+CvxhtG6vWs0j8I3qDas/YAdWgW+M5j0ZgW+KH7BDEbw5j8D7re/n59gLsAtj8NFo3v7U+mYHT3ZFALbcvO/xztT6Y2/nup00wAUN4KK6PrU+HCh+wK5F8Npk/AV2dQyeqqu53RWwO+bbZV2drP6AXV0FTn4HwK4SQEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBAQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEODVB3Dh1wDsoMVUfTtCuPL7AHbAajTv26k6tAoEdm31Vx1O1T0BBHYwgPem6uuxJBRBYFfit6q+nqqvjMHAro2/1VdTdVDdr5bZCAG222q07n51MO/+fp4zgcBumEbzVnP07lbfiyCwA/H7fjTvyUHow+pOddkYDGzx+Ht5tO6wcRB6Dt6d6oFVILDFq78Ho3VtjsDzKvDv1SWrQGALV3+XRuOenHpZbjxh0fpQ9Nvj31GOxgDbM/p+Wf21H88B/mTcnVd9n1YPcywG2I74LUfTPj3Wuv97v2/R+lzgxxtfiyBwUeM3T7Efj7b9ZKpdPuVFi1HLh9V74yI+KgdcxPhdqj6p/v20Bd3yhBcvqm9a75i8O1aKj0UQuEBj72LE7/OTptnlMy4yR/C/1S+qn2VjBHj943d5TLB/bn3g+cS38panXGweh/9VXa2uGYmB1zR804jf3RG/7zplH2N5hgsvqkcjggfV9bEaXG1cWAyBVxG9NsJ3UP2t+svGtLo6LW7Pa7+6Xd2qrowfcNT6PcIXuS7AWYI3R29+n+9B9VnrT3gcPM8FnzdUm0Xdr25U71dvVXsb318dCyLAi5jvWzA35rD1La2+GCPvwVMa9dID2Ak/5MoYja+Nx73qzZwhBF7covX7eYet72B/bzw+eEaTzuR/Oa/1qsTbTGMAAAAASUVORK5CYII=';
 
 const slides = {
 	title: `---
@@ -71,7 +72,7 @@ const night = { asleep: '23:20', awake: '06:45' };
 
 ---
 
-![A chart](data:image/svg+xml,${encodeURIComponent(chart)})`
+![A chart](${chart})`
 };
 
 const schemes = ['oxocarbon-dark', 'oxocarbon-light'];
@@ -237,7 +238,7 @@ function codeLine(length: number): string {
 
 test.describe('fitting a slide', () => {
 	test('a lone image fills the content area', async ({ page }) => {
-		await show(page, `![A chart](data:image/svg+xml,${encodeURIComponent(chart)})`);
+		await show(page, `![A chart](${chart})`);
 		const box = await page
 			.locator('.slide img')
 			.evaluate((image: HTMLImageElement) => ({

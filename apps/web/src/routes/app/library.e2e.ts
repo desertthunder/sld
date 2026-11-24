@@ -248,7 +248,7 @@ for (const viewport of [
 		]);
 		await menuButton(page, 'Sleep diary').click();
 		const items = page.getByRole('menu', { name: 'More actions for Sleep diary' }).getByRole('menuitem');
-		await expect(items).toHaveText(['Rename', 'Duplicate', 'Export', 'Delete']);
+		await expect(items).toHaveText(['Rename', 'Duplicate', 'Export as markdown', 'Delete']);
 		const all = await items.all();
 		for (const item of all) {
 			await item.scrollIntoViewIfNeeded();
@@ -276,6 +276,10 @@ test('the list works with the keyboard alone', async ({ page }) => {
 	]);
 	// Create deck is disabled while the box is empty, so Tab skips it.
 	await pasteBox(page).focus();
+	await page.keyboard.press('Tab');
+	await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeFocused();
+	await page.keyboard.press('Tab');
+	await expect(page.getByRole('button', { name: 'Export all decks' })).toBeFocused();
 	await page.keyboard.press('Tab');
 	await expect(titles(page).first()).toBeFocused();
 	await page.keyboard.press('Tab');
