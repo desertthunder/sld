@@ -85,7 +85,7 @@ describe('renderSlide', () => {
 	it('falls back to the default layout for an unknown one and warns', async () => {
 		const slide = await renderSlide(lines('---', 'layout: two-column', '---', '# One'));
 		expect(slide.meta.layout).toBe('default');
-		expect(slide.warnings).toEqual([{ kind: 'unknown-layout', value: 'two-column' }]);
+		expect(slide.warnings).toEqual([{ kind: 'unknown-layout', value: 'two-column', line: 2 }]);
 	});
 
 	it('still shows the body of a slide whose YAML does not parse and returns the error', async () => {
@@ -93,7 +93,7 @@ describe('renderSlide', () => {
 		expect(slide.html).toContain('<h1>Body</h1>');
 		expect(slide.meta).toEqual({ layout: 'default', notes: undefined, classes: [] });
 		expect(slide.warnings).toEqual([
-			{ kind: 'invalid-frontmatter', format: 'yaml', message: expect.stringMatching(/\S/) as string }
+			{ kind: 'invalid-frontmatter', format: 'yaml', message: expect.stringMatching(/\S/) as string, line: 2 }
 		]);
 	});
 
@@ -101,7 +101,7 @@ describe('renderSlide', () => {
 		const slide = await renderSlide(lines('+++', 'layout = ', '+++', '# Body'));
 		expect(slide.html).toContain('<h1>Body</h1>');
 		expect(slide.warnings).toEqual([
-			{ kind: 'invalid-frontmatter', format: 'toml', message: expect.stringMatching(/\S/) as string }
+			{ kind: 'invalid-frontmatter', format: 'toml', message: expect.stringMatching(/\S/) as string, line: 2 }
 		]);
 	});
 

@@ -110,3 +110,44 @@ export function listCommand({ key, altKey, ctrlKey, metaKey }: Key): ListCommand
 /** Describes the slide list's keys, for its accessible description. */
 export const listKeysHint =
 	'Up and Down arrows choose a slide. N adds a slide after it, D duplicates it, and Delete removes it.';
+
+const separator = '---';
+
+/** The two parts a split cuts a slide's markdown into. */
+export type SlideParts = { before: string; after: string };
+
+/**
+ * Puts back together the parts `splitAtRule` cut `markdown` into, as they have been edited since. The lines around and
+ * between the parts come back as they were, so joining the parts unedited gives `markdown` again. However the parts
+ * are edited, emptied or filled, the `---` keeps a line of its own and stays a rule.
+ */
+export function joinSplit(markdown: string, { before, after }: SlideParts): (parts: SlideParts) => string {
+	const lines = markdown.split('\n');
+	const first = lines.findIndex((line) => line.trim() !== '');
+	const last = lines.findLastIndex((line) => line.trim() !== '');
+	const start = lines.slice(0, Math.max(first, 0)).join('\n').length + (first > 0 ? 1 : 0);
+	const contentEnd = lines.slice(0, last + 1).join('\n').length;
+	const end = contentEnd - after.length;
+	if (
+		first === -1 ||
+		!markdown.startsWith(before, start) ||
+		!markdown.startsWith(after, end) ||
+		end < start + before.length
+	) {
+		return (parts) => `${parts.before}\n\n${separator}${parts.after === '' ? '' : `\n\n${parts.after}`}`;
+	}
+	const head = markdown.slice(0, start);
+	const between = markdown.slice(start + before.length, end);
+	const tail = markdown.slice(contentEnd);
+	const hasRule = between.split('\n').includes(separator);
+	return (parts) => {
+		// Text typed on the line above would make the rule a setext underline, so an edited part above gets a blank line.
+		const isEdited = parts.before !== before;
+		let gap = isEdited && !/^\n[ \t]*\n/.test(between) ? `\n${between}` : between;
+		// A YAML block that opened the part below carried the rule; it goes back when that block is gone.
+		if (!hasRule && parts.after.split('\n', 1)[0] !== separator) gap += separator;
+		// Nothing followed the rule, so text that does now needs a line of its own.
+		if (!gap.endsWith('\n') && parts.after !== '') gap += '\n\n';
+		return `${head}${parts.before}${gap}${parts.after}${tail}`;
+	};
+}

@@ -13,6 +13,8 @@
 		editorTabKey,
 		editorTabs,
 		indexAfterDelete,
+		joinSplit,
+		type SlideParts,
 		paneLimits,
 		paneWidthsKey,
 		parseEditorTab,
@@ -37,6 +39,7 @@
 	import SchemePicker from '#lib/SchemePicker.svelte';
 	import Slide from '#lib/Slide.svelte';
 	import SlideList from '#lib/SlideList.svelte';
+	import { createSlideJournal, journaledEdits } from '#lib/slide-journal.ts';
 	import { readSlideMeta } from '#lib/slide-meta.ts';
 	import SlidePreview from '#lib/SlidePreview.svelte';
 	import type { Notice } from '#lib/slide-notices.ts';
@@ -81,6 +84,9 @@
 	const aspect = deckAspect(deck.aspect);
 	let notices: readonly Notice[] = $state([]);
 	type SlideItem = { id: string; markdown: string };
+	const journal = createSlideJournal(() => localStorage, deckId);
+	// Typing that a closed tab hadn't stored yet shows at once, and is saved once the editor mounts.
+	const journaled = journaledEdits(() => localStorage, deckId, slides);
 	const editor: {
 		title: string;
 		scheme: string | null;
@@ -95,7 +101,7 @@
 		title,
 		scheme,
 		isPicking: false,
-		slides: slides.map(({ id, markdown }) => ({ id, markdown })),
+		slides: slides.map(({ id, markdown }) => ({ id, markdown: journaled.get(id) ?? markdown })),
 		selected: selectedIndex(page.url.searchParams.get(slideParameter) ?? undefined, slides.length),
 		status: 'saved',
 		announcement: '',
@@ -122,7 +128,82 @@
 	};
 
 	// A change to the slides carries the generation it was made in, so a refresh since drops it, and the list it leaves.
-	type QueuedChange = { change: DeckChange; generation?: number; list?: SlideItem[] };
+	// `first` is written with it in the same batch, such as the part a split leaves in the slide. `isTyped` marks an edit
+	// from the saver, which the journal holds.
+	type QueuedChange = {
+		change: DeckChange;
+		generation?: number;
+		list?: SlideItem[];
+		first?: DeckChange;
+		isTyped?: boolean;
+	};
+
+	// The splits not yet stored, in the order they were made. Until a split is stored, the journal holds the text its
+	// slide had before the cut, with what is typed into either part since put back in, so a tab closed first keeps every
+	// line in the one slide that is stored.
+	type PendingSplit = SlideParts & { id: string; copy: string; join: (parts: SlideParts) => string };
+	const splits: PendingSplit[] = [];
+
+	const textOf = (id: string) => editor.slides.find((slide) => slide.id === id)?.markdown ?? '';
+	const isSplitting = (id: string) => splits.some((split) => split.id === id || split.copy === id);
+
+	/** The stored slide that `id` was cut from by splits not yet stored, or `id` itself. */
+	function splitRoot(id: string): string {
+		let root = id;
+		for (let split = splits.findLast(({ copy }) => copy === root); split;) {
+			root = split.id;
+			split = splits.findLast(({ copy }) => copy === root);
+		}
+		return root;
+	}
+
+	/** The text of `id` with the parts that splits not yet stored cut from it put back, the latest split first. */
+	function joined(id: string): string {
+		let text = textOf(id);
+		for (const split of splits.toReversed()) {
+			if (split.id === id) text = split.join({ before: text, after: joined(split.copy) });
+		}
+		return text;
+	}
+
+	/** Journals the text of slide `id`, or of the slide a split not yet stored cut it from, as it now shows. */
+	function journalSlide(id: string, previous: string) {
+		if (!isSplitting(id)) {
+			journal.record(id, textOf(id), previous);
+			return;
+		}
+		const root = splitRoot(id);
+		const text = joined(root);
+		journal.record(root, text, text);
+	}
+
+	/**
+	 * Journals both parts of each split stored in `batch` on their own, typed over the text the batch stored for them,
+	 * and forgets the split.
+	 */
+	function settleSplits(batch: readonly QueuedChange[], applied: readonly boolean[]) {
+		const storedText = (id: string, otherwise: string) => {
+			const index = batch.findLastIndex(
+				({ change }, index) => applied[index] && change.kind === 'update' && change.id === id
+			);
+			const change = batch[index]?.change;
+			return change?.kind === 'update' ? change.markdown : otherwise;
+		};
+		for (const [index, { change }] of batch.entries()) {
+			if (change.kind !== 'insert' || !applied[index]) continue;
+			const at = splits.findIndex(({ copy }) => copy === change.id);
+			if (at === -1) continue;
+			const [split] = splits.splice(at, 1);
+			for (const [id, base] of [
+				[split!.id, storedText(split!.id, split!.before)],
+				[split!.copy, storedText(split!.copy, split!.after)]
+			] as const) {
+				journal.drop(id);
+				const text = joined(id);
+				if (text !== base) journal.record(id, text, base);
+			}
+		}
+	}
 
 	/** Writes a batch of edits and changes in one transaction, resolving to whether nothing in it was lost. */
 	async function didStoreBatch(entries: SaverEntry<QueuedChange>[]): Promise<boolean> {
@@ -134,14 +215,19 @@
 				continue;
 			}
 			if (entry.kind === 'edit') {
-				batch.push({ change: { kind: 'update', id: entry.id, markdown: entry.markdown } });
+				batch.push({ change: { kind: 'update', id: entry.id, markdown: entry.markdown }, isTyped: true });
 			} else if (entry.change.generation === undefined || entry.change.generation === changes.generation) {
+				if (entry.change.first) batch.push({ change: entry.change.first });
 				batch.push(entry.change);
 			} else {
 				isDropped = true;
 			}
 		}
 		if (batch.length === 0) return !isDropped;
+		for (const { change, isTyped } of batch) {
+			if (isTyped && change.kind === 'update' && !isSplitting(change.id))
+				journal.writing(change.id, change.markdown);
+		}
 		let applied: boolean[];
 		try {
 			applied = await applyDeckChanges(
@@ -157,6 +243,12 @@
 			}
 			throw error;
 		}
+		for (const [index, { change }] of batch.entries()) {
+			if (change.kind !== 'update') continue;
+			if (applied[index]) journal.stored(change.id, change.markdown);
+			else journal.drop(change.id);
+		}
+		settleSplits(batch, applied);
 		const first = applied.indexOf(false);
 		if (first === -1) {
 			const list = batch.findLast(({ list }) => list)?.list;
@@ -172,8 +264,13 @@
 	const saver = createSlideSaver<QueuedChange>({
 		commit: didStoreBatch,
 		onStatus: (status) => (editor.status = status),
-		delay: 400
+		delay: 300
 	});
+
+	// CodeMirror loads only once a deck opens, in its own chunk.
+	const markdownEditor = import('#lib/MarkdownEditor.svelte');
+	const cursor = $state({ label: '' });
+	let markdownPane: { goToLine: (line: number) => void } | undefined = $state();
 
 	const phone = new MediaQuery(`max-width: ${phoneWidth}px`);
 	let body: HTMLElement | undefined = $state();
@@ -217,6 +314,8 @@
 	function show(list: readonly SlideItem[], isRead: boolean) {
 		const selectedId = current.id;
 		const shown = new Map(editor.slides.map(({ id, markdown }) => [id, markdown]));
+		// The changes still waiting are dropped with the list they were made to, splits among them.
+		splits.length = 0;
 		editor.slides = list.map(({ id, markdown }) => ({
 			id,
 			markdown: saver.pending(id) ?? (isRead ? undefined : shown.get(id)) ?? markdown
@@ -253,11 +352,16 @@
 	 * Shows `list` with the slide at `index` selected at once, then writes the change after the writes before it. When
 	 * the write fails, or another tab changed the deck first, the list goes back to what is stored.
 	 */
-	async function change(list: SlideItem[], index: number, message: string, write: DeckChange) {
+	async function change(list: SlideItem[], index: number, message: string, write: DeckChange, first?: DeckChange) {
 		const { generation } = changes;
 		editor.slides = list;
 		select(index);
-		void saver.change({ change: write, generation, list: list.map(({ id, markdown }) => ({ id, markdown })) });
+		void saver.change({
+			change: write,
+			first,
+			generation,
+			list: list.map(({ id, markdown }) => ({ id, markdown }))
+		});
 		await announce(message);
 	}
 
@@ -311,10 +415,41 @@
 		schemeButton?.focus();
 	}
 
-	function edit(event: Event & { currentTarget: HTMLTextAreaElement }) {
-		const { value } = event.currentTarget;
-		current.markdown = value;
-		saver.edit(current.id, value);
+	function edit(id: string, markdown: string) {
+		const slide = editor.slides.find((slide) => slide.id === id);
+		if (slide) {
+			const previous = slide.markdown;
+			slide.markdown = markdown;
+			journalSlide(id, previous);
+		}
+		saver.edit(id, markdown);
+	}
+
+	function choose(index: number, shouldOpen: boolean) {
+		if (index !== editor.selected) void flush();
+		select(index, shouldOpen);
+	}
+
+	/**
+	 * Cuts a slide in two. The part it keeps is written with the new slide, never alone as an edit, so the lines below
+	 * are never lost from the slide before the new slide holds them.
+	 */
+	function split(id: string, { before, after }: { before: string; after: string }) {
+		const from = editor.slides.findIndex((slide) => slide.id === id);
+		if (from === -1) return;
+		const at = from + 1;
+		const copy = crypto.randomUUID();
+		const root = splitRoot(id);
+		const whole = joined(root);
+		splits.push({ id, copy, before, after, join: joinSplit(editor.slides[from]!.markdown, { before, after }) });
+		journal.record(root, whole, whole);
+		return change(
+			editor.slides.toSpliced(from, 1, { id, markdown: before }, { id: copy, markdown: after }),
+			at,
+			`Split slide ${at} into slides ${at} and ${at + 1}.`,
+			{ kind: 'insert', id: copy, position: at, markdown: after },
+			{ kind: 'update', id, markdown: before }
+		);
 	}
 
 	function flush() {
@@ -478,6 +613,8 @@
 
 	onMount(() => {
 		showSelectedInUrl();
+		for (const [id, markdown] of journaled) saver.edit(id, markdown);
+		if (journaled.size > 0) void flush();
 		const onVisibilityChange = () => {
 			if (document.visibilityState === 'hidden') void flush();
 		};
@@ -568,7 +705,7 @@
 				{schemes}
 				selected={editor.selected}
 				announcement={editor.announcement}
-				onselect={select}
+				onselect={choose}
 				onadd={addSlide}
 				onduplicate={duplicateSelected}
 				ondelete={deleteSelected} />
@@ -590,15 +727,25 @@
 			id={paneIds.edit}
 			aria-label="Markdown"
 			{...panel('edit')}>
-			<div class="pane-header"><span>Slide {editor.selected + 1} · markdown</span></div>
-			<!-- TODO: replace the text area with the CodeMirror editor. -->
-			<textarea
-				spellcheck="false"
-				aria-label="Markdown for slide {editor.selected + 1}"
-				value={current.markdown}
-				oninput={edit}
-				onblur={() => void flush()}></textarea>
-			<SlideWarnings {notices} />
+			<div class="pane-header">
+				<span>Slide {editor.selected + 1} · markdown</span><span>{cursor.label}</span>
+			</div>
+			{#await markdownEditor}
+				<div class="editor-loading" aria-busy="true"></div>
+			{:then { default: MarkdownEditor }}
+				<MarkdownEditor
+					bind:this={markdownPane}
+					slideId={current.id}
+					markdown={current.markdown}
+					slideNumber={editor.selected + 1}
+					onchange={edit}
+					onblur={() => void flush()}
+					onsplit={split}
+					onposition={(label) => (cursor.label = label)} />
+			{:catch}
+				<p class="editor-failed" role="alert">The editor didn't load. Reload the page to try again.</p>
+			{/await}
+			<SlideWarnings {notices} ongoto={(line) => markdownPane?.goToLine(line)} />
 		</section>
 		<PaneHandle
 			label="Resize editor and preview"
@@ -729,8 +876,7 @@
 
 	.present:focus-visible,
 	.scheme:focus-visible,
-	.tab:focus-visible,
-	textarea:focus-visible {
+	.tab:focus-visible {
 		outline: 3px solid var(--accent);
 		outline-offset: -3px;
 	}
@@ -773,6 +919,8 @@
 		flex: none;
 		display: flex;
 		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
 		height: 40px;
 		padding: 0 16px;
 		font-size: 13px;
@@ -780,23 +928,14 @@
 		border-bottom: 1px solid var(--border);
 	}
 
-	textarea {
+	.editor-loading {
 		flex: 1;
-		min-height: 0;
-		margin: 0;
-		padding: 20px 24px;
-		border: 0;
-		resize: none;
-		background: var(--bg);
-		color: var(--body);
-		font-family: var(--code-font);
-		font-size: 14px;
-		line-height: 1.75;
-		tab-size: 4;
 	}
 
-	textarea:focus {
-		outline: none;
+	.editor-failed {
+		margin: 0;
+		padding: 20px 24px;
+		color: var(--heading);
 	}
 
 	.tabs.hidden,
@@ -861,10 +1000,6 @@
 		.body > :global([role='separator']),
 		.away {
 			display: none;
-		}
-
-		textarea {
-			padding: 16px;
 		}
 	}
 </style>

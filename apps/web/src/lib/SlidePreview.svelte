@@ -70,7 +70,7 @@
 			{/if}
 		{:else if view.state.failure}
 			<p class="waiting" role="alert">
-				{#each view.state.failure as part, at (at)}
+				{#each view.state.failure.parts as part, at (at)}
 					{#if typeof part === 'string'}{part}{:else}<code>{part.code}</code>{/if}
 				{/each}
 			</p>
