@@ -4,6 +4,7 @@
 	import type { Scheme } from '#lib/scheme-compiler.ts';
 	import { slideClasses } from '#lib/slide-meta.ts';
 	import type { RenderedSlide } from '#lib/slide-render.ts';
+	import { scopeSlideStyles } from '#lib/slide-styles.ts';
 	import Stage from '#lib/Stage.svelte';
 	import { defaultAspect, type Aspect } from '#lib/stage.ts';
 
@@ -23,12 +24,14 @@
 		overflowing?: boolean;
 		overlay?: Snippet;
 	} = $props();
+
+	const scoped = $derived(scopeSlideStyles(slide.html));
 </script>
 
 <Stage {aspect} scheme={schemes.find(({ slug }) => slug === slide.meta.scheme) ?? scheme} bind:overflowing>
-	<!-- Raw HTML in a slide passes through: the markdown is the person's own. -->
+	<!-- Raw HTML in a slide passes through, since the markdown is the person's own, but its styles stay on the slide. -->
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-	<article class={slideClasses(slide.meta)}>{@html slide.html}</article>
+	<article class={slideClasses(slide.meta)} data-slide-scope={scoped.scope}>{@html scoped.html}</article>
 	<!-- Drawn on the stage in its pixels, above the slide, and not measured as the slide's content. -->
 	{@render overlay?.()}
 </Stage>
