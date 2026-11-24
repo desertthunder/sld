@@ -385,7 +385,7 @@ test("a slide's nested at-rules leave the app's colors and fonts alone", async (
 			'  @property --base00 { syntax: "<color>"; inherits: false; initial-value: rgb(255, 0, 0); }',
 			'  @font-face { font-family: "Monaspace Neon"; src: local("Comic Sans MS"); }',
 			'}',
-			'h1 { color: rgb(0, 128, 0); }',
+			'.slide h1 { color: rgb(0, 128, 0); }',
 			'</style>',
 			'',
 			'# Styled'
