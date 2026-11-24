@@ -100,6 +100,7 @@ test.describe('slide styles', () => {
 					await Promise.allSettled([...document.images].map((image) => image.decode()));
 				});
 				await expect(page.locator('.preview')).toHaveScreenshot(`${name}-${scheme}.png`);
+				await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
 			});
 		}
 	}
@@ -151,6 +152,24 @@ test.describe('fitting a slide', () => {
 			}));
 		expect(box).toEqual({ left: 120, top: 104, width: 1680, height: 880 });
 		await expect(page.locator('.frame')).toHaveAttribute('data-overflowing', 'false');
+	});
+
+	test('a paragraph or code block after the first in a list item keeps a gap above it', async ({ page }) => {
+		await show(page, '- Step one\n\n  More about it\n\n  ```ts\n  const step = 1;\n  ```');
+		const gaps = await page
+			.locator('.slide li')
+			.evaluate((item) =>
+				[...item.children]
+					.slice(1)
+					.map(
+						(child) =>
+							(child as HTMLElement).offsetTop -
+							((child.previousElementSibling as HTMLElement).offsetTop +
+								(child.previousElementSibling as HTMLElement).offsetHeight)
+					)
+			);
+		// Offsets round to whole pixels, so an 18 px gap can measure 17.
+		expect(gaps.map((gap) => Math.abs(gap - 18) <= 1)).toEqual([true, true]);
 	});
 
 	test('a slide that runs long shrinks its text to fit, and past the floor stops at it and is flagged', async ({

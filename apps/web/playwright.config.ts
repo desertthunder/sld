@@ -12,12 +12,10 @@ export default defineConfig({
 	timeout: 90_000,
 	forbidOnly: Boolean(process.env.CI),
 	use: { baseURL: `http://localhost:${port}` },
-	// Screenshots are taken in Chromium on Linux, as CI runs, so their names carry neither.
+	// Screenshots are taken in Chromium on Linux, as CI runs, so their names carry neither. Two machines draw the same
+	// slide up to about 140 pixels apart, so the allowance is a few times that and no more.
 	expect: {
-		toHaveScreenshot: {
-			pathTemplate: '{testDir}/{testFileDir}/__screenshots__/{arg}{ext}',
-			maxDiffPixelRatio: 0.002
-		}
+		toHaveScreenshot: { pathTemplate: '{testDir}/{testFileDir}/__screenshots__/{arg}{ext}', maxDiffPixels: 400 }
 	},
 	projects: [
 		{ name: 'chromium', use: { ...devices['Desktop Chrome'] } },
