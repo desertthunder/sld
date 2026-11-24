@@ -505,12 +505,14 @@ test('the line numbers below the split offer stay beside their lines', async ({ 
 				),
 			['.cm-content > .cm-line', '.cm-lineNumbers .cm-gutterElement']
 		);
+	// CodeMirror draws the offer at an estimated height and moves the line numbers in its next measure, before the
+	// frame paints, so they line up once that measure has run.
 	await expect
 		.poll(async () => {
-			const [lines] = await positions();
-			return lines!.length;
+			const [lines, numbers] = await positions();
+			return lines!.length === 7 ? numbers!.map((top, index) => top - lines![index]!) : lines!.length;
 		})
-		.toBe(7);
+		.toEqual([0, 0, 0, 0, 0, 0, 0]);
 	const [lines, numbers] = await positions();
 	expect(numbers).toEqual(lines);
 });
