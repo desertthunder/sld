@@ -277,6 +277,10 @@ test('the list works with the keyboard alone', async ({ page }) => {
 	// Create deck is disabled while the box is empty, so Tab skips it.
 	await pasteBox(page).focus();
 	await page.keyboard.press('Tab');
+	await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeFocused();
+	await page.keyboard.press('Tab');
+	await expect(page.getByRole('button', { name: 'Export all decks' })).toBeFocused();
+	await page.keyboard.press('Tab');
 	await expect(titles(page).first()).toBeFocused();
 	await page.keyboard.press('Tab');
 	await expect(page.getByRole('link', { name: 'Present Reading group' })).toBeFocused();

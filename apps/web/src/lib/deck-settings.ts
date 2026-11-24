@@ -26,3 +26,11 @@ export function presentSettings(stored: unknown): PresentSettings {
 export function settingsFromFrontmatter(data: Record<string, unknown> | undefined): DeckSettings | undefined {
 	return typeof data?.slideNumber === 'boolean' ? { slideNumber: data.slideNumber } : undefined;
 }
+
+/**
+ * The frontmatter fields for a deck's stored `settings`, the reverse of `settingsFromFrontmatter`: only the settings
+ * sld knows, and only those stored with the right type, so an export never writes a setting import would drop.
+ */
+export function settingsFrontmatter(stored: unknown): DeckSettings {
+	return isRecord(stored) && typeof stored.slideNumber === 'boolean' ? { slideNumber: stored.slideNumber } : {};
+}

@@ -11,6 +11,7 @@
 		now,
 		onrename,
 		onduplicate,
+		onexport,
 		ondelete
 	}: {
 		deck: DeckSummary;
@@ -18,6 +19,7 @@
 		now: Date;
 		onrename: (title: string) => void;
 		onduplicate: () => void;
+		onexport: () => void;
 		ondelete: () => void;
 	} = $props();
 
@@ -115,6 +117,11 @@
 		onduplicate();
 	}
 
+	function exportDeck() {
+		closeMenu(true);
+		onexport();
+	}
+
 	function remove() {
 		closeMenu(false);
 		ondelete();
@@ -180,8 +187,7 @@
 					<button type="button" role="menuitem" tabindex="-1" onclick={duplicate}>
 						<span class="i-ri-file-copy-line icon" aria-hidden="true"></span>Duplicate
 					</button>
-					<!-- TODO: export the deck as markdown once export exists. -->
-					<button type="button" role="menuitem" tabindex="-1" aria-disabled="true">
+					<button type="button" role="menuitem" tabindex="-1" onclick={exportDeck}>
 						<span class="i-ri-markdown-line icon" aria-hidden="true"></span>Export
 					</button>
 					<hr />
@@ -403,7 +409,7 @@
 		color: var(--muted);
 	}
 
-	.menu button:hover:not([aria-disabled='true']),
+	.menu button:hover,
 	.menu button:focus-visible {
 		background: var(--surface);
 		color: var(--heading);
@@ -412,12 +418,6 @@
 	.menu button:focus-visible {
 		outline: 2px solid var(--accent);
 		outline-offset: -2px;
-	}
-
-	.menu button[aria-disabled='true'] {
-		color: var(--muted);
-		opacity: 0.6;
-		cursor: not-allowed;
 	}
 
 	.menu .danger,
