@@ -42,7 +42,7 @@ describe('renderSlide', () => {
 			</tbody>
 			</table>
 			<pre class="code-block" data-language="ts" data-label="TypeScript"><code><span class="line"><span class="line-code" data-label="TypeScript"><span class="code-keyword">const</span> deck = <span class="code-function">splitDeck</span>(markdown);</span></span></code></pre>
-			<p><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22160%22%20height%3D%2290%22%3E%3Crect%20width%3D%22160%22%20height%3D%2290%22%20rx%3D%228%22%20fill-opacity%3D%22.25%22%2F%3E%3C%2Fsvg%3E" alt="A 16:9 frame"></p>
+			<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAABaCAYAAAA/xl1SAAABJUlEQVR42u3XsQnDMABE0StcegwVGsCFy+w/VVBQgrEhlS01T/AWOD5CSq5nTVKT7ElecIO9N7Xmz1mSFGPxsNJbu8S3GYdBtnOEbj5m3IS/N59BmOHzJqyGYJLWnt8uU3/HhmAqIyBABAgCRIAgQAQIAkSAIEAECAJEgCBABAgCRIAgQAQIAkSAIEAECAJEgCBABAgCRIAgQAQIAkSACBAEiABBgAgQBIgAQYAIEASIAEGACBAEiABBgAgQBIgAQYAIEASIAEGACBAEiABBgAgQBIgAwQAIEAGCABEgCBABggARIAgQAcJTAe5GYJLWXqohmKS1l9UQTNLa+5xiDAYrOZwlyWYUBtl6czlH6CZkxM13ie941v449Dvmzt9uPb75vucNBaEDQx6UFokAAAAASUVORK5CYII=" alt="A 16:9 frame"></p>
 			"
 		`);
 	});
