@@ -1,7 +1,8 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import type * as DatabaseModule from '#lib/database.ts';
 import type * as DecksModule from '#lib/decks.ts';
 import type * as SlideRenderModule from '#lib/slide-render.ts';
+import { test } from './page-errors.ts';
 
 // The dev server serves the app's modules at their source paths.
 const modules = { database: '/src/lib/database.ts', decks: '/src/lib/decks.ts', render: '/src/lib/slide-render.ts' };
