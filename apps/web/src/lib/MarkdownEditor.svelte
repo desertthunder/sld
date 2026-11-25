@@ -139,9 +139,14 @@
 		font-weight: 600;
 	}
 
-	.markdown-editor > :global(.cm-editor:has(.cm-content:focus-visible)) {
-		outline: 3px solid var(--accent);
-		outline-offset: -3px;
+	/* An outline on the editor would sit under the active line and the gutter, so the ring is a layer above both. */
+	.markdown-editor > :global(.cm-editor:has(.cm-content:focus-visible)::after) {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: 300;
+		pointer-events: none;
+		box-shadow: inset 0 0 0 2px var(--accent);
 	}
 
 	@media (prefers-color-scheme: light) {
