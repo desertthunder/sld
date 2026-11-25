@@ -79,7 +79,7 @@ A link whose address is dropped shows as its text, and an image as its alt text.
 
 ## Style sheet links and popovers
 
-A slide's raw HTML draws on the slide and nowhere else. Wherever sld shows a slide, it drops each `<link rel="stylesheet">` in the slide, and each preload link `as="style"`, so none loads. A popover shows inline where it sits on the slide, as if it had no `popover` attribute, and a button's `popovertarget` does nothing. For content that opens on a click, use `<details>`. The slide's markdown keeps the links and attributes as typed.
+A slide's raw HTML draws on the slide and nowhere else. Wherever sld shows a slide, it drops each `<link rel="stylesheet">` in the slide, and each preload link `as="style"`, so none loads. A popover shows inline where it sits on the slide, as if it had no `popover` attribute, and a button's `popovertarget` does nothing. For content that opens on a click, use `<details>`. A slide's `<noscript>` never shows. A slide whose HTML would parse into different elements once sld has cleaned it, such as a `<style>` the parser moves into MathML, draws empty. The slide's markdown keeps the links and attributes as typed.
 
 ## Landing page headline
 

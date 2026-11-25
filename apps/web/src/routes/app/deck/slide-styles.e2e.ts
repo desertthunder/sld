@@ -612,3 +612,65 @@ test('only style sheet links and popover attributes leave a slide', async ({ pag
 	});
 	expect(result.popovers).toEqual({ html: '<div id="a">A</div><input value="B"><p>C</p>', scope: undefined });
 });
+
+// The parser moves this `<style>` into MathML when it reads the slide's HTML a second time, so its CSS string becomes
+// markup: a link, a popover and its button, and a style sheet that was never scoped.
+const reparsed = lines(
+	'<div><math><mtext><table><mglyph><style>p { content: "<p><link rel=stylesheet href=/hostile.css?reparsed>',
+	'<div popover id=reparsed>Reparsed note</div><button popovertarget=reparsed>Open reparsed</button>',
+	'<style>body { display: none !important; }</style>"; }</style></mglyph></table></mtext></math></div>',
+	'',
+	'# Reparsed'
+);
+
+test("a slide's HTML can't bring back a link, popover or style sheet when it is parsed again", async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const requested = await serveHostileCss(page);
+	const id = await createDeck(page, ['# Plain', reparsed]);
+	await page.goto(`/app/deck/${id}`);
+	await expect(previewSlide(page).locator('h1')).toHaveText('Plain', { timeout: 30_000 });
+	await expect(thumbnails(page)).toHaveCount(2);
+	await expect(thumbnails(page).nth(1).locator('article.slide')).toBeAttached();
+	await page.goto(`/app/deck/${id}/present`);
+	await expect(page.locator('article.slide h1')).toHaveText('Plain', { timeout: 30_000 });
+	await page.keyboard.press('ArrowRight');
+	await expect(page.locator('article.slide h1')).toHaveCount(0);
+	await expect(page.locator('body')).not.toHaveCSS('display', 'none');
+	await page.mouse.move(200, 200);
+	await page.mouse.move(220, 220);
+	await expect(controls(page)).toHaveCSS('opacity', '1');
+	expect(await page.locator('[popover], [popovertarget], article.slide link').count()).toBe(0);
+	expect(requested).toEqual([]);
+	expect(await storedSlides(page, id)).toEqual(['# Plain', reparsed]);
+});
+
+// A `<style>` the parser moves into MathML when it reads the cleaned HTML again, so `inner` becomes markup.
+const confused = (inner: string) =>
+	`<math><mtext><table><mglyph><style>p { content: "${inner}"; }</style></mglyph></table></mtext></math>`;
+
+test("a slide's markup that parses into other elements a second time draws nothing, and its noscript is dropped", async ({
+	page
+}) => {
+	await page.goto('/app');
+	await waitForApp(page);
+	const slides = {
+		link: confused('<p><link rel=stylesheet href=/a.css>'),
+		popover: confused('<p><div popover>A</div>'),
+		style: confused('<p><style>body { display: none; }'),
+		noscript: '<div><noscript><p title="</noscript><link rel=stylesheet href=/a.css>">A</p></noscript>B</div>',
+		kept: '<p>A<link rel="stylesheet" href="/a.css">B</p><svg><foreignObject><div><style>p { color: red; }</style></div></foreignObject></svg>'
+	};
+	const result = await page.evaluate(
+		async ({ url, slides }) => {
+			const { scopeSlideStyles } = (await import(url)) as typeof SlideStylesModule;
+			return Object.fromEntries(Object.entries(slides).map(([name, html]) => [name, scopeSlideStyles(html)]));
+		},
+		{ url: modules.styles, slides }
+	);
+	expect(result.link).toEqual({ html: '', scope: undefined });
+	expect(result.popover).toEqual({ html: '', scope: undefined });
+	expect(result.style).toEqual({ html: '', scope: undefined });
+	expect(result.noscript).toEqual({ html: '<div>B</div>', scope: undefined });
+	expect(result.kept!.html).toMatch(/^<p>AB<\/p><svg><foreignObject><div><style>@scope/);
+	expect(result.kept!.scope).toBeDefined();
+});
