@@ -137,6 +137,23 @@ test('broken frontmatter shows a warning under the editor and keeps the last goo
 	await expect(warnings(page).locator('.icon')).toHaveCount(0);
 });
 
+test('a slide takes the layout and classes its frontmatter names, and keeps its notes off the slide', async ({
+	page
+}) => {
+	const id = await createDeck(page, ['# Hi']);
+	await openDeck(page, id);
+	for (const layout of ['default', 'title', 'center', 'section']) {
+		await editor(page).fill(`---\nlayout: ${layout}\nclass: wide\nnotes: Only for the speaker\n---\n# Hi`);
+		await expect(previewSlide(page)).toHaveClass(new RegExp(String.raw`^slide layout-${layout} wide\b`), {
+			timeout: 30_000
+		});
+		await expect(previewSlide(page).getByRole('heading', { level: 1, name: 'Hi' })).toBeVisible();
+		await expect(previewSlide(page)).not.toContainText('Only for the speaker');
+	}
+	await editor(page).fill('---\nlayout: two-column\n---\n# Hi');
+	await expect(previewSlide(page)).toHaveClass(/^slide layout-default\b/);
+});
+
 test('at phone width the warning shows in the Edit tab', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	const id = await createDeck(page, ['---\nlayout: hero\n---\n# Hero']);
