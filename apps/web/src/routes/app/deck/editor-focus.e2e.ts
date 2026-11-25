@@ -114,3 +114,15 @@ for (const scheme of ['dark', 'light'] as const) {
 		});
 	});
 }
+
+test('in forced colors, a click draws a ring at 3:1 on every edge', async ({ page }) => {
+	await page.emulateMedia({ forcedColors: 'active' });
+	await openSlide(page);
+	await editor(page).click();
+	await moveToThirdLine(page);
+	await expect(editor(page)).toBeFocused();
+	const edges = await edgeContrasts(page, pane(page));
+	for (const edge of edges) {
+		expect(edge.ratio, `${edge.name}: ${edge.ring} on ${edge.inside}`).toBeGreaterThanOrEqual(3);
+	}
+});
