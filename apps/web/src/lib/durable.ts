@@ -51,25 +51,16 @@ export function serializeSyncToFs<T extends Pick<PGlite, 'fs' | 'syncToFs'>>(cli
 }
 
 /**
- * Makes `client` answer each wire protocol message without waiting for the sync to IndexedDB that PGlite runs after it,
- * and starts that sync in the background instead. A tab's PGlite client sends each statement as several messages, and
- * the worker syncs after every one, so one read waited on many whole syncs. Only an explicit `syncToFs()` waits, which
- * is how `writeDurably` makes a write survive.
+ * Makes `client` skip the sync to IndexedDB that PGlite runs after each wire protocol message, so only an explicit
+ * `syncToFs()` syncs, which is how `writeDurably` makes a write survive. A tab's PGlite client sends each statement as
+ * several messages, and the worker synced after every one, so one read waited on many whole syncs. Syncing in the
+ * background instead would let a sync read the files while the next message changes them, and store files from two
+ * moments in IndexedDB.
  */
-export function syncAfterMessagesInBackground<
-	T extends Pick<PGlite, 'execProtocolRaw' | 'execProtocolRawStream' | 'syncToFs'>
->(client: T): T {
-	const syncLater = () => void client.syncToFs().catch(() => {});
+export function syncOnlyWhenAsked<T extends Pick<PGlite, 'execProtocolRaw' | 'execProtocolRawStream'>>(client: T): T {
 	const raw = client.execProtocolRaw.bind(client);
 	const rawStream = client.execProtocolRawStream.bind(client);
-	client.execProtocolRaw = async (message, { syncToFs = true, ...options } = {}) => {
-		const reply = await raw(message, { ...options, syncToFs: false });
-		if (syncToFs) syncLater();
-		return reply;
-	};
-	client.execProtocolRawStream = async (message, { syncToFs = true, ...options }) => {
-		await rawStream(message, { ...options, syncToFs: false });
-		if (syncToFs) syncLater();
-	};
+	client.execProtocolRaw = (message, options) => raw(message, { ...options, syncToFs: false });
+	client.execProtocolRawStream = (message, options) => rawStream(message, { ...options, syncToFs: false });
 	return client;
 }

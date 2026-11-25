@@ -1,7 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { worker } from '@electric-sql/pglite/worker';
 import { migrations } from 'virtual:migrations';
-import { serializeSyncToFs, syncAfterMessagesInBackground } from '#lib/durable.ts';
+import { serializeSyncToFs, syncOnlyWhenAsked } from '#lib/durable.ts';
 import { migrationChannelName, openMigrated } from '#lib/migrate.ts';
 import { openInWorker } from '#lib/open-in-worker.ts';
 
@@ -14,7 +14,7 @@ await worker({
 		openInWorker(
 			() =>
 				openMigrated(
-					async () => syncAfterMessagesInBackground(serializeSyncToFs(await PGlite.create('idb://sld'))),
+					async () => syncOnlyWhenAsked(serializeSyncToFs(await PGlite.create('idb://sld'))),
 					migrations,
 					(update) => progress.postMessage(update)
 				),
