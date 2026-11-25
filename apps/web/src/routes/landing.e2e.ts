@@ -1,14 +1,21 @@
 import { expect, test, type Page } from '@playwright/test';
 import type * as DatabaseModule from '#lib/database.ts';
 import type * as DecksModule from '#lib/decks.ts';
+import type * as IndexCardModule from '#lib/index-card.ts';
 import type { MigrationProgress } from '#lib/migrate.ts';
+import type * as SlideRenderModule from '#lib/slide-render.ts';
 
 declare global {
 	function recordMigration(progress: MigrationProgress): void;
 }
 
 // The dev server serves the app's modules at their source paths.
-const modules = { database: '/src/lib/database.ts', decks: '/src/lib/decks.ts' };
+const modules = {
+	database: '/src/lib/database.ts',
+	decks: '/src/lib/decks.ts',
+	indexCard: '/src/lib/index-card.ts',
+	render: '/src/lib/slide-render.ts'
+};
 
 const pasted = '# Talk\n\nIntro\n\n---\n\n## Middle\n\n- One point\n\n---\n\n## End\n';
 
@@ -58,17 +65,6 @@ test('a note pasted on the landing page opens in /app as one new deck with the s
 	await page.reload();
 	await waitForApp(page);
 	expect(await savedDecks(page)).toEqual(expected);
-});
-
-test('the index cards keep their ruled lines under the slide', async ({ page }) => {
-	await page.goto('/');
-	const stage = page.locator('.fan .face .stage').first();
-	await expect(stage.locator('article.slide')).toBeVisible({ timeout: 30_000 });
-	const transparent = 'rgba(0, 0, 0, 0)';
-	expect(await stage.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(transparent);
-	expect(await stage.evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor)).toBe(
-		transparent
-	);
 });
 
 test('the landing page draws and responds before PGlite has downloaded', async ({ page }) => {
@@ -140,25 +136,225 @@ test('a database one migration behind is migrated from the landing page, leaving
 	expect(await savedDecks(page)).toEqual([]);
 });
 
-test('a slide takes the layout and classes its frontmatter names, and keeps its notes off the slide', async ({
-	page
-}) => {
-	await page.goto('/');
-	const preview = page.getByRole('textbox', { name: 'Live Preview' });
-	const slide = page.locator('.preview-card article.slide');
-	for (const layout of ['default', 'title', 'center', 'section']) {
-		await preview.fill(`---\nlayout: ${layout}\nclass: wide\nnotes: Only for the speaker\n---\n# Hi`);
-		await expect(slide).toHaveClass(new RegExp(String.raw`^slide layout-${layout} wide\b`), { timeout: 30_000 });
-		await expect(slide.getByRole('heading', { level: 1, name: 'Hi' })).toBeVisible();
-		await expect(slide).not.toContainText('Only for the speaker');
+/** Waits until every card on the landing page shows its rendered slide, in loaded fonts. */
+async function waitForCards(page: Page) {
+	const cards = page.locator('.card .index');
+	await expect(cards.first()).toHaveAttribute('data-drawn', '', { timeout: 30_000 });
+	await expect(page.locator('.card .index:not([data-drawn])')).toHaveCount(0);
+	await page.evaluate(async () => {
+		await Promise.all(
+			['600 24px "Hubot Sans Variable"', '400 16px "Mona Sans Variable"', '400 13px "Monaspace Neon"'].map(
+				(font) => document.fonts.load(font)
+			)
+		);
+		await document.fonts.ready;
+	});
+}
+
+/** A CSS length in pixels, such as a computed `font-size`, as a number. */
+const px = (value: string) => Number(value.replace(/px$/, ''));
+
+/** Where a card's parts sit, in pixels from the card's top, measured with the card laid flat. */
+function cardLayout(page: Page, selector: string) {
+	return page.locator(selector).evaluate((card: HTMLElement) => {
+		const style = card.style.cssText;
+		card.style.transition = 'none';
+		card.style.transform = 'none';
+		const cardBox = card.getBoundingClientRect();
+		const part = (name: string) => card.querySelector<HTMLElement>(name)!;
+		const top = (element: Element) => element.getBoundingClientRect().top - cardBox.top;
+		const bottom = (element: Element) => element.getBoundingClientRect().bottom - cardBox.top;
+		const [index, title, number, ruled, lines] = ['.index', '.title', '.number', '.ruled', '.lines'].map((name) =>
+			part(name)
+		);
+		const probe = document.createElement('div');
+		probe.style.height = 'var(--line)';
+		index!.append(probe);
+		const rule = probe.getBoundingClientRect().height;
+		probe.remove();
+		// A zero-size inline block on the baseline marks where each row of text sits.
+		const baselines: number[] = [];
+		for (const row of lines!.querySelectorAll('p')) {
+			const words = row.lastChild!.textContent!.split(' ');
+			row.lastChild!.remove();
+			for (const word of words) {
+				const mark = document.createElement('span');
+				mark.style.cssText = 'display: inline-block; width: 0; height: 0; vertical-align: baseline';
+				const wrapper = document.createElement('span');
+				wrapper.style.whiteSpace = 'nowrap';
+				wrapper.append(mark, word);
+				row.append(wrapper, ' ');
+				const baseline = top(mark);
+				if (baseline < bottom(lines!) && baselines.at(-1) !== baseline) baselines.push(baseline);
+			}
+		}
+		const layout = {
+			rule,
+			ruleTop: top(ruled!) - (part('.band').offsetHeight - part('.band').clientHeight),
+			ruledTop: top(ruled!),
+			ruledBottom: bottom(ruled!),
+			title: {
+				top: top(title!),
+				bottom: bottom(title!),
+				size: getComputedStyle(title!).fontSize,
+				clipped: title!.scrollWidth > title!.clientWidth,
+				overflow: getComputedStyle(title!).textOverflow
+			},
+			number: {
+				right: cardBox.right - number!.getBoundingClientRect().right,
+				top: top(number!),
+				size: getComputedStyle(number!).fontSize,
+				font: getComputedStyle(number!).fontFamily
+			},
+			body: {
+				size: getComputedStyle(lines!).fontSize,
+				bottom: bottom(lines!),
+				clamped: lines!.scrollHeight > lines!.clientHeight + 1,
+				baselines
+			}
+		};
+		card.style.cssText = style;
+		return layout;
+	});
+}
+
+const longNote = `# A heading far too long to fit on one index card at any width at all
+
+${'Body text that runs on past the last ruled line of the card. '.repeat(12)}`;
+
+const schemes = ['dark', 'light'] as const;
+const widths = [1440, 390] as const;
+
+test.describe('index cards', () => {
+	test.skip(({ browserName }) => browserName !== 'chromium', 'The screenshots are Chromium’s.');
+
+	for (const width of widths) {
+		for (const scheme of schemes) {
+			test(`at ${width} px in the ${scheme} scheme, the cards look as pinned`, async ({ page }) => {
+				await page.setViewportSize({ width, height: 900 });
+				await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
+				await page.goto('/');
+				await waitForCards(page);
+				await expect(page.locator('.fan')).toHaveScreenshot(`cards-fan-${width}-${scheme}.png`);
+				await expect(page.locator('.flip')).toHaveScreenshot(`cards-preview-${width}-${scheme}.png`);
+			});
+		}
+
+		test(`at ${width} px, a too-long heading and body end in an ellipsis on the card`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 900 });
+			await page.emulateMedia({ reducedMotion: 'reduce' });
+			await page.goto('/');
+			await waitForCards(page);
+			await noteBox(page).fill(longNote);
+			await expect(page.locator('.fan .card')).toHaveCount(1);
+			await expect(page.locator('.fan .title')).toHaveText(/^A heading far too long/);
+			await expect(page.locator('.fan .lines p')).toHaveCount(1);
+			const layout = await cardLayout(page, '.fan .card');
+			expect(layout.title).toMatchObject({ clipped: true, overflow: 'ellipsis' });
+			expect(layout.body.clamped).toBe(true);
+			expect(layout.body.bottom).toBeLessThanOrEqual(layout.ruledBottom);
+			await expect(page.locator('.fan')).toHaveScreenshot(`cards-long-${width}.png`);
+		});
 	}
-	await preview.fill('---\nlayout: two-column\n---\n# Hi');
-	await expect(slide).toHaveClass(/^slide layout-default\b/);
+
+	for (const width of widths) {
+		test(`at ${width} px, each card's title sits above the rule and its text on the ruled lines`, async ({
+			page
+		}) => {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto('/');
+			await waitForCards(page);
+			const selectors = [1, 2, 3, 4].map((n) => `.fan .card:nth-child(${n})`);
+			for (const selector of [...selectors, '.preview-card']) {
+				const layout = await cardLayout(page, selector);
+				expect(layout.title.bottom, selector).toBeLessThanOrEqual(layout.ruleTop);
+				expect(layout.title.top, selector).toBeGreaterThanOrEqual(0);
+				const { baselines } = layout.body;
+				expect(baselines.length, selector).toBeGreaterThan(0);
+				// Each row's baseline sits just above a ruled line, one row to each line.
+				for (const [row, baseline] of baselines.entries()) {
+					const line = layout.ruledTop + (row + 1) * layout.rule;
+					expect(line - baseline, selector).toBeGreaterThan(0);
+					expect(line - baseline, selector).toBeLessThan(layout.rule * 0.2);
+				}
+				expect(layout.body.bottom, selector).toBeLessThanOrEqual(layout.ruledBottom);
+				expect(layout.number.font, selector).toMatch(/^"?Monaspace Neon/);
+				expect(px(layout.number.size), selector).toBeLessThanOrEqual(13);
+				expect(layout.number.right, selector).toBeLessThan(40);
+				expect(layout.number.top, selector).toBeLessThan(layout.ruleTop);
+				if (width !== 1440) continue;
+				expect(px(layout.title.size), selector).toBeGreaterThanOrEqual(20);
+				expect(px(layout.body.size), selector).toBeGreaterThanOrEqual(14);
+			}
+		});
+	}
 });
 
-test("the slides on the index cards let the card's ruled lines show through", async ({ page }) => {
+test('an index card shows the slide its markdown renders to, and only what the card can show', async ({ page }) => {
 	await page.goto('/');
-	const stage = page.locator('.card .face .stage').first();
-	await expect(stage.locator('article.slide')).toBeVisible({ timeout: 30_000 });
-	await expect(stage).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+	const cards = await page.evaluate(async (urls) => {
+		const { cardText } = (await import(urls.indexCard)) as typeof IndexCardModule;
+		const { renderSlide } = (await import(urls.render)) as typeof SlideRenderModule;
+		const card = async (markdown: string) => {
+			const { html } = await renderSlide(markdown);
+			return cardText(html);
+		};
+		return {
+			plain: await card('Intro text\n\n## Later heading\n\nMore'),
+			blocks: await card(
+				[
+					'---',
+					'notes: Only for the speaker',
+					'---',
+					'# The **pattern**',
+					'',
+					'- Late coffee',
+					'  1. Nested',
+					'',
+					'```ts',
+					'',
+					'const night = 1;',
+					'const day = 2;',
+					'```',
+					'',
+					'![A chart](chart.png)',
+					'',
+					'| a | b |',
+					'| - | - |',
+					'| 1 | 2 |',
+					'',
+					'---',
+					'',
+					'> A quote'
+				].join('\n')
+			)
+		};
+	}, modules);
+	expect(cards.plain).toEqual({
+		title: 'Later heading',
+		lines: [
+			{ kind: 'text', text: 'Intro text' },
+			{ kind: 'text', text: 'More' }
+		]
+	});
+	expect(cards.blocks).toEqual({
+		title: 'The pattern',
+		lines: [
+			{ kind: 'item', text: 'Late coffee', marker: '•' },
+			{ kind: 'item', text: 'Nested', marker: '1.' },
+			{ kind: 'code', text: 'const night = 1;' },
+			{ kind: 'text', text: 'A quote' }
+		]
+	});
+});
+
+test('the Live Preview card follows its markdown and leaves frontmatter off the card', async ({ page }) => {
+	await page.goto('/');
+	const preview = page.getByRole('textbox', { name: 'Live Preview' });
+	const card = page.locator('.preview-card');
+	await expect(card.locator('.index')).toHaveAttribute('data-drawn', '', { timeout: 30_000 });
+	await preview.fill('---\nlayout: center\nnotes: Only for the speaker\n---\n# Hi\n\nThere');
+	await expect(card.locator('.title')).toHaveText('Hi');
+	await expect(card.locator('.lines')).toHaveText('There');
+	await expect(card).not.toContainText('Only for the speaker');
 });

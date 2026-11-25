@@ -76,3 +76,9 @@ A markdown link or image in a slide keeps its address unless it is one of these.
 - Every `data:` address in an image except PNG, JPEG, GIF, WebP and AVIF pictures: `data:image/png`, `data:image/jpeg`, `data:image/gif`, `data:image/webp` and `data:image/avif`. A JPEG labeled `data:image/jpg` is dropped too, and so are BMP and ICO pictures. For an SVG picture, use its file's address, such as `https://example.com/logo.svg`, not `data:image/svg+xml`.
 
 A link whose address is dropped shows as its text, and an image as its alt text. Every other address stays, such as `https://example.com`, `mailto:someone@example.com` or a relative path like `pictures/chart.png`. Raw HTML keeps its addresses as the person typed it, `javascript:` included. Only an imported deck's raw HTML is cleaned, when the deck is imported.
+
+## Landing page cards
+
+The landing page's index cards don't draw a scaled-down slide. Each card sets the slide's first heading in the band above its pink `--rule` line, in the heading face at 600, and writes the slide's other blocks on the ruled lines below, one line of text to each rule and its baseline just above it. List items keep an accent marker, a code block shows its first line in the code face, and images, tables and rules drop out. A heading too long for the band, or text past the last line, ends in an ellipsis. The slide number sits at the top right in muted Monaspace Neon at 12.5 px.
+
+Sizes in this section are CSS pixels, not stage pixels. The grid scales with the card's width: the band is 11% of it and each rule 7%, with floors of 30 and 20 px. Titles stay at 20 px or more and body text at 14 px or more. A card writes six lines, or five or four on a phone's narrower cards.
