@@ -1,6 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import type * as DatabaseModule from '#lib/database.ts';
 import type * as DecksModule from '#lib/decks.ts';
+import { test } from './page-errors.ts';
 
 // The dev server serves the app's modules at their source paths.
 const modules = { database: '/src/lib/database.ts', decks: '/src/lib/decks.ts' };
@@ -68,8 +69,11 @@ async function openTwice(page: Page, slides: string[], search = ''): Promise<{ i
 const withinASecond = { timeout: 1000 };
 
 test.beforeEach(async ({ context }) => {
-	// These tests read each item's number and heading as its text, which a thumbnail would add to.
-	await context.addInitScript(() => localStorage.setItem('sld:slide-list-view', 'headings'));
+	// These tests read each item's number and heading as its text, which a thumbnail would add to. A new tab opens on
+	// `about:blank` first, which has no storage to write.
+	await context.addInitScript(() => {
+		if (location.origin !== 'null') localStorage.setItem('sld:slide-list-view', 'headings');
+	});
 });
 
 test('a slide added, edited, duplicated or deleted in one tab shows in the other within a second', async ({ page }) => {
