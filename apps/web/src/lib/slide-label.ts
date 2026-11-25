@@ -34,11 +34,8 @@ function bodyStart(lines: readonly string[]): number {
 	return end === -1 ? 0 : end + 1;
 }
 
-/**
- * What the slide list calls a slide: the text of its first heading outside fenced code and frontmatter, failing that
- * its first line with text, failing that `Untitled slide`.
- */
-export function slideLabel(markdown: string): string {
+/** A slide's first heading outside fenced code and frontmatter, and its first line with text. */
+function labelParts(markdown: string): { heading?: string; firstLine?: string } {
 	const lines = markdown.replaceAll(/\r\n?/g, '\n').split('\n');
 	let firstLine: string | undefined;
 	let fence: string | undefined;
@@ -61,11 +58,11 @@ export function slideLabel(markdown: string): string {
 		const heading = atxHeading.exec(line);
 		if (heading) {
 			const text = plainText(heading[1] ?? '');
-			if (text) return text;
+			if (text) return { heading: text };
 			previous = undefined;
 			continue;
 		}
-		if (previous !== undefined && setextUnderline.test(line)) return previous;
+		if (previous !== undefined && setextUnderline.test(line)) return { heading: previous };
 		if (thematicBreak.test(line)) {
 			previous = undefined;
 			continue;
@@ -75,5 +72,19 @@ export function slideLabel(markdown: string): string {
 		if (text && firstLine === undefined) firstLine = text;
 		previous = marker ? undefined : text || undefined;
 	}
-	return firstLine ?? untitledSlide;
+	return { firstLine };
+}
+
+/**
+ * What the slide list calls a slide: the text of its first heading outside fenced code and frontmatter, failing that
+ * its first line with text, failing that `Untitled slide`.
+ */
+export function slideLabel(markdown: string): string {
+	const { heading, firstLine } = labelParts(markdown);
+	return heading ?? firstLine ?? untitledSlide;
+}
+
+/** The text of a slide's first heading outside fenced code and frontmatter, if it has one. */
+export function slideHeading(markdown: string): string | undefined {
+	return labelParts(markdown).heading;
 }

@@ -226,11 +226,10 @@ const schemes = ['dark', 'light'] as const;
 const widths = [1440, 390] as const;
 
 test.describe('index cards', () => {
-	test.skip(({ browserName }) => browserName !== 'chromium', 'The screenshots are Chromium’s.');
-
 	for (const width of widths) {
 		for (const scheme of schemes) {
-			test(`at ${width} px in the ${scheme} scheme, the cards look as pinned`, async ({ page }) => {
+			test(`at ${width} px in the ${scheme} scheme, the cards look as pinned`, async ({ page, browserName }) => {
+				test.skip(browserName !== 'chromium', 'The screenshots are Chromium’s.');
 				await page.setViewportSize({ width, height: 900 });
 				await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
 				await page.goto('/');
@@ -240,7 +239,10 @@ test.describe('index cards', () => {
 			});
 		}
 
-		test(`at ${width} px, a too-long heading and body end in an ellipsis on the card`, async ({ page }) => {
+		test(`at ${width} px, a too-long heading and body end in an ellipsis on the card`, async ({
+			page,
+			browserName
+		}) => {
 			await page.setViewportSize({ width, height: 900 });
 			await page.emulateMedia({ reducedMotion: 'reduce' });
 			await page.goto('/');
@@ -253,7 +255,22 @@ test.describe('index cards', () => {
 			expect(layout.title).toMatchObject({ clipped: true, overflow: 'ellipsis' });
 			expect(layout.body.clamped).toBe(true);
 			expect(layout.body.bottom).toBeLessThanOrEqual(layout.ruledBottom);
-			await expect(page.locator('.fan')).toHaveScreenshot(`cards-long-${width}.png`);
+			if (browserName === 'chromium')
+				await expect(page.locator('.fan')).toHaveScreenshot(`cards-long-${width}.png`);
+		});
+
+		test(`at ${width} px, a word too long for a line breaks inside the card`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto('/');
+			await waitForCards(page);
+			await noteBox(page).fill(`# Link\n\nhttps://example.com/${'averylongpathwithnobreaks'.repeat(6)}`);
+			await expect(page.locator('.fan .lines')).toHaveText(/^https:/);
+			const overflow = await page
+				.locator('.fan .card')
+				.evaluate((card) =>
+					[...card.querySelectorAll(':scope .lines p')].map((line) => line.scrollWidth - line.clientWidth)
+				);
+			expect(overflow).toEqual([0]);
 		});
 	}
 
@@ -357,4 +374,27 @@ test('the Live Preview card follows its markdown and leaves frontmatter off the 
 	await expect(card.locator('.title')).toHaveText('Hi');
 	await expect(card.locator('.lines')).toHaveText('There');
 	await expect(card).not.toContainText('Only for the speaker');
+});
+
+test('an index card sets a right-to-left heading and text right to left', async ({ page }) => {
+	await page.goto('/');
+	const card = page.locator('.preview-card');
+	await expect(card.locator('.index')).toHaveAttribute('data-drawn', '', { timeout: 30_000 });
+	await page.getByRole('textbox', { name: 'Live Preview' }).fill('# שלום עולם\n\nמה שלומך היום');
+	await expect(card.locator('.title')).toHaveText('שלום עולם');
+	for (const part of [card.locator('.title'), card.locator('.lines p')]) {
+		expect(await part.evaluate((element) => getComputedStyle(element).direction)).toBe('rtl');
+	}
+});
+
+test('when the renderer does not load, the index cards show their markdown on the lines', async ({ page }) => {
+	await page.route('**/satteri/**', (route) => route.abort());
+	const blocked = page.waitForEvent('requestfailed', (request) => request.url().includes('/satteri/'));
+	await page.goto('/');
+	await blocked;
+	await noteBox(page).fill('# One\n\nFirst point\n\n- A list item');
+	const card = page.locator('.fan .card');
+	await expect(card.locator('.title')).toHaveText('One');
+	await expect(card.locator('.lines p')).toHaveText(['First point', '- A list item']);
+	await expect(card.locator('.index')).not.toHaveAttribute('data-drawn');
 });

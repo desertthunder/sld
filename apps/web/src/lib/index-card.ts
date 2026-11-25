@@ -1,4 +1,5 @@
-import { slideLabel, untitledSlide } from '#lib/slide-label.ts';
+import { slideParts } from '#lib/deck-markdown.ts';
+import { slideHeading } from '#lib/slide-label.ts';
 
 /** One block of a slide as an index card writes it: a paragraph, a list item after its marker, or a line of code. */
 export type CardLine = { kind: 'text' | 'item' | 'code'; text: string; marker?: string };
@@ -65,8 +66,16 @@ export function cardText(html: string): CardText {
 	return { title: flat(heading?.textContent), lines };
 }
 
-/** What an index card shows before the slide is drawn: the label the slide list gives it, and no lines. */
+/**
+ * What an index card shows before the slide is drawn, or when it can't be: the slide's first heading in the band, as
+ * the slide list reads it, and the rest of its markdown as typed on the lines.
+ */
 export function placeholderCard(markdown: string): CardText {
-	const label = slideLabel(markdown);
-	return { title: label === untitledSlide ? '' : label, lines: [] };
+	const title = slideHeading(markdown) ?? '';
+	const source = slideParts(markdown).body.split('\n');
+	const headingLine = title ? source.findIndex((line) => slideHeading(line) === title) : -1;
+	const lines = source
+		.filter((line, index) => index !== headingLine && line.trim())
+		.map((line): CardLine => ({ kind: 'text', text: line.trim() }));
+	return { title, lines };
 }

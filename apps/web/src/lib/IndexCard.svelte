@@ -10,7 +10,7 @@
 		markdown: string;
 		/** Where the slide sits in its deck, such as `2 / 4`. */
 		number: string;
-		/** Whether the markdown renderer has loaded. Until it has, the card shows the slide's label alone. */
+		/** Whether the markdown renderer has loaded. Until it has, the card shows the slide's markdown as typed. */
 		canRender: boolean;
 	} = $props();
 
@@ -37,13 +37,13 @@
 
 <div class="index" data-drawn={view.drawn ? '' : undefined}>
 	<div class="band">
-		<p class="title">{card.title}</p>
+		<p class="title" dir="auto">{card.title}</p>
 		<span class="number">{number}</span>
 	</div>
 	<div class="ruled">
 		<div class="lines">
 			{#each card.lines as line, index (index)}
-				<p class={line.kind}>
+				<p class={line.kind} dir="auto">
 					{#if line.marker}<span class="marker">{line.marker}</span>{/if}{line.text}
 				</p>
 			{/each}
@@ -128,6 +128,7 @@
 		font-size: max(14px, 3.4cqw);
 		line-height: var(--line);
 		color: var(--body);
+		overflow-wrap: anywhere;
 		translate: 0 calc(var(--line) / 2 - 0.5em);
 	}
 

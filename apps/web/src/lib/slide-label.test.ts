@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { slideLabel, untitledSlide } from '#lib/slide-label.ts';
+import { slideHeading, slideLabel, untitledSlide } from '#lib/slide-label.ts';
 
 describe('slideLabel', () => {
 	it.for([
@@ -63,5 +63,13 @@ describe('slideLabel', () => {
 		expect(slideLabel('  \n\n')).toBe(untitledSlide);
 		expect(slideLabel('```\n# only code\n```')).toBe(untitledSlide);
 		expect(untitledSlide).toBe('Untitled slide');
+	});
+});
+
+describe('slideHeading', () => {
+	it('reads the first heading, and nothing on a slide without one', () => {
+		expect(slideHeading('Intro line\n\n## The pattern\n\n# Later')).toBe('The pattern');
+		expect(slideHeading('Why I kept a diary\n===')).toBe('Why I kept a diary');
+		expect(slideHeading('- Late coffee\n\nMore')).toBeUndefined();
 	});
 });
