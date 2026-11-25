@@ -7,6 +7,7 @@
 	import { resolve } from '$app/paths';
 	import '#lib/scheme.css';
 	import { appName } from '#lib/app-info.ts';
+	import AppVersion from '#lib/AppVersion.svelte';
 	import { boot, startBoot } from '#lib/boot.svelte.ts';
 	import { isolate } from '#lib/cross-origin-isolation.ts';
 	import { splitDeck } from '#lib/deck-markdown.ts';
@@ -236,7 +237,10 @@
 				</section>
 			</main>
 
-			<footer class="foot">sld runs entirely in your browser.</footer>
+			<footer class="foot">
+				<span>sld runs entirely in your browser.</span>
+				<AppVersion />
+			</footer>
 		</div>
 	</div>
 </div>
@@ -697,6 +701,11 @@
 	}
 
 	.foot {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px 24px;
 		padding: 32px 0 48px;
 		border-top: 1px solid var(--border);
 		font-size: 15px;
