@@ -12,6 +12,7 @@
 	import { isolate } from '#lib/cross-origin-isolation.ts';
 	import { splitDeck } from '#lib/deck-markdown.ts';
 	import { handOff } from '#lib/handoff.ts';
+	import IndexCard from '#lib/IndexCard.svelte';
 	import { fanSize, fanTransform, sampleDecks, sampleNote, slideCount } from '#lib/landing.ts';
 	import Slide from '#lib/Slide.svelte';
 	import { renderSlide } from '#lib/slide-render.ts';
@@ -128,8 +129,10 @@
 						<div class="fan">
 							{#each dealt as markdown, index (index)}
 								<div class="card" style:transform={fanTransform(index, dealt.length)}>
-									<span class="number">{index + 1} / {slides.length}</span>
-									<div class="face">{@render slide(markdown)}</div>
+									<IndexCard
+										{markdown}
+										number="{index + 1} / {slides.length}"
+										canRender={page.canDrawSlides} />
 								</div>
 							{/each}
 						</div>
@@ -149,8 +152,10 @@
 								spellcheck="false"
 								bind:value={note.preview}></textarea>
 							<div class="card preview-card">
-								<span class="number">2 / {sampleSlides.length}</span>
-								<div class="face">{@render slide(note.preview)}</div>
+								<IndexCard
+									markdown={note.preview}
+									number="2 / {sampleSlides.length}"
+									canRender={page.canDrawSlides} />
 							</div>
 						</div>
 					</div>
@@ -441,7 +446,7 @@
 		height: 460px;
 	}
 
-	/* An index card: a raised surface ruled under one thick line, with the slide drawn on the ruled part. */
+	/* An index card: a raised surface whose ruled face `IndexCard` draws, its grid scaled to the card's width. */
 	.card {
 		position: absolute;
 		top: 0;
@@ -449,9 +454,7 @@
 		width: 78%;
 		aspect-ratio: 16 / 10;
 		box-sizing: border-box;
-		display: flex;
-		flex-direction: column;
-		padding: 59px 0 0;
+		container-type: inline-size;
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		background: var(--surface);
@@ -460,43 +463,6 @@
 			0 18px 40px var(--shadow);
 		transform-origin: 20% 80%;
 		transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-	}
-
-	.card::before {
-		content: '';
-		position: absolute;
-		top: 52px;
-		right: 0;
-		left: 0;
-		height: 3px;
-		background: var(--rule);
-	}
-
-	.number {
-		position: absolute;
-		top: 18px;
-		right: 20px;
-		font-family: var(--code-font);
-		font-size: 12.5px;
-		color: var(--muted);
-	}
-
-	.face {
-		flex: 1;
-		min-height: 0;
-		overflow: hidden;
-		border-radius: 0 0 10px 10px;
-		background-image: repeating-linear-gradient(
-			to bottom,
-			transparent 0,
-			transparent 33px,
-			color-mix(in oklab, var(--border) 60%, transparent) 33px,
-			color-mix(in oklab, var(--border) 60%, transparent) 34px
-		);
-	}
-
-	.face :global(:is(.frame, .stage)) {
-		background: transparent;
 	}
 
 	.source {
@@ -801,7 +767,11 @@
 			height: 300px;
 		}
 
-		.card,
+		/* The fan spreads its cards over a quarter of a card's width, so narrower cards keep the front one on screen. */
+		.card {
+			width: 72%;
+		}
+
 		.flip .card {
 			width: 86%;
 		}

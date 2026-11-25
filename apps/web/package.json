@@ -17,7 +17,8 @@
 		"test": "vitest --run",
 		"e2e": "playwright test",
 		"db:generate": "drizzle-kit generate",
-		"schemes": "node src/compile-schemes.ts"
+		"schemes": "node src/compile-schemes.ts",
+		"icons": "node src/render-icons.ts"
 	},
 	"devDependencies": {
 		"@iconify-json/bi": "^1.2.7",
