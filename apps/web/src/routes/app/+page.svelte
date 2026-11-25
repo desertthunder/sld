@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { appName } from '#lib/app-info.ts';
+	import AppVersion from '#lib/AppVersion.svelte';
 	import type { Database } from '#lib/database.ts';
 	import DeckRow from '#lib/DeckRow.svelte';
 	import type * as DecksModule from '#lib/decks.ts';
@@ -403,6 +404,7 @@
 			{/if}
 		</section>
 	</main>
+	<footer class="foot"><AppVersion /></footer>
 	{#if library.isDragging}
 		<div class="drop" aria-hidden="true">
 			<p><span class="i-ri-markdown-line icon"></span>Drop markdown files to import them as decks</p>
@@ -448,6 +450,13 @@
 		max-width: 960px;
 		margin: 0 auto;
 		padding: 40px 24px 120px;
+	}
+
+	.foot {
+		max-width: 960px;
+		margin: 0 auto;
+		padding: 0 24px 40px;
+		font-size: 15px;
 	}
 
 	.error {
@@ -694,6 +703,10 @@
 	@media (max-width: 640px) {
 		main {
 			padding: 24px 16px 120px;
+		}
+
+		.foot {
+			padding: 0 16px 24px;
 		}
 
 		.head {
