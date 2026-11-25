@@ -548,7 +548,7 @@ test("a slide's popovers show inline and can't cover the app's controls", async 
 	expect(await storedSlides(page, id)).toEqual([popovers, '# Next']);
 });
 
-test("an imported slide's style sheet links never load, and its popovers show inline", async ({ page }) => {
+test("an imported slide's style sheet links are dropped at import, and its popovers show inline", async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	const requested = await serveHostileCss(page);
 	await page.goto('/app');
@@ -562,7 +562,13 @@ test("an imported slide's style sheet links never load, and its popovers show in
 		{ name: 'Linked.md', mimeType: 'text/markdown', buffer: Buffer.from(lines(linked, '', '---', '', popovers)) }
 	]);
 	await expect(page).toHaveURL(/\/app\/deck\/[\da-f-]{36}(\?|$)/, { timeout: 30_000 });
+	const id = /\/app\/deck\/([\da-f-]{36})/.exec(page.url())![1]!;
 	await expect(previewSlide(page).locator('h1')).toHaveText('Linked', { timeout: 30_000 });
+	// Import cleaning keeps no `<link>`, so this slide never reaches the drop at render time that a typed slide's does.
+	const [stored, storedPopovers] = await storedSlides(page, id);
+	expect(stored).not.toContain('<link');
+	expect(stored).toContain('# Linked');
+	expect(storedPopovers).toEqual(popovers);
 	await expect(page.locator('body')).not.toHaveCSS('display', 'none');
 	await expect(page.locator('.cm-editor')).toBeVisible();
 	await expect(thumbnails(page).nth(1).getByText('Popover note')).toBeVisible();
