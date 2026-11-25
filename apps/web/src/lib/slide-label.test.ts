@@ -67,9 +67,18 @@ describe('slideLabel', () => {
 });
 
 describe('slideHeading', () => {
-	it('reads the first heading, and nothing on a slide without one', () => {
-		expect(slideHeading('Intro line\n\n## The pattern\n\n# Later')).toBe('The pattern');
-		expect(slideHeading('Why I kept a diary\n===')).toBe('Why I kept a diary');
+	it('reads the first heading and the lines it takes, and nothing on a slide without one', () => {
+		expect(slideHeading('Intro line\n\n## The pattern\n\n# Later')).toEqual({
+			text: 'The pattern',
+			start: 2,
+			end: 2
+		});
+		expect(slideHeading('Intro\r\n\r\nWhy I kept a diary\r\n===')).toEqual({
+			text: 'Why I kept a diary',
+			start: 2,
+			end: 3
+		});
+		expect(slideHeading('```\n# Not this\n```\n# This')).toEqual({ text: 'This', start: 3, end: 3 });
 		expect(slideHeading('- Late coffee\n\nMore')).toBeUndefined();
 	});
 });

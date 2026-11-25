@@ -344,7 +344,21 @@ test('an index card shows the slide its markdown renders to, and only what the c
 					'',
 					'> A quote'
 				].join('\n')
-			)
+			),
+			unseen: await card(
+				[
+					'# Title <style>h1{color:red}</style>',
+					'',
+					'Text <style>.slide{color:red}</style><script>alert(1)</script> after',
+					'',
+					'<p hidden>Hidden</p>',
+					'',
+					'<svg><style>circle{fill:red}</style><title>Tip</title></svg>',
+					'',
+					'<ol start="abc"><li>First</li></ol>'
+				].join('\n')
+			),
+			long: await card(Array.from({ length: 50 }, (_, index) => `Line ${index}`).join('\n\n'))
 		};
 	}, modules);
 	expect(cards.plain).toEqual({
@@ -363,6 +377,22 @@ test('an index card shows the slide its markdown renders to, and only what the c
 			{ kind: 'text', text: 'A quote' }
 		]
 	});
+	expect(cards.unseen).toEqual({
+		title: 'Title',
+		lines: [
+			{ kind: 'text', text: 'Text after' },
+			{ kind: 'item', text: 'First', marker: '1.' }
+		]
+	});
+	expect(cards.long.lines.map(({ text }) => text)).toEqual([
+		'Line 0',
+		'Line 1',
+		'Line 2',
+		'Line 3',
+		'Line 4',
+		'Line 5',
+		'Line 6'
+	]);
 });
 
 test('the Live Preview card follows its markdown and leaves frontmatter off the card', async ({ page }) => {
@@ -380,11 +410,18 @@ test('an index card sets a right-to-left heading and text right to left', async 
 	await page.goto('/');
 	const card = page.locator('.preview-card');
 	await expect(card.locator('.index')).toHaveAttribute('data-drawn', '', { timeout: 30_000 });
-	await page.getByRole('textbox', { name: 'Live Preview' }).fill('# שלום עולם\n\nמה שלומך היום');
+	await page.getByRole('textbox', { name: 'Live Preview' }).fill('# שלום עולם\n\n- מה שלומך היום');
 	await expect(card.locator('.title')).toHaveText('שלום עולם');
 	for (const part of [card.locator('.title'), card.locator('.lines p')]) {
 		expect(await part.evaluate((element) => getComputedStyle(element).direction)).toBe('rtl');
 	}
+	// The marker sits right of the item's text, with a gap between them.
+	const gap = await card.locator('.lines p').evaluate((item) => {
+		const text = document.createRange();
+		text.selectNodeContents(item.lastChild!);
+		return item.querySelector('.marker')!.getBoundingClientRect().left - text.getBoundingClientRect().right;
+	});
+	expect(gap).toBeGreaterThan(4);
 });
 
 test('when the renderer does not load, the index cards show their markdown on the lines', async ({ page }) => {

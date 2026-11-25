@@ -132,7 +132,7 @@
 		translate: 0 calc(var(--line) / 2 - 0.5em);
 	}
 
-	/* On a phone's narrower cards, the lines' floor of 20 px leaves room for fewer. */
+	/* On a card under 300 px wide, as on a phone or beside the note on a tablet, the lines' floor of 20 px leaves room for fewer. */
 	@container (width < 300px) {
 		.lines {
 			-webkit-line-clamp: 5;
@@ -152,7 +152,7 @@
 	}
 
 	.marker {
-		margin-right: 0.5em;
+		margin-inline-end: 0.5em;
 		color: var(--accent);
 	}
 

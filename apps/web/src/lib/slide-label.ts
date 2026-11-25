@@ -34,12 +34,16 @@ function bodyStart(lines: readonly string[]): number {
 	return end === -1 ? 0 : end + 1;
 }
 
+/** A slide's heading: its text, and the lines it takes, counted from 0 with `\r\n` read as one line break. */
+export type SlideHeading = { text: string; start: number; end: number };
+
 /** A slide's first heading outside fenced code and frontmatter, and its first line with text. */
-function labelParts(markdown: string): { heading?: string; firstLine?: string } {
+function labelParts(markdown: string): { heading?: SlideHeading; firstLine?: string } {
 	const lines = markdown.replaceAll(/\r\n?/g, '\n').split('\n');
 	let firstLine: string | undefined;
 	let fence: string | undefined;
 	let previous: string | undefined;
+	let previousLine = 0;
 	for (let index = bodyStart(lines); index < lines.length; index++) {
 		const line = lines[index]!;
 		const opener = fenceOpener.exec(line)?.[1];
@@ -58,11 +62,13 @@ function labelParts(markdown: string): { heading?: string; firstLine?: string } 
 		const heading = atxHeading.exec(line);
 		if (heading) {
 			const text = plainText(heading[1] ?? '');
-			if (text) return { heading: text };
+			if (text) return { heading: { text, start: index, end: index } };
 			previous = undefined;
 			continue;
 		}
-		if (previous !== undefined && setextUnderline.test(line)) return { heading: previous };
+		if (previous !== undefined && setextUnderline.test(line)) {
+			return { heading: { text: previous, start: previousLine, end: index } };
+		}
 		if (thematicBreak.test(line)) {
 			previous = undefined;
 			continue;
@@ -71,6 +77,7 @@ function labelParts(markdown: string): { heading?: string; firstLine?: string } 
 		const text = plainText(marker ? line.slice(marker.length) : line);
 		if (text && firstLine === undefined) firstLine = text;
 		previous = marker ? undefined : text || undefined;
+		previousLine = index;
 	}
 	return { firstLine };
 }
@@ -81,10 +88,10 @@ function labelParts(markdown: string): { heading?: string; firstLine?: string } 
  */
 export function slideLabel(markdown: string): string {
 	const { heading, firstLine } = labelParts(markdown);
-	return heading ?? firstLine ?? untitledSlide;
+	return heading?.text ?? firstLine ?? untitledSlide;
 }
 
-/** The text of a slide's first heading outside fenced code and frontmatter, if it has one. */
-export function slideHeading(markdown: string): string | undefined {
+/** A slide's first heading outside fenced code and frontmatter, if it has one. */
+export function slideHeading(markdown: string): SlideHeading | undefined {
 	return labelParts(markdown).heading;
 }
