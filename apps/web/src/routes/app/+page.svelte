@@ -449,13 +449,14 @@
 	main {
 		max-width: 960px;
 		margin: 0 auto;
-		padding: 40px 24px 120px;
+		padding: 40px 24px;
 	}
 
 	.foot {
 		max-width: 960px;
 		margin: 0 auto;
-		padding: 0 24px 40px;
+		/* Keeps the version clear of the undo toast when scrolled to the end. */
+		padding: 0 24px 120px;
 		font-size: 15px;
 	}
 
@@ -702,11 +703,11 @@
 
 	@media (max-width: 640px) {
 		main {
-			padding: 24px 16px 120px;
+			padding: 24px 16px;
 		}
 
 		.foot {
-			padding: 0 16px 24px;
+			padding: 0 16px 120px;
 		}
 
 		.head {
