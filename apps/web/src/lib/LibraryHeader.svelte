@@ -5,8 +5,8 @@
 </script>
 
 <header class="bar">
-	<!-- The heading keeps the app's name, while the link inside it names where it goes. -->
-	<h1 class="mark" aria-label={appName}><HomeLink /></h1>
+	<h1 class="name">{appName}</h1>
+	<HomeLink />
 	<nav>
 		<a href={resolve('/app')} aria-current="page">Decks</a>
 	</nav>
@@ -32,8 +32,15 @@
 		border-bottom: 1px solid var(--border);
 	}
 
-	.mark {
+	/* The mark beside the heading links home, so the heading's name stays in words only screen readers see. */
+	.name {
+		position: absolute;
+		width: 1px;
+		height: 1px;
 		margin: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 
 	nav {

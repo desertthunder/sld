@@ -10,6 +10,11 @@ const widths = [1440, 390] as const;
 const appSchemes = ['oxocarbon-dark', 'gruvbox-dark', 'oxocarbon-light', 'catppuccin-latte'] as const;
 
 const heading = (page: Page) => page.getByRole('heading', { level: 1, name: 'sld', exact: true });
+const mark = (page: Page) =>
+	page
+		.getByRole('banner')
+		.getByRole('link', { name: 'sld home', exact: true })
+		.getByRole('img', { name: 'sld', exact: true });
 
 async function loadFonts(page: Page) {
 	await page.evaluate(async () => {
@@ -115,11 +120,11 @@ test.describe('the /app header', () => {
 		}
 	}
 
-	test('its heading reads "sld", with the mark inside it', async ({ page }) => {
+	test('its heading reads "sld", and the mark beside it links home', async ({ page }) => {
 		await page.goto('/app');
 		await expect(heading(page)).toBeVisible({ timeout: 30_000 });
-		await expect(heading(page).getByRole('img', { name: 'sld', exact: true })).toBeVisible();
-		await expect(heading(page)).toHaveAccessibleName('sld');
+		await expect(heading(page)).toHaveText('sld');
+		await expect(mark(page)).toBeVisible();
 	});
 
 	test.describe('drawn large', () => {
@@ -132,7 +137,7 @@ test.describe('the /app header', () => {
 			test.skip(browserName !== 'chromium', 'Only Chromium screenshots elements at this scale.');
 			await page.goto('/app');
 			await expect(heading(page)).toBeVisible({ timeout: 30_000 });
-			const mark = heading(page).locator('svg');
+			const drawn = mark(page);
 			// A color no scheme uses, so a cut-out can only show it by letting the header through.
 			const behind = 'rgb(255, 0, 255)';
 			await page.locator('header.bar').evaluate((header, color) => (header.style.background = color), behind);
@@ -156,7 +161,7 @@ test.describe('the /app header', () => {
 					gap: behind,
 					dash: behind
 				};
-				await expect.poll(() => markPixels(page, mark, points), { message: slug }).toEqual(expected);
+				await expect.poll(() => markPixels(page, drawn, points), { message: slug }).toEqual(expected);
 			}
 		});
 	});

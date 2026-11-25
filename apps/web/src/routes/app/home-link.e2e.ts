@@ -52,9 +52,9 @@ async function storedSlides(page: Page, id: string): Promise<string[] | undefine
 	);
 }
 
-test('the library heading still reads "sld", and the mark inside it links home as "sld home"', async ({ page }) => {
+test('the library heading still reads "sld", and the mark beside it links home as "sld home"', async ({ page }) => {
 	await openLibrary(page);
-	await expect(appHeading(page).getByRole('link')).toHaveAccessibleName('sld home');
+	await expect(appHeading(page)).toHaveText('sld');
 	await expect(homeLink(page)).toHaveAttribute('href', '/');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
 });
@@ -120,4 +120,28 @@ test('the settings header links home with the mark too', async ({ page }) => {
 	await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible({ timeout: 30_000 });
 	await homeLink(page).click();
 	await expectLandingPage(page);
+});
+
+async function expectToolbarFits(page: Page, width: number) {
+	const toolbar = page.getByRole('banner');
+	await expect(toolbar.getByRole('link', { name: 'Decks', exact: true })).toBeVisible();
+	expect(await toolbar.evaluate((header) => header.scrollWidth <= header.clientWidth)).toBe(true);
+	const settings = await toolbar.getByRole('link', { name: 'Settings' }).boundingBox();
+	expect(settings!.x + settings!.width).toBeLessThanOrEqual(width);
+}
+
+test('at 390 px the editor toolbar fits the mark, Settings and some of the deck title', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 800 });
+	const id = await createDeck(page, ['# One']);
+	await openDeck(page, id);
+	await expectToolbarFits(page, 390);
+	const title = page.getByRole('button', { name: 'Rename deck: Talk' }).locator('.text');
+	expect(await title.evaluate((text) => text.getBoundingClientRect().width)).toBeGreaterThan(20);
+});
+
+test('at 320 px the editor toolbar keeps Settings on screen beside the mark', async ({ page }) => {
+	await page.setViewportSize({ width: 320, height: 800 });
+	const id = await createDeck(page, ['# One']);
+	await openDeck(page, id);
+	await expectToolbarFits(page, 320);
 });

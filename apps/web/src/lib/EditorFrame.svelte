@@ -11,7 +11,7 @@
 	<header class="toolbar">
 		<span class="home"><HomeLink /></span>
 		<a class="back" href={resolve('/app')}>
-			<span class="i-ri-arrow-left-s-line icon" aria-hidden="true"></span>Decks
+			<span class="i-ri-arrow-left-s-line icon" aria-hidden="true"></span><span class="label">Decks</span>
 		</a>
 		{@render toolbar?.()}
 		<a
@@ -115,8 +115,22 @@
 			padding: 0 8px 0 4px;
 		}
 
+		.home {
+			padding-left: 4px;
+		}
+
 		.back {
-			padding: 0 8px 0 6px;
+			padding: 0 11px;
+		}
+
+		/* The arrow stands for the link at phone width, so the deck title keeps its room beside the mark. */
+		.label {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
 		}
 	}
 </style>
