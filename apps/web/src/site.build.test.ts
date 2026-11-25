@@ -1,4 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { isolationHeaders } from '#lib/cross-origin-isolation.ts';
 import { parseRewrites } from './pages-redirects.ts';
@@ -7,27 +9,53 @@ import { headersFor, pagesAnswer, parseHeaderRules } from './pages-site.ts';
 // Runs against `apps/web/build`, so build first: `pnpm --filter @sld/web build`.
 const build = new URL('../build/', import.meta.url);
 const files = new Set(
-	readdirSync(build, { recursive: true, encoding: 'utf8' }).map((file) => file.replaceAll('\\', '/'))
+	readdirSync(build, { recursive: true, withFileTypes: true })
+		.filter((entry) => entry.isFile())
+		.map((entry) =>
+			path.relative(fileURLToPath(build), path.join(entry.parentPath, entry.name)).replaceAll('\\', '/')
+		)
 );
 const read = (file: string) => readFileSync(new URL(file, build), 'utf8');
 const rewrites = parseRewrites(read('_redirects'));
 const headerRules = parseHeaderRules(read('_headers'));
+const ruleLines = (text: string) =>
+	text
+		.split('\n')
+		.map((line) => line.trim())
+		.filter((line) => line && !line.startsWith('#'));
 
 describe('the build on Cloudflare Pages', () => {
+	// The model below reads only these forms, so any other rule could change what Pages answers unseen.
+	it('holds only rules the model reads: 200 rewrites, and header rules with no placeholder or detach', () => {
+		expect(rewrites).toHaveLength(ruleLines(read('_redirects')).length);
+		for (const { pattern, headers } of headerRules) {
+			expect(pattern, pattern).toMatch(/^\/[^:]*$/);
+			for (const name of Object.keys(headers)) expect(name, name).not.toMatch(/^!/);
+		}
+	});
+
 	it('serves the landing page at / and the app shell at /app and every path under it', () => {
 		expect(pagesAnswer(files, rewrites, '/')).toEqual({ status: 200, file: 'index.html' });
-		for (const path of ['/app', '/app/', '/app/settings', '/app/deck/x', '/app/deck/x/present', '/app/a/b/c/d'])
-			expect(pagesAnswer(files, rewrites, path), path).toEqual({ status: 200, file: 'app.html' });
+		for (const pathname of ['/app', '/app/', '/app/settings', '/app/deck/x', '/app/deck/x/present', '/app/a/b/c/d'])
+			expect(pagesAnswer(files, rewrites, pathname), pathname).toEqual({ status: 200, file: 'app.html' });
 	});
 
 	it('answers every other path with no file with 404.html and status 404', () => {
-		for (const path of ['/nope', '/nope/', '/nope/deeper/still', '/application', '/apps/deck/x'])
-			expect(pagesAnswer(files, rewrites, path), path).toEqual({ status: 404, file: '404.html' });
+		for (const pathname of [
+			'/nope',
+			'/nope/',
+			'/nope/deeper/still',
+			'/application',
+			'/apps/deck/x',
+			'/_app',
+			'/_app/'
+		])
+			expect(pagesAnswer(files, rewrites, pathname), pathname).toEqual({ status: 404, file: '404.html' });
 	});
 
 	it('makes every path cross-origin isolated, unknown ones included', () => {
-		for (const path of ['/', '/app', '/app/deck/x', '/nope', '/nope/deeper', '/404.html'])
-			expect(headersFor(headerRules, path), path).toMatchObject(isolationHeaders);
+		for (const pathname of ['/', '/app', '/app/deck/x', '/nope', '/nope/deeper', '/404'])
+			expect(headersFor(headerRules, pathname), pathname).toMatchObject(isolationHeaders);
 	});
 });
 
