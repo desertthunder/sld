@@ -49,3 +49,27 @@ export function serializeSyncToFs<T extends Pick<PGlite, 'fs' | 'syncToFs'>>(cli
 	client.syncToFs = serializeSyncs(() => fs.syncToFs());
 	return client;
 }
+
+/**
+ * Makes `client` answer each wire protocol message without waiting for the sync to IndexedDB that PGlite runs after it,
+ * and starts that sync in the background instead. A tab's PGlite client sends each statement as several messages, and
+ * the worker syncs after every one, so one read waited on many whole syncs. Only an explicit `syncToFs()` waits, which
+ * is how `writeDurably` makes a write survive.
+ */
+export function syncAfterMessagesInBackground<
+	T extends Pick<PGlite, 'execProtocolRaw' | 'execProtocolRawStream' | 'syncToFs'>
+>(client: T): T {
+	const syncLater = () => void client.syncToFs().catch(() => {});
+	const raw = client.execProtocolRaw.bind(client);
+	const rawStream = client.execProtocolRawStream.bind(client);
+	client.execProtocolRaw = async (message, { syncToFs = true, ...options } = {}) => {
+		const reply = await raw(message, { ...options, syncToFs: false });
+		if (syncToFs) syncLater();
+		return reply;
+	};
+	client.execProtocolRawStream = async (message, { syncToFs = true, ...options }) => {
+		await rawStream(message, { ...options, syncToFs: false });
+		if (syncToFs) syncLater();
+	};
+	return client;
+}

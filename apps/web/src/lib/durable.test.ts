@@ -1,6 +1,6 @@
-import { PGlite } from '@electric-sql/pglite';
+import { PGlite, protocol } from '@electric-sql/pglite';
 import { describe, expect, it, vi } from 'vitest';
-import { serializeSyncs, serializeSyncToFs } from '#lib/durable.ts';
+import { serializeSyncs, serializeSyncToFs, syncAfterMessagesInBackground } from '#lib/durable.ts';
 
 function controlledSync() {
 	const runs: PromiseWithResolvers<void>[] = [];
@@ -131,6 +131,54 @@ describe('serializeSyncToFs', { timeout: 30_000 }, () => {
 		await Promise.all([running, waiting]);
 		await vi.waitFor(() => expect(query.isSettled).toBe(true));
 		expect(fsSync).toHaveBeenCalledTimes(2);
+		await client.close();
+	});
+});
+
+/** An in-memory client whose syncs wait until `release` is called. */
+async function heldClient() {
+	const client = await PGlite.create();
+	const { fs } = client;
+	const syncFiles = fs!.syncToFs.bind(fs);
+	const held = Promise.withResolvers<void>();
+	const fsSync = vi.spyOn(fs!, 'syncToFs').mockImplementation(async () => {
+		await held.promise;
+		await syncFiles();
+	});
+	syncAfterMessagesInBackground(serializeSyncToFs(client));
+	return { client, fsSync, release: () => held.resolve() };
+}
+
+describe('syncAfterMessagesInBackground', { timeout: 30_000 }, () => {
+	// The database worker passes on a tab's message with no options, so PGlite would sync after it.
+	it('answers a message without waiting for the sync it starts', async () => {
+		const { client, fsSync, release } = await heldClient();
+		const results = await client.execProtocolStream(protocol.serialize.query('select 1 as one'));
+		expect(results).not.toHaveLength(0);
+		expect(fsSync).toHaveBeenCalledOnce();
+		await client.execProtocolRawStream(protocol.serialize.query('select 2'), { onRawData: () => {} });
+		await client.execProtocolRaw(protocol.serialize.query('select 3'));
+		release();
+		await client.close();
+	});
+
+	it('still makes an explicit sync wait until IndexedDB holds the write before it', async () => {
+		const { client, fsSync, release } = await heldClient();
+		await client.execProtocolStream(protocol.serialize.query('create table t (n int); insert into t values (1)'));
+		const synced = settled(client.syncToFs());
+		await tick();
+		expect(synced.isSettled).toBe(false);
+		release();
+		await vi.waitFor(() => expect(synced.isSettled).toBe(true));
+		expect(fsSync).toHaveBeenCalledTimes(2);
+		await client.close();
+	});
+
+	it('starts no sync after a message that asks for none', async () => {
+		const { client, fsSync, release } = await heldClient();
+		await client.execProtocolRaw(protocol.serialize.query('select 1'), { syncToFs: false });
+		expect(fsSync).not.toHaveBeenCalled();
+		release();
 		await client.close();
 	});
 });
