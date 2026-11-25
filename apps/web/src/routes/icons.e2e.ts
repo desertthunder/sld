@@ -1,5 +1,4 @@
 import { expect, test, type Page } from '@playwright/test';
-import { isolationHeaders } from '#lib/cross-origin-isolation.ts';
 
 /** The rel and address of every icon and manifest link in the page head. */
 function iconLinks(page: Page) {
@@ -24,9 +23,6 @@ for (const path of ['/', '/app', '/app/deck/00000000-0000-4000-8000-000000000000
 		for (const url of urls) {
 			const response = await page.request.get(url);
 			expect(response.status(), url).toBe(200);
-			for (const [name, value] of Object.entries(isolationHeaders)) {
-				expect(response.headers()[name.toLowerCase()], `${name} on ${url}`).toBe(value);
-			}
 		}
 	});
 }

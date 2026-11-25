@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 
 const staticFile = (name: string) => readFileSync(new URL(`../static/${name}`, import.meta.url));
@@ -7,6 +8,47 @@ const staticFile = (name: string) => readFileSync(new URL(`../static/${name}`, i
 function pngSize(png: Buffer): [number, number] {
 	expect(png.subarray(1, 4).toString('latin1')).toBe('PNG');
 	return [png.readUInt32BE(16), png.readUInt32BE(20)];
+}
+
+/** The PNG images an ICO file holds, in directory order, checking each entry's width and height. */
+function icoFrames(ico: Buffer): Buffer[] {
+	expect(ico.readUInt16LE(2)).toBe(1);
+	return Array.from({ length: ico.readUInt16LE(4) }, (_, index) => {
+		const entry = 6 + 16 * index;
+		const offset = ico.readUInt32LE(entry + 12);
+		const png = ico.subarray(offset, offset + ico.readUInt32LE(entry + 8));
+		expect([ico.readUInt8(entry), ico.readUInt8(entry + 1)]).toEqual(pngSize(png));
+		return png;
+	});
+}
+
+/** The `#rrggbb` color of each pixel in an 8-bit RGBA PNG, row by row. */
+function pngColors(png: Buffer): string[][] {
+	const [width, height] = pngSize(png);
+	expect([png.readUInt8(24), png.readUInt8(25)]).toEqual([8, 6]);
+	const chunks: Buffer[] = [];
+	for (let at = 8; at < png.length; at += 12 + png.readUInt32BE(at)) {
+		if (png.toString('latin1', at + 4, at + 8) === 'IDAT')
+			chunks.push(png.subarray(at + 8, at + 8 + png.readUInt32BE(at)));
+	}
+	const data = inflateSync(Buffer.concat(chunks));
+	const stride = width * 4;
+	let previous = Buffer.alloc(stride);
+	return Array.from({ length: height }, (_, y) => {
+		const filter = data[y * (stride + 1)];
+		const row = Buffer.from(data.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)));
+		for (let x = 0; x < stride; x++) {
+			const left = x < 4 ? 0 : row[x - 4];
+			const up = previous[x];
+			const upLeft = x < 4 ? 0 : previous[x - 4];
+			const guess = left + up - upLeft;
+			// A stable sort keeps the order left, up, upper left among ties, as the Paeth filter requires.
+			const [paeth] = [left, up, upLeft].toSorted((a, b) => Math.abs(guess - a) - Math.abs(guess - b));
+			row[x] += [0, left, up, (left + up) >> 1, paeth][filter];
+		}
+		previous = row;
+		return Array.from({ length: width }, (_, x) => `#${row.subarray(x * 4, x * 4 + 3).toString('hex')}`);
+	});
 }
 
 describe('manifest.webmanifest', () => {
@@ -51,21 +93,17 @@ describe('manifest.webmanifest', () => {
 });
 
 describe('favicon.ico', () => {
+	const frames = icoFrames(staticFile('favicon.ico'));
+
 	it('holds a 16 and a 32 px PNG', () => {
-		const ico = staticFile('favicon.ico');
-		expect(ico.readUInt16LE(2)).toBe(1);
-		const count = ico.readUInt16LE(4);
-		const sizes = Array.from({ length: count }, (_, index) => {
-			const entry = 6 + 16 * index;
-			const png = ico.subarray(
-				ico.readUInt32LE(entry + 12),
-				ico.readUInt32LE(entry + 12) + ico.readUInt32LE(entry + 8)
-			);
-			const [width, height] = pngSize(png);
-			expect([ico.readUInt8(entry), ico.readUInt8(entry + 1)]).toEqual([width, height]);
-			return width;
-		});
-		expect(sizes).toEqual([16, 32]);
+		expect(frames.map((png) => pngSize(png)[0])).toEqual([16, 32]);
+	});
+
+	it('draws the 16 px frame as the front slide and its three dashes on whole pixels', () => {
+		const tile = '#1b1e2b';
+		const slide = '#37f499';
+		const middleRow = pngColors(frames[0])[7].map((color) => ({ [tile]: '.', [slide]: '#' })[color] ?? '?');
+		expect(middleRow.join('')).toBe('..#...#...#...#.');
 	});
 });
 
