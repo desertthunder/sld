@@ -1,9 +1,9 @@
 # Runs release-please in one of two ways. Run by hand from `main` (Actions ->
 # Release -> Run workflow), it opens the release pull request, or refreshes it
 # with the commits since the last release, and tags nothing. On a push to
-# `main`, it tags the merge commit `vX.Y.Z` and publishes a GitHub Release with
-# the notes when the push merges the release pull request, and otherwise does
-# nothing. A push leaves the release pull request alone because each update
+# `main`, it tags the merge commit of any merged release pull request not yet
+# tagged `vX.Y.Z` and publishes a GitHub Release with the notes, and otherwise
+# does nothing. A push leaves the release pull request alone because each update
 # force-pushes its branch, which would start a full `ci` run on a pull request
 # that waits until Owais wants a release.
 #
