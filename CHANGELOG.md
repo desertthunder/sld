@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.1](https://github.com/desertthunder/sld/compare/v0.1.0...v0.1.1) (2026-11-25)
+
+
+### Features
+
+* **web:** add the sld favicon and app icons (SLD-96) ([#37](https://github.com/desertthunder/sld/issues/37)) ([172bc4d](https://github.com/desertthunder/sld/commit/172bc4d6680eefa17e35d9c78e88cd215860ff41))
+* **web:** show a 404 page for unknown paths (SLD-101) ([#46](https://github.com/desertthunder/sld/issues/46)) ([51508d7](https://github.com/desertthunder/sld/commit/51508d75c8ef0350468bbdc8ceaf28f63694b479))
+* **web:** show the sld mark in the landing page and app headers (SLD-106) ([#44](https://github.com/desertthunder/sld/issues/44)) ([4f5227b](https://github.com/desertthunder/sld/commit/4f5227b7ec4f2f58cb84c9a434f08e13b912da2c))
+* **web:** show the version and commit in the footer (SLD-100) ([#40](https://github.com/desertthunder/sld/issues/40)) ([8b11a5e](https://github.com/desertthunder/sld/commit/8b11a5ed19c5b5369d7cf6f7a59e35c47f93ae45))
+
+
+### Bug Fixes
+
+* **web:** quiet the editor focus ring and keep the active line under it (SLD-102) ([#45](https://github.com/desertthunder/sld/issues/45)) ([213b98e](https://github.com/desertthunder/sld/commit/213b98e9356961e2e9f2d0c890460229ab9b68e8))
+* **web:** set the landing headline on one line at desktop widths (SLD-104) ([#43](https://github.com/desertthunder/sld/issues/43)) ([9571608](https://github.com/desertthunder/sld/commit/957160839280b4da15997bff83154d502a519d09))
+* **web:** set the landing page's index cards on their ruled lines (SLD-78) ([#38](https://github.com/desertthunder/sld/issues/38)) ([d98ec9d](https://github.com/desertthunder/sld/commit/d98ec9d66d2c3bcd674326b9c88c5a2d9ac23fbc))
+* **web:** stop the save status from writing state during a flush (SLD-95) ([#41](https://github.com/desertthunder/sld/issues/41)) ([1666632](https://github.com/desertthunder/sld/commit/166663279a42e32109c1ffe582c42283b6c7a936))
+
 ## 0.1.0 (2026-11-25)
 
 
