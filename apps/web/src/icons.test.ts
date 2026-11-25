@@ -9,14 +9,12 @@ function pngSize(png: Buffer): [number, number] {
 	return [png.readUInt32BE(16), png.readUInt32BE(20)];
 }
 
-type ManifestIcon = { src: string; sizes: string; type: string; purpose: string };
-
 describe('manifest.webmanifest', () => {
 	const manifest = JSON.parse(staticFile('manifest.webmanifest').toString('utf8')) as {
 		name: string;
 		background_color: string;
 		theme_color: string;
-		icons: ManifestIcon[];
+		icons: { src: string; sizes: string; type: string; purpose: string }[];
 	};
 
 	it('names the app and gives the brand colors', () => {
@@ -27,7 +25,7 @@ describe('manifest.webmanifest', () => {
 
 	it('offers the 192 and 512 px icons both as they are and as maskable', () => {
 		const offered = manifest.icons.map(({ sizes, purpose, type }) => `${sizes} ${purpose} ${type}`);
-		expect(offered.toSorted()).toEqual([
+		expect(offered.toSorted((a, b) => a.localeCompare(b))).toEqual([
 			'192x192 any image/png',
 			'192x192 maskable image/png',
 			'512x512 any image/png',
@@ -38,7 +36,8 @@ describe('manifest.webmanifest', () => {
 	it('points each icon at a PNG of the size it claims', () => {
 		for (const { src, sizes } of manifest.icons) {
 			expect(src).toMatch(/^\/[\w-]+\.png$/);
-			expect(pngSize(staticFile(src.slice(1))).join('x')).toBe(sizes);
+			const [width, height] = pngSize(staticFile(src.slice(1)));
+			expect(`${width}x${height}`).toBe(sizes);
 		}
 	});
 
