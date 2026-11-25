@@ -31,7 +31,9 @@ permissions: {}
 
 # One run at a time per trigger, and never cancel one halfway through tagging.
 # GitHub keeps only the newest waiting run in a group, so runs by hand get a
-# group of their own: one can't take the place of a push waiting to tag.
+# group of their own: one can't take the place of a push waiting to tag. A run
+# by hand can then overlap the push that merges the release pull request, and
+# open a stale copy of it, so docs/setup.md says to let it finish first.
 concurrency:
   group: release-${{ github.event_name }}
   cancel-in-progress: false
