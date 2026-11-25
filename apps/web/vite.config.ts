@@ -3,6 +3,7 @@ import UnoCSS from 'unocss/vite';
 import { fileURLToPath } from 'node:url';
 import type { Connect, Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
+import { buildVersion, gitHead } from './src/build-version.ts';
 import { isolationHeaders } from './src/lib/cross-origin-isolation.ts';
 import { migrationsPlugin } from './src/lib/migrations-plugin.ts';
 import { pagesRedirects } from './src/pages-redirects.ts';
@@ -21,11 +22,23 @@ const crossOriginIsolation: Plugin = {
 
 const migrations = () => migrationsPlugin(fileURLToPath(new URL('drizzle', import.meta.url)));
 
+const version = buildVersion(process.env, () => gitHead(fileURLToPath(new URL('../..', import.meta.url))));
+
 export default defineConfig({
+	define: { __APP_VERSION__: JSON.stringify(version) },
 	plugins: [crossOriginIsolation, UnoCSS(), sveltekit(), migrations(), pagesRedirects()],
 	// Pre-bundling breaks PGlite's relative URLs to its WebAssembly and data files, and Sätteri's URL to its thread
 	// worker.
 	optimizeDeps: { exclude: ['@electric-sql/pglite', 'satteri'] },
 	worker: { format: 'es', plugins: () => [migrations()] },
-	test: { include: ['src/**/*.{test,spec}.ts'] }
+	// The build project reads `build/`, so it runs after `vite build`, apart from the unit tests.
+	test: {
+		projects: [
+			{
+				extends: true,
+				test: { name: 'unit', include: ['src/**/*.{test,spec}.ts'], exclude: ['src/**/*.build.test.ts'] }
+			},
+			{ extends: true, test: { name: 'build', include: ['src/**/*.build.test.ts'] } }
+		]
+	}
 });

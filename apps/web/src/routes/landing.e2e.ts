@@ -154,6 +154,62 @@ async function waitForCards(page: Page) {
 /** A CSS length in pixels, such as a computed `font-size`, as a number. */
 const px = (value: string) => Number(value.replace(/px$/, ''));
 
+const schemes = ['dark', 'light'] as const;
+
+test.describe('headline', () => {
+	for (const width of [1280, 1440, 390] as const) {
+		for (const scheme of schemes) {
+			test(`at ${width} px in the ${scheme} scheme, the headline sits as pinned`, async ({
+				page,
+				browserName
+			}) => {
+				await page.setViewportSize({ width, height: 900 });
+				await page.emulateMedia({ colorScheme: scheme });
+				await page.goto('/');
+				await page.evaluate(async () => {
+					await Promise.all(
+						['650 72px "Hubot Sans Variable"', '400 21px "Mona Sans Variable"'].map((font) =>
+							document.fonts.load(font)
+						)
+					);
+					await document.fonts.ready;
+				});
+				const headline = page.getByRole('heading', { level: 1, name: 'Easy slides from markdown' });
+				const measured = await headline.evaluate((heading) => {
+					const { fontSize, fontWeight, letterSpacing, lineHeight } = getComputedStyle(heading);
+					const box = heading.getBoundingClientRect();
+					const lede = heading.nextElementSibling!.getBoundingClientRect();
+					return {
+						style: { fontSize, fontWeight, letterSpacing, lineHeight },
+						height: box.height,
+						ledeBelow: lede.top >= box.bottom,
+						overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+						clip: {
+							x: 0,
+							y: box.top + window.scrollY,
+							width: window.innerWidth,
+							height: lede.bottom - box.top
+						}
+					};
+				});
+				const size = px(measured.style.fontSize);
+				const lineHeight = px(measured.style.lineHeight);
+				expect(measured).toMatchObject({ ledeBelow: true, overflow: 0, style: { fontWeight: '650' } });
+				expect(lineHeight / size).toBe(1);
+				expect(px(measured.style.letterSpacing) / size).toBeCloseTo(-0.035, 3);
+				const lines = Math.round(measured.height / lineHeight);
+				if (width === 390) {
+					expect(lines).toBeGreaterThan(1);
+				} else {
+					expect({ lines, size }).toEqual({ lines: 1, size: 72 });
+				}
+				if (browserName === 'chromium')
+					await expect(page).toHaveScreenshot(`headline-${width}-${scheme}.png`, { clip: measured.clip });
+			});
+		}
+	}
+});
+
 /** Where a card's parts sit, in pixels from the card's top, measured with the card laid flat. */
 function cardLayout(page: Page, selector: string) {
 	return page.locator(selector).evaluate((card: HTMLElement) => {
@@ -222,7 +278,6 @@ const longNote = `# A heading far too long to fit on one index card at any width
 
 ${'Body text that runs on past the last ruled line of the card. '.repeat(12)}`;
 
-const schemes = ['dark', 'light'] as const;
 const widths = [1440, 390] as const;
 
 test.describe('index cards', () => {

@@ -1,6 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import type * as DatabaseModule from '#lib/database.ts';
 import type * as DecksModule from '#lib/decks.ts';
+import { test } from './deck/page-errors.ts';
 
 // The dev server serves the app's modules at their source paths.
 const modules = { database: '/src/lib/database.ts', decks: '/src/lib/decks.ts' };
@@ -399,4 +400,19 @@ test('decks that fail to load say so, and the list stops waiting', async ({ page
 	await waitForApp(page);
 	await expect(page.getByRole('alert')).toContainText("Your decks didn't load:");
 	await expect(page.getByRole('region', { name: 'Library' })).not.toHaveAttribute('aria-busy', 'true');
+});
+
+test('the undo toast leaves the footer readable at the end of a narrow library', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 600 });
+	await createDecks(
+		page,
+		Array.from({ length: 8 }, (_, index) => ({ title: `Deck ${index + 1}`, slides: ['# One'] }))
+	);
+	await menuButton(page, 'Deck 1').click();
+	await menuItem(page, 'Delete').click();
+	await expect(page.getByRole('status')).toContainText('Deleted “Deck 1”');
+	await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+	const version = await page.getByRole('contentinfo').locator('.version').boundingBox();
+	const toast = await page.getByRole('status').locator('.toast').boundingBox();
+	expect(version!.y + version!.height).toBeLessThanOrEqual(toast!.y);
 });

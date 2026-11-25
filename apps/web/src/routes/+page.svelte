@@ -7,11 +7,13 @@
 	import { resolve } from '$app/paths';
 	import '#lib/scheme.css';
 	import { appName } from '#lib/app-info.ts';
+	import AppVersion from '#lib/AppVersion.svelte';
 	import { boot, startBoot } from '#lib/boot.svelte.ts';
 	import { isolate } from '#lib/cross-origin-isolation.ts';
 	import { splitDeck } from '#lib/deck-markdown.ts';
 	import { handOff } from '#lib/handoff.ts';
 	import IndexCard from '#lib/IndexCard.svelte';
+	import Mark from '#lib/Mark.svelte';
 	import { fanSize, fanTransform, sampleDecks, sampleNote, slideCount } from '#lib/landing.ts';
 	import Slide from '#lib/Slide.svelte';
 	import { renderSlide } from '#lib/slide-render.ts';
@@ -91,7 +93,7 @@
 	<div class="landing">
 		<div class="wrap">
 			<header class="nav">
-				<a class="mark" href="#top">{appName}</a>
+				<a class="mark" href="#top"><Mark colors="brand" size={36} /></a>
 				<div class="nav-end">
 					<span class="status" role="status">
 						{#if status}
@@ -236,7 +238,10 @@
 				</section>
 			</main>
 
-			<footer class="foot">sld runs entirely in your browser.</footer>
+			<footer class="foot">
+				<span>sld runs entirely in your browser.</span>
+				<AppVersion />
+			</footer>
 		</div>
 	</div>
 </div>
@@ -284,12 +289,7 @@
 	}
 
 	.mark {
-		font-family: var(--display-font);
-		font-weight: 700;
-		font-size: 30px;
-		letter-spacing: -0.03em;
-		color: var(--heading);
-		text-decoration: none;
+		border-radius: 8px;
 	}
 
 	.nav-end {
@@ -369,13 +369,12 @@
 	}
 
 	h1 {
-		max-width: 11ch;
 		margin: 0;
 		font-family: var(--display-font);
-		font-weight: 500;
-		font-size: clamp(46px, 7.4vw, 108px);
-		line-height: 0.98;
-		letter-spacing: -0.03em;
+		font-weight: 650;
+		font-size: clamp(40px, 5.625vw, 72px);
+		line-height: 1;
+		letter-spacing: -0.035em;
 		color: var(--heading);
 		text-wrap: balance;
 	}
@@ -697,6 +696,11 @@
 	}
 
 	.foot {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px 24px;
 		padding: 32px 0 48px;
 		border-top: 1px solid var(--border);
 		font-size: 15px;

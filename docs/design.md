@@ -77,6 +77,10 @@ A markdown link or image in a slide keeps its address unless it is one of these.
 
 A link whose address is dropped shows as its text, and an image as its alt text. Every other address stays, such as `https://example.com`, `mailto:someone@example.com` or a relative path like `pictures/chart.png`. Raw HTML keeps its addresses as the person typed it, `javascript:` included. Only an imported deck's raw HTML is cleaned, when the deck is imported.
 
+## Landing page headline
+
+The landing page's headline, "Easy slides from markdown", sits on one line at 1280 px and wider, in the heading face at weight 650, 72 px, with `letter-spacing: -0.035em` and `line-height: 1`, and the subtitle under it. Below 1280 px it shrinks with the window, to 40 px at most phone widths, where it wraps onto two lines. Sizes here are CSS pixels.
+
 ## Landing page cards
 
 The landing page's index cards don't draw a scaled-down slide. Each card sets the slide's first heading in the band above its pink `--rule` line, in the heading face at 600, and writes the slide's other blocks on the ruled lines below, one line of text to each rule and its baseline just above it. List items keep an accent marker, a code block shows its first line in the code face, and images, tables and rules drop out. A heading too long for the band, or text past the last line, ends in an ellipsis. The slide number sits at the top right in muted Monaspace Neon at 12.5 px.
@@ -90,3 +94,11 @@ The app icon is the brand mark in `apps/web/icons/icon.svg`: three stacked slide
 - The 16 px favicon shows only the front slide and its three dashes, drawn on whole pixels so they stay sharp. `favicon.ico` holds it and the brand's 32 px icon, and the page links only that file, because a browser offered an SVG icon draws it at every size.
 - The 192 and 512 px icons are offered as they are and as maskable icons for Android. A maskable icon fills its square with the tile color and keeps the mark inside the inner 80% circle, at 85% of its size on the tile.
 - The maskable icons and the 16 px favicon are drawn from the SVG files in `apps/web/icons` by `pnpm --filter @sld/web icons`. The script packs the 16 px favicon into `favicon.ico` with the brand's `favicon-32.png` from the same folder.
+
+## Header mark
+
+The landing page and `/app` headers show the brand mark alone, with no wordmark. `Mark.svelte` draws it as inline SVG from the geometry of `icon.svg`, and its accessible name is "sld", so the `/app` header's heading still reads "sld".
+
+- The landing page shows it at 36 px on its tile in the brand's colors: a `#1b1e2b` tile, `#3a3f58` back slide and progress track, `#5b6078` middle slide, and `#37f499` front slide and progress. It is the one thing on a page that keeps fixed colors instead of reading a scheme.
+- `/app` shows it at 32 px with no tile, cropped to `80 80 352 352` of the icon's 512 grid, in scheme colors: base02 for the back slide and the track, base03 for the middle slide, and base0B for the front slide and the progress.
+- The gaps between slides and the front slide's dashes are cut out with SVG masks, so they show the header's background in any scheme. Each mark takes its own mask ids, so several marks can share a page.

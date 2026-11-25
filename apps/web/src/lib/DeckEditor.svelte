@@ -284,9 +284,15 @@
 		return !isDropped && batch[first]!.change.kind === 'delete' && !applied.slice(first + 1).includes(false);
 	}
 
+	// The saver can report while Svelte updates the page, such as from the blur CodeMirror gets as the editor is removed,
+	// when no state may be written. So the status shows a microtask later, and whatever acts on it reads `saving`.
+	const saving: { status: SaveStatus } = { status: 'saved' };
 	const saver = createSlideSaver<QueuedChange>({
 		commit: didStoreBatch,
-		onStatus: (status) => (editor.status = status),
+		onStatus: (status) => {
+			saving.status = status;
+			queueMicrotask(() => (editor.status = saving.status));
+		},
 		delay: 300
 	});
 
@@ -412,7 +418,7 @@
 	}
 
 	/** Whether a change made here is waiting, being written, or failed to be. */
-	const hasUnsaved = () => editor.status !== 'saved' || changes.unwritten.length > 0;
+	const hasUnsaved = () => saving.status !== 'saved' || changes.unwritten.length > 0;
 
 	// Signals that arrive close together, such as another tab's batch and its rename, share one read.
 	const remote: { isDue: boolean; timer?: ReturnType<typeof setTimeout> } = { isDue: false };
@@ -639,7 +645,7 @@
 			navigation.cancel();
 			return;
 		}
-		if (!leaving.isFlushing && editor.status === 'saved') return;
+		if (!leaving.isFlushing && saving.status === 'saved') return;
 		navigation.cancel();
 		leaving.to = navigation.to.url.href;
 		if (leaving.isFlushing) return;
@@ -649,7 +655,7 @@
 			leaving.isFlushing = false;
 			// Back or forward since the link, or the editor already gone, means the person went elsewhere meanwhile.
 			if (leaving.to === undefined || changes.isDestroyed) return;
-			if (editor.status === 'failed' && !(await shouldLeave())) {
+			if (saving.status === 'failed' && !(await shouldLeave())) {
 				leaving.to = undefined;
 				return;
 			}

@@ -1,6 +1,7 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import type * as DatabaseModule from '#lib/database.ts';
 import type * as DecksModule from '#lib/decks.ts';
+import { test } from './page-errors.ts';
 
 declare global {
 	// Set only by a script URL in a slide, which must never run.
