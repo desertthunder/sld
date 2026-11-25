@@ -1,7 +1,8 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import type * as DatabaseModule from '#lib/database.ts';
 import type * as DecksModule from '#lib/decks.ts';
 import type { DeckSettings } from '#lib/deck-settings.ts';
+import { test } from './page-errors.ts';
 
 // The dev server serves the app's modules at their source paths.
 const modules = { database: '/src/lib/database.ts', decks: '/src/lib/decks.ts' };
@@ -323,8 +324,6 @@ test('the slide number shows only when the deck turns it on', async ({ page }) =
 });
 
 test('a browser without the Screen Wake Lock API presents without an error', async ({ page }) => {
-	const errors: Error[] = [];
-	page.on('pageerror', (error) => void errors.push(error));
 	await page.addInitScript(() => {
 		delete (Navigator.prototype as { wakeLock?: unknown }).wakeLock;
 	});
@@ -336,7 +335,6 @@ test('a browser without the Screen Wake Lock API presents without an error', asy
 	await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
 	await page.keyboard.press('ArrowRight');
 	await expectSlide(page, 3);
-	expect(errors).toEqual([]);
 });
 
 test('the presenter keeps the screen on, and asks again when the tab becomes visible', async ({ page }) => {
