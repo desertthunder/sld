@@ -77,6 +77,10 @@ A markdown link or image in a slide keeps its address unless it is one of these.
 
 A link whose address is dropped shows as its text, and an image as its alt text. Every other address stays, such as `https://example.com`, `mailto:someone@example.com` or a relative path like `pictures/chart.png`. Raw HTML keeps its addresses as the person typed it, `javascript:` included. Only an imported deck's raw HTML is cleaned, when the deck is imported.
 
+## Landing page headline
+
+The landing page's headline, "Easy slides from markdown", sits on one line at 1280 px and wider, in the heading face at weight 650, 72 px, with `letter-spacing: -0.035em` and `line-height: 1`, and the subtitle under it. Below 1280 px it shrinks with the window, to 40 px at most phone widths, where it wraps onto two lines. Sizes here are CSS pixels.
+
 ## Landing page cards
 
 The landing page's index cards don't draw a scaled-down slide. Each card sets the slide's first heading in the band above its pink `--rule` line, in the heading face at 600, and writes the slide's other blocks on the ruled lines below, one line of text to each rule and its baseline just above it. List items keep an accent marker, a code block shows its first line in the code face, and images, tables and rules drop out. A heading too long for the band, or text past the last line, ends in an ellipsis. The slide number sits at the top right in muted Monaspace Neon at 12.5 px.

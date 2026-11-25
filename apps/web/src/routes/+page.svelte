@@ -369,13 +369,12 @@
 	}
 
 	h1 {
-		max-width: 11ch;
 		margin: 0;
 		font-family: var(--display-font);
-		font-weight: 500;
-		font-size: clamp(46px, 7.4vw, 108px);
-		line-height: 0.98;
-		letter-spacing: -0.03em;
+		font-weight: 650;
+		font-size: clamp(40px, 5.625vw, 72px);
+		line-height: 1;
+		letter-spacing: -0.035em;
 		color: var(--heading);
 		text-wrap: balance;
 	}
