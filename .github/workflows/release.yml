@@ -1,8 +1,15 @@
-# Keeps one release pull request open on `main` with release-please, and
-# when Owais merges it, tags the merge commit `vX.Y.Z` and publishes a GitHub
-# Release with the notes. The version, the changelog sections and the first
-# release (0.1.0) are set in release-please-config.json; the current version
-# is in .release-please-manifest.json. release-please writes CHANGELOG.md, and
+# Runs release-please in one of two ways. Run by hand from `main` (Actions ->
+# Release -> Run workflow), it opens the release pull request, or refreshes it
+# with the commits since the last release, and tags nothing. On a push to
+# `main`, it tags the merge commit `vX.Y.Z` and publishes a GitHub Release with
+# the notes when the push merges the release pull request, and otherwise does
+# nothing. A push leaves the release pull request alone because each update
+# force-pushes its branch, which would start a full `ci` run on a pull request
+# that waits until Owais wants a release.
+#
+# The version, the changelog sections and the first release (0.1.0) are set
+# in release-please-config.json; the current version is in
+# .release-please-manifest.json. release-please writes CHANGELOG.md, and
 # nobody edits it by hand. What a version number means is in AGENTS.md
 # (Commits and pull requests).
 #
@@ -18,15 +25,32 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions: {}
 
-# One run at a time, and never cancel one halfway through tagging.
+# One run at a time per trigger, and never cancel one halfway through tagging.
+# GitHub keeps only the newest waiting run in a group, so runs by hand get a
+# group of their own: one can't take the place of a push waiting to tag.
 concurrency:
-  group: release
+  group: release-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
+  # A run by hand from any branch but main fails here, holding no secret, and
+  # the release-please job is skipped.
+  ref:
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Refuse a ref other than main
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error title=Release::Run Release by hand from main, not $REF."
+          exit 1
+
   release-please:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -50,6 +74,8 @@ jobs:
           token: ${{ steps.app.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          skip-github-pull-request: ${{ github.event_name == 'push' }}
+          skip-github-release: ${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Summarize
         if: steps.release.outputs.release_created == 'true'
