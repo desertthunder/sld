@@ -76,3 +76,11 @@ A markdown link or image in a slide keeps its address unless it is one of these.
 - Every `data:` address in an image except PNG, JPEG, GIF, WebP and AVIF pictures: `data:image/png`, `data:image/jpeg`, `data:image/gif`, `data:image/webp` and `data:image/avif`. A JPEG labeled `data:image/jpg` is dropped too, and so are BMP and ICO pictures. For an SVG picture, use its file's address, such as `https://example.com/logo.svg`, not `data:image/svg+xml`.
 
 A link whose address is dropped shows as its text, and an image as its alt text. Every other address stays, such as `https://example.com`, `mailto:someone@example.com` or a relative path like `pictures/chart.png`. Raw HTML keeps its addresses as the person typed it, `javascript:` included. Only an imported deck's raw HTML is cleaned, when the deck is imported.
+
+## Icons
+
+The app icon is the brand mark from `apps/web/static/icon.svg`: three stacked slides and a progress bar on a `#1b1e2b` tile, with the front slide and the bar's progress in `#37f499`. Icons are drawn outside the page, so they keep these fixed colors instead of reading a scheme.
+
+- The 16 px favicon shows only the front slide and its three dashes, drawn on whole pixels so they stay sharp. `favicon.ico` holds it and the brand's 32 px icon.
+- The 192 and 512 px icons are offered as they are and as maskable icons for Android. A maskable icon fills its square with the tile color and keeps the mark inside the inner 80% circle, at 85% of its size on the tile.
+- The maskable icons and the 16 px favicon are drawn from the SVG files in `apps/web/icons` by `pnpm --filter @sld/web icons`.
