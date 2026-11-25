@@ -150,6 +150,33 @@ describe('syncOnlyWhenAsked', { timeout: 30_000 }, () => {
 		await client.close();
 	});
 
+	it('holds a message until the sync running reads the files, as another tab sends during a write', async () => {
+		const client = syncOnlyWhenAsked(serializeSyncToFs(await PGlite.create()));
+		await client.exec('create table t (n int)');
+		const { fs } = client;
+		const syncFiles = fs!.syncToFs.bind(fs);
+		const held = Promise.withResolvers<void>();
+		const events: string[] = [];
+		vi.spyOn(fs!, 'syncToFs').mockImplementation(async () => {
+			events.push('sync started');
+			await held.promise;
+			await syncFiles();
+			events.push('sync finished');
+		});
+		const synced = client.syncToFs();
+		const message = (async () => {
+			await client.execProtocolRaw(protocol.serialize.query('insert into t values (1)'));
+			events.push('message ran');
+		})();
+		await tick();
+		expect(events).toEqual(['sync started']);
+		held.resolve();
+		await synced;
+		await message;
+		expect(events).toEqual(['sync started', 'sync finished', 'message ran']);
+		await client.close();
+	});
+
 	it('still makes an explicit sync wait until IndexedDB holds the write before it', async () => {
 		const client = await PGlite.create();
 		const { fs } = client;

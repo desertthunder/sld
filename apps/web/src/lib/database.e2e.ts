@@ -34,7 +34,8 @@ async function waitForApp(page: Page) {
 
 /**
  * Opens the database the way the app does, and writes the note to a table of its own through `writeDurably`, while
- * other syncs are in flight, as when another tab writes or this one is hidden.
+ * other syncs are in flight, as when another tab writes or this one is hidden. It writes in a transaction, as the app
+ * does: PGlite syncs after a statement outside one, which would store the note without `writeDurably`.
  */
 async function saveNote(page: Page) {
 	await page.evaluate(
@@ -42,10 +43,12 @@ async function saveNote(page: Page) {
 			const { openDatabase, writeDurably } = (await import(url)) as typeof DatabaseModule;
 			const database = await openDatabase();
 			const others = Array.from({ length: 4 }, () => database.$client.syncToFs());
-			await writeDurably(database, async ({ $client }) => {
-				await $client.exec('create table if not exists notes (body text not null)');
-				await $client.query('insert into notes (body) values ($1)', [body]);
-			});
+			await writeDurably(database, ({ $client }) =>
+				$client.transaction(async (tx) => {
+					await tx.exec('create table if not exists notes (body text not null)');
+					await tx.query('insert into notes (body) values ($1)', [body]);
+				})
+			);
 			void Promise.allSettled(others);
 		},
 		{ url: databaseModule, body: note }
@@ -126,7 +129,7 @@ test("a write in a tab that another tab's worker serves fails or is saved when t
 			void (async () => {
 				try {
 					await writeDurably(database, ({ $client }) =>
-						$client.query('insert into notes (body) values ($1)', [body])
+						$client.transaction((tx) => tx.query('insert into notes (body) values ($1)', [body]))
 					);
 					outcome.state = 'saved';
 				} catch (error) {
