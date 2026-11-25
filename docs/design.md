@@ -82,3 +82,11 @@ A link whose address is dropped shows as its text, and an image as its alt text.
 The landing page's index cards don't draw a scaled-down slide. Each card sets the slide's first heading in the band above its pink `--rule` line, in the heading face at 600, and writes the slide's other blocks on the ruled lines below, one line of text to each rule and its baseline just above it. List items keep an accent marker, a code block shows its first line in the code face, and images, tables and rules drop out. A heading too long for the band, or text past the last line, ends in an ellipsis. The slide number sits at the top right in muted Monaspace Neon at 12.5 px.
 
 Sizes in this section are CSS pixels, not stage pixels. The grid scales with the card's width: the band is 11% of it and each rule 7%, with floors of 30 and 20 px. Titles stay at 20 px or more and body text at 14 px or more. A card writes six lines, five on a card under 300 px wide and four under 240 px, as on a phone or beside the note on a tablet.
+
+## Icons
+
+The app icon is the brand mark in `apps/web/icons/icon.svg`: three stacked slides and a progress bar on a `#1b1e2b` tile, with the front slide and the bar's progress in `#37f499`. Icons are drawn outside the page, so they keep these fixed colors instead of reading a scheme.
+
+- The 16 px favicon shows only the front slide and its three dashes, drawn on whole pixels so they stay sharp. `favicon.ico` holds it and the brand's 32 px icon, and the page links only that file, because a browser offered an SVG icon draws it at every size.
+- The 192 and 512 px icons are offered as they are and as maskable icons for Android. A maskable icon fills its square with the tile color and keeps the mark inside the inner 80% circle, at 85% of its size on the tile.
+- The maskable icons and the 16 px favicon are drawn from the SVG files in `apps/web/icons` by `pnpm --filter @sld/web icons`. The script packs the 16 px favicon into `favicon.ico` with the brand's `favicon-32.png` from the same folder.
