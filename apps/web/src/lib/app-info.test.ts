@@ -1,4 +1,6 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { buildVersion, gitHead } from '../build-version.ts';
 import { appName, appSummary, appVersion, versionLabel } from '#lib/app-info.ts';
 
 describe('app info', () => {
@@ -39,7 +41,7 @@ describe('versionLabel', () => {
 	});
 
 	it('carries the version the build was made from', () => {
-		expect(appVersion.tag).toBeUndefined();
-		expect(appVersion.sha).toMatch(/^[\da-f]{40}$/);
+		const root = path.resolve(import.meta.dirname, '../../../..');
+		expect(appVersion).toEqual(buildVersion(process.env, () => gitHead(root)));
 	});
 });

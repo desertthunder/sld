@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -6,6 +7,7 @@ import { buildVersion, gitHead } from './build-version.ts';
 
 const sha = '0ec2e83c1b9a4f7d2e6a5b8c9d0e1f2a3b4c5d6e';
 const other = 'ef97223aa1b2c3d4e5f60718293a4b5c6d7e8f90';
+const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
 const tagRun = { GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: 'v0.1.1', GITHUB_SHA: sha };
 
 describe('buildVersion', () => {
@@ -42,7 +44,26 @@ describe('buildVersion', () => {
 
 describe('gitHead', () => {
 	it('reads the checkout commit', () => {
-		expect(gitHead(import.meta.dirname)).toMatch(/^[\da-f]{40}\s*$/);
+		expect(gitHead(repositoryRoot)).toMatch(/^[\da-f]{40}\s*$/);
+	});
+
+	it('reads nothing from a directory below the checkout root', () => {
+		expect(gitHead(import.meta.dirname)).toBeUndefined();
+	});
+
+	it("reads nothing from a copy of the source inside another repository, rather than that repository's commit", () => {
+		const outer = mkdtempSync(path.join(tmpdir(), 'sld-outer-'));
+		try {
+			const git = (...arguments_: string[]) => execFileSync('git', arguments_, { cwd: outer, stdio: 'ignore' });
+			git('init', '--quiet');
+			const identity = ['-c', 'user.name=sld', '-c', 'user.email=sld@example.com', '-c', 'commit.gpgsign=false'];
+			git(...identity, 'commit', '--quiet', '--allow-empty', '-m', 'outer');
+			const copy = path.join(outer, 'sld');
+			mkdirSync(copy);
+			expect(gitHead(copy)).toBeUndefined();
+		} finally {
+			rmSync(outer, { recursive: true });
+		}
 	});
 
 	it('reads nothing outside a git checkout', () => {

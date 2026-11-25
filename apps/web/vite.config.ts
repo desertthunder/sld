@@ -22,7 +22,7 @@ const crossOriginIsolation: Plugin = {
 
 const migrations = () => migrationsPlugin(fileURLToPath(new URL('drizzle', import.meta.url)));
 
-const version = buildVersion(process.env, () => gitHead(fileURLToPath(new URL('.', import.meta.url))));
+const version = buildVersion(process.env, () => gitHead(fileURLToPath(new URL('../..', import.meta.url))));
 
 export default defineConfig({
 	define: { __APP_VERSION__: JSON.stringify(version) },
