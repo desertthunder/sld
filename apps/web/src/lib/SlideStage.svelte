@@ -10,6 +10,7 @@
 	import { fitSlide, sizeEvents } from '#lib/slide-fit.ts';
 	import { slideClasses } from '#lib/slide-meta.ts';
 	import type { RenderedSlide } from '#lib/slide-render.ts';
+	import { scopeSlideStyles } from '#lib/slide-styles.ts';
 	import Stage from '#lib/Stage.svelte';
 	import { defaultAspect, type Aspect, type Fit } from '#lib/stage.ts';
 
@@ -36,6 +37,7 @@
 		overlay?: Snippet;
 	} = $props();
 
+	const scoped = $derived(scopeSlideStyles(slide.html));
 	let article: HTMLElement | undefined = $state();
 
 	// The slide fits again whenever what it shows or how wide it is changes, once its fonts, images or videos load, and
@@ -74,9 +76,11 @@
 	scheme={schemes.find(({ slug }) => slug === slide.meta.scheme) ?? scheme}
 	bind:overflowing
 	bind:placement>
-	<!-- Raw HTML in a slide passes through: the markdown is the person's own. -->
-	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-	<article class={slideClasses(slide.meta)} bind:this={article}>{@html slide.html}</article>
+	<!-- Raw HTML in a slide passes through, since the markdown is the person's own, but its styles stay on the slide. -->
+	<article class={slideClasses(slide.meta)} data-slide-scope={scoped.scope} bind:this={article}>
+		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+		{@html scoped.html}
+	</article>
 	<!-- Drawn on the stage in its pixels, above the slide, and not measured as the slide's content. -->
 	{@render overlay?.()}
 </Stage>
