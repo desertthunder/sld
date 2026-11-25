@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import Mark from '#lib/Mark.svelte';
+	import { appName } from '#lib/app-info.ts';
+	import HomeLink from '#lib/HomeLink.svelte';
 </script>
 
 <header class="bar">
-	<h1 class="mark"><Mark colors="scheme" size={32} /></h1>
+	<!-- The heading keeps the app's name, while the link inside it names where it goes. -->
+	<h1 class="mark" aria-label={appName}><HomeLink /></h1>
 	<nav>
 		<a href={resolve('/app')} aria-current="page">Decks</a>
 	</nav>

@@ -2,12 +2,14 @@
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import HomeLink from '#lib/HomeLink.svelte';
 
 	let { toolbar, children }: { toolbar?: Snippet; children: Snippet } = $props();
 </script>
 
 <div class="frame">
 	<header class="toolbar">
+		<span class="home"><HomeLink /></span>
 		<a class="back" href={resolve('/app')}>
 			<span class="i-ri-arrow-left-s-line icon" aria-hidden="true"></span>Decks
 		</a>
@@ -57,6 +59,11 @@
 		padding: 0 12px 0 8px;
 		box-sizing: border-box;
 		border-bottom: 1px solid var(--border);
+	}
+
+	.home {
+		flex: none;
+		padding-left: 8px;
 	}
 
 	.back {

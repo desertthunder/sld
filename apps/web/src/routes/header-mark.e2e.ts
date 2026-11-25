@@ -115,7 +115,7 @@ test.describe('the /app header', () => {
 		}
 	}
 
-	test('its heading reads "sld" from the mark', async ({ page }) => {
+	test('its heading reads "sld", with the mark inside it', async ({ page }) => {
 		await page.goto('/app');
 		await expect(heading(page)).toBeVisible({ timeout: 30_000 });
 		await expect(heading(page).getByRole('img', { name: 'sld', exact: true })).toBeVisible();
