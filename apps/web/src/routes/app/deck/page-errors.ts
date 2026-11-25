@@ -1,7 +1,9 @@
 import { expect, test as base } from '@playwright/test';
 
 // TODO: stop ignoring PGlite's multi-tab worker once it no longer posts on a closed `BroadcastChannel` as a tab reloads.
-const isPgliteWorker = (stack: string) =>
+// The same file rejects every failed query on the page, so the error's name must match too.
+const isClosedPgliteChannel = (error: Error, stack: string) =>
+	error.name === 'InvalidStateError' &&
 	/\/@electric-sql\/pglite\/dist\/worker\//.test(
 		stack.split('\n').find((line) => line.trim().startsWith('at ')) ?? ''
 	);
@@ -17,7 +19,7 @@ export const test = base.extend<{ pageErrors: void }>({
 			context.on('weberror', (webError) => {
 				const error = webError.error();
 				const stack = error.stack ?? String(error);
-				if (!isPgliteWorker(stack)) errors.push(stack);
+				if (!isClosedPgliteChannel(error, stack)) errors.push(stack);
 			});
 			await use();
 			expect(errors).toEqual([]);
