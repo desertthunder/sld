@@ -27,5 +27,14 @@ export default defineConfig({
 	// worker.
 	optimizeDeps: { exclude: ['@electric-sql/pglite', 'satteri'] },
 	worker: { format: 'es', plugins: () => [migrations()] },
-	test: { include: ['src/**/*.{test,spec}.ts'] }
+	// The build project reads `build/`, so it runs after `vite build`, apart from the unit tests.
+	test: {
+		projects: [
+			{
+				extends: true,
+				test: { name: 'unit', include: ['src/**/*.{test,spec}.ts'], exclude: ['src/**/*.build.test.ts'] }
+			},
+			{ extends: true, test: { name: 'build', include: ['src/**/*.build.test.ts'] } }
+		]
+	}
 });
