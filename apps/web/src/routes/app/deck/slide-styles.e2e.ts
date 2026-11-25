@@ -442,3 +442,167 @@ test("the app's own fonts and keyframes are ones a slide can't redefine", async 
 	expect(animations).toEqual([]);
 	expect(refused).toBeGreaterThan(0);
 });
+
+// Each link tries to load a style sheet that hides the page and its controls.
+const linked = lines(
+	'<link rel="stylesheet" href="/hostile.css">',
+	'<link REL="Stylesheet" href="/hostile.css?upper">',
+	'<link rel="alternate stylesheet" title="Alternate" href="/hostile.css?alternate">',
+	`<link rel="preload" as="style" href="/hostile.css?preload" onload="this.rel='stylesheet'">`,
+	'',
+	'# Linked',
+	'',
+	'Slide text'
+);
+
+// Each popover would open in the top layer, above the app's controls, if it kept its attributes.
+const popovers = lines(
+	'<div popover id="note">Popover note</div>',
+	'<div popover="manual" id="manual">Manual note</div>',
+	'',
+	'<button popovertarget="note">Open note</button>',
+	'<input type="button" popovertarget="manual" popovertargetaction="show" value="Show note">',
+	'',
+	'# Popovers'
+);
+
+/** Serves `/hostile.css`, and returns the address of each request for it the page makes. */
+async function serveHostileCss(page: Page): Promise<string[]> {
+	const requested: string[] = [];
+	await page.route('**/hostile.css*', async (route) => {
+		requested.push(route.request().url());
+		await route.fulfill({
+			contentType: 'text/css',
+			body: lines(
+				'html, body { display: none !important; }',
+				`* { color: ${red} !important; }`,
+				'nav, button, [role="toolbar"], [role="progressbar"], .cm-editor { visibility: hidden !important; }'
+			)
+		});
+	});
+	return requested;
+}
+
+/** Checks that the page draws no popover in the top layer and that `target` is still on top. */
+async function expectNoPopover(page: Page, target: Locator) {
+	expect(await page.evaluate(() => document.querySelectorAll(':popover-open, [popover]').length)).toBe(0);
+	expect(await isOnTop(target)).toBe(true);
+}
+
+test("a typed slide's style sheet links never load, and stay in its markdown", async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const requested = await serveHostileCss(page);
+	const id = await createDeck(page, ['# Plain', '# Neighbor']);
+	await page.goto(`/app/deck/${id}`);
+	await expect(previewSlide(page).locator('h1')).toHaveText('Plain', { timeout: 30_000 });
+	await editor(page).fill(linked);
+	await expect(previewSlide(page).locator('h1')).toHaveText('Linked');
+	await expect(thumbnails(page).first().locator('article.slide h1')).toHaveText('Linked');
+	await expect(page.locator('body')).not.toHaveCSS('display', 'none');
+	await expect(slideList(page)).toBeVisible();
+	await expect(page.locator('.cm-editor')).toBeVisible();
+	const present = page.getByRole('button', { name: /Present/ });
+	await expect(present).toBeVisible();
+	await expect(present).not.toHaveCSS('color', red);
+	expect(await page.locator('article.slide link').count()).toBe(0);
+	await expect.poll(() => storedSlides(page, id)).toEqual([linked, '# Neighbor']);
+
+	await page.goto(`/app/deck/${id}/present`);
+	await expect(page.locator('article.slide h1')).toHaveText('Linked', { timeout: 30_000 });
+	await page.mouse.move(200, 200);
+	await page.mouse.move(220, 220);
+	await expect(controls(page)).toHaveCSS('opacity', '1');
+	await expect(controls(page)).toBeVisible();
+	await expect(page.getByRole('progressbar')).toBeVisible();
+	expect(await isOnTop(controls(page).getByRole('button', { name: 'Next slide' }))).toBe(true);
+
+	await page.goto('/app');
+	await waitForApp(page);
+	await expect(page.locator('body')).not.toHaveCSS('display', 'none');
+	await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeVisible();
+	expect(requested).toEqual([]);
+});
+
+test("a slide's popovers show inline and can't cover the app's controls", async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const id = await createDeck(page, [popovers, '# Next']);
+	await page.goto(`/app/deck/${id}`);
+	const preview = previewSlide(page);
+	await expect(preview.locator('h1')).toHaveText('Popovers', { timeout: 30_000 });
+	await expect(preview.getByText('Popover note')).toBeVisible();
+	await expect(preview.getByText('Manual note')).toBeVisible();
+	await expect(thumbnails(page).first().getByText('Popover note')).toBeVisible();
+	await preview.getByRole('button', { name: 'Open note' }).click();
+	await preview.getByRole('button', { name: 'Show note' }).click();
+	await expectNoPopover(page, page.getByRole('button', { name: /Present/ }));
+
+	await page.goto(`/app/deck/${id}/present`);
+	const slide = page.locator('article.slide');
+	await expect(slide.getByText('Popover note')).toBeVisible({ timeout: 30_000 });
+	await slide.getByRole('button', { name: 'Open note' }).click();
+	await slide.getByRole('button', { name: 'Show note' }).click();
+	await page.mouse.move(200, 200);
+	await page.mouse.move(220, 220);
+	await expect(controls(page)).toHaveCSS('opacity', '1');
+	await expectNoPopover(page, controls(page).getByRole('button', { name: 'Next slide' }));
+	expect(await storedSlides(page, id)).toEqual([popovers, '# Next']);
+});
+
+test("an imported slide's style sheet links never load, and its popovers show inline", async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const requested = await serveHostileCss(page);
+	await page.goto('/app');
+	await waitForApp(page);
+	const importButton = page.getByRole('button', { name: 'Import', exact: true });
+	await expect(importButton).toBeEnabled();
+	const chooser = page.waitForEvent('filechooser');
+	await importButton.click();
+	const fileChooser = await chooser;
+	await fileChooser.setFiles([
+		{ name: 'Linked.md', mimeType: 'text/markdown', buffer: Buffer.from(lines(linked, '', '---', '', popovers)) }
+	]);
+	await expect(page).toHaveURL(/\/app\/deck\/[\da-f-]{36}(\?|$)/, { timeout: 30_000 });
+	await expect(previewSlide(page).locator('h1')).toHaveText('Linked', { timeout: 30_000 });
+	await expect(page.locator('body')).not.toHaveCSS('display', 'none');
+	await expect(page.locator('.cm-editor')).toBeVisible();
+	await expect(thumbnails(page).nth(1).getByText('Popover note')).toBeVisible();
+	await slideList(page)
+		.getByRole('button', { name: /Popovers/ })
+		.first()
+		.click();
+	await expect(previewSlide(page).locator('h1')).toHaveText('Popovers');
+	await previewSlide(page).getByRole('button', { name: 'Open note' }).click();
+	await expectNoPopover(page, page.getByRole('button', { name: /Present/ }));
+	expect(requested).toEqual([]);
+});
+
+test('only style sheet links and popover attributes leave a slide', async ({ page }) => {
+	await page.goto('/app');
+	await waitForApp(page);
+	const result = await page.evaluate(async (url) => {
+		const { scopeSlideStyles } = (await import(url)) as typeof SlideStylesModule;
+		const prose = '<p>The popover attribute and &lt;link&gt; tag</p>';
+		return {
+			prose: scopeSlideStyles(prose),
+			proseHtml: prose,
+			links: scopeSlideStyles(
+				[
+					'<link rel="stylesheet" href="/a.css">',
+					'<LINK REL=" Alternate\tSTYLESHEET " href="/b.css">',
+					'<link rel="preload" as=" STYLE " href="/c.css">',
+					'<link rel="preload" as="image" href="/d.png">',
+					'<p>Text</p>'
+				].join('')
+			),
+			popovers: scopeSlideStyles(
+				'<div POPOVER="auto" id="a">A</div><input popovertarget="a" popovertargetaction="toggle" value="B"><p>C</p>'
+			)
+		};
+	}, modules.styles);
+	expect(result.prose).toEqual({ html: result.proseHtml, scope: undefined });
+	expect(result.links).toEqual({
+		html: '<link rel="preload" as="image" href="/d.png"><p>Text</p>',
+		scope: undefined
+	});
+	expect(result.popovers).toEqual({ html: '<div id="a">A</div><input value="B"><p>C</p>', scope: undefined });
+});

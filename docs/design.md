@@ -77,6 +77,10 @@ A markdown link or image in a slide keeps its address unless it is one of these.
 
 A link whose address is dropped shows as its text, and an image as its alt text. Every other address stays, such as `https://example.com`, `mailto:someone@example.com` or a relative path like `pictures/chart.png`. Raw HTML keeps its addresses as the person typed it, `javascript:` included. Only an imported deck's raw HTML is cleaned, when the deck is imported.
 
+## Style sheet links and popovers
+
+A slide's raw HTML draws on the slide and nowhere else. Wherever sld shows a slide, it drops each `<link rel="stylesheet">` in the slide, and each preload link `as="style"`, so none loads. A popover shows inline where it sits on the slide, as if it had no `popover` attribute, and a button's `popovertarget` does nothing. For content that opens on a click, use `<details>`. The slide's markdown keeps the links and attributes as typed.
+
 ## Landing page headline
 
 The landing page's headline, "Easy slides from markdown", sits on one line at 1280 px and wider, in the heading face at weight 650, 72 px, with `letter-spacing: -0.035em` and `line-height: 1`, and the subtitle under it. Below 1280 px it shrinks with the window, to 40 px at most phone widths, where it wraps onto two lines. Sizes here are CSS pixels.

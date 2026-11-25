@@ -168,19 +168,36 @@ function scopedSheet(css: string, scope: string): string {
 	return named.join('\n').replaceAll(/<\/(?=style)/gi, String.raw`<\/`);
 }
 
+/** Whether `link` would load a style sheet for the page: as one, or as a preload that its `onload` could make one. */
+function isStyleLink(link: HTMLLinkElement): boolean {
+	const relations = new Set((link.getAttribute('rel') ?? '').toLowerCase().split(/[\t\n\f\r ]+/));
+	return (
+		relations.has('stylesheet') ||
+		(relations.has('preload') && link.getAttribute('as')?.trim().toLowerCase() === 'style')
+	);
+}
+
+// A popover opens in the top layer, above the app's controls, so a slide's popover shows where it sits instead.
+const popoverAttributes = ['popover', 'popovertarget', 'popovertargetaction'];
+
 /**
  * A slide's HTML with the rules of each `<style>` in it, SVG's included, scoped to the slide's element, so a slide's
  * styles can't restyle the page around it, and with no `data-slide-scope` of its own, so it can't take another slide's
- * styles. HTML with neither comes back as it is. Needs a DOM.
+ * styles. Its style sheet links are dropped, and its popovers show inline. HTML with none of these comes back as it is.
+ * Needs a DOM.
  */
 export function scopeSlideStyles(html: string): ScopedSlide {
-	if (!/<style|data-slide-scope/i.test(html)) return { html, scope: undefined };
+	if (!/<style|<link|popover|data-slide-scope/i.test(html)) return { html, scope: undefined };
 	const template = document.createElement('template');
 	template.innerHTML = html;
 	const forged = template.content.querySelectorAll<HTMLElement | SVGElement | MathMLElement>('[data-slide-scope]');
 	for (const element of forged) delete element.dataset.slideScope;
+	const links = [...template.content.querySelectorAll('link')].filter((link) => isStyleLink(link));
+	for (const link of links) link.remove();
+	const popovers = template.content.querySelectorAll(popoverAttributes.map((name) => `[${name}]`).join(', '));
+	for (const element of popovers) for (const name of popoverAttributes) element.removeAttribute(name);
 	const styles = template.content.querySelectorAll('style');
-	if (forged.length === 0 && styles.length === 0) return { html, scope: undefined };
+	if (forged.length + links.length + popovers.length + styles.length === 0) return { html, scope: undefined };
 	const scope = scopeName(html);
 	for (const style of styles) style.textContent = scopedSheet(style.textContent, scope);
 	// eslint-disable-next-line unicorn/prefer-dom-node-html-methods -- `getHTML()` needs Safari 18, and the app supports 17.4.
