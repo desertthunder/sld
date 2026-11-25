@@ -79,8 +79,8 @@ A link whose address is dropped shows as its text, and an image as its alt text.
 
 ## Icons
 
-The app icon is the brand mark from `apps/web/static/icon.svg`: three stacked slides and a progress bar on a `#1b1e2b` tile, with the front slide and the bar's progress in `#37f499`. Icons are drawn outside the page, so they keep these fixed colors instead of reading a scheme.
+The app icon is the brand mark in `apps/web/icons/icon.svg`: three stacked slides and a progress bar on a `#1b1e2b` tile, with the front slide and the bar's progress in `#37f499`. Icons are drawn outside the page, so they keep these fixed colors instead of reading a scheme.
 
-- The 16 px favicon shows only the front slide and its three dashes, drawn on whole pixels so they stay sharp. `favicon.ico` holds it and the brand's 32 px icon.
+- The 16 px favicon shows only the front slide and its three dashes, drawn on whole pixels so they stay sharp. `favicon.ico` holds it and the brand's 32 px icon, and the page links only that file, because a browser offered an SVG icon draws it at every size.
 - The 192 and 512 px icons are offered as they are and as maskable icons for Android. A maskable icon fills its square with the tile color and keeps the mark inside the inner 80% circle, at 85% of its size on the tile.
-- The maskable icons and the 16 px favicon are drawn from the SVG files in `apps/web/icons` by `pnpm --filter @sld/web icons`.
+- The maskable icons and the 16 px favicon are drawn from the SVG files in `apps/web/icons` by `pnpm --filter @sld/web icons`. The script packs the 16 px favicon into `favicon.ico` with the brand's `favicon-32.png` from the same folder.

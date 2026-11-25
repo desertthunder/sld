@@ -10,7 +10,6 @@ function iconLinks(page: Page) {
 
 const expectedLinks = [
 	['icon', '/favicon.ico'],
-	['icon', '/icon.svg'],
 	['apple-touch-icon', '/apple-touch-icon.png'],
 	['manifest', '/manifest.webmanifest']
 ];
