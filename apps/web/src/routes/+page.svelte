@@ -13,6 +13,7 @@
 	import { splitDeck } from '#lib/deck-markdown.ts';
 	import { handOff } from '#lib/handoff.ts';
 	import IndexCard from '#lib/IndexCard.svelte';
+	import Mark from '#lib/Mark.svelte';
 	import { fanSize, fanTransform, sampleDecks, sampleNote, slideCount } from '#lib/landing.ts';
 	import Slide from '#lib/Slide.svelte';
 	import { renderSlide } from '#lib/slide-render.ts';
@@ -92,7 +93,7 @@
 	<div class="landing">
 		<div class="wrap">
 			<header class="nav">
-				<a class="mark" href="#top">{appName}</a>
+				<a class="mark" href="#top"><Mark colors="brand" size={36} /></a>
 				<div class="nav-end">
 					<span class="status" role="status">
 						{#if status}
@@ -288,12 +289,7 @@
 	}
 
 	.mark {
-		font-family: var(--display-font);
-		font-weight: 700;
-		font-size: 30px;
-		letter-spacing: -0.03em;
-		color: var(--heading);
-		text-decoration: none;
+		border-radius: 8px;
 	}
 
 	.nav-end {

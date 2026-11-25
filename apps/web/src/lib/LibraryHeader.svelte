@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { appName } from '#lib/app-info.ts';
+	import Mark from '#lib/Mark.svelte';
 </script>
 
 <header class="bar">
-	<h1 class="mark">{appName}</h1>
+	<h1 class="mark"><Mark colors="scheme" size={32} /></h1>
 	<nav>
 		<a href={resolve('/app')} aria-current="page">Decks</a>
 	</nav>
@@ -32,12 +32,6 @@
 
 	.mark {
 		margin: 0;
-		font-family: var(--display-font);
-		font-weight: 700;
-		font-size: 24px;
-		line-height: 1;
-		letter-spacing: -0.03em;
-		color: var(--heading);
 	}
 
 	nav {
