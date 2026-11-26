@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { splitDeck } from '#lib/deck-markdown.ts';
-import { fanSize, fanTransform, sampleNote, slideCount, swatch } from '#lib/landing.ts';
+import { fanDepth, fanSize, fanTransform, sampleNote, slideCount, swatch, turnFan } from '#lib/landing.ts';
 import type { SchemeFile } from '#lib/scheme-compiler.ts';
 import { schemeStyle } from '#lib/scheme-style.ts';
 
@@ -24,15 +24,31 @@ it('splits the sample note into four slides', () => {
 	]);
 });
 
-describe('fanTransform', () => {
-	it('gives each of a full fan of cards its own place', () => {
-		const places = Array.from({ length: fanSize }, (_, index) => fanTransform(index, fanSize));
-		expect(new Set(places).size).toBe(fanSize);
+describe('fanDepth', () => {
+	it('puts the front card first and the later cards behind it in order', () => {
+		expect([0, 1, 2, 3].map((index) => fanDepth(index, 0, 4))).toEqual([0, 1, 2, 3]);
 	});
 
-	it('puts fewer cards in the places on the right', () => {
-		expect(fanTransform(0, 1)).toBe(fanTransform(fanSize - 1, fanSize));
-		expect(fanTransform(0, 2)).toBe(fanTransform(fanSize - 2, fanSize));
+	it('puts the cards before the front card at the back, in order', () => {
+		expect([0, 1, 2, 3].map((index) => fanDepth(index, 2, 4))).toEqual([2, 3, 0, 1]);
+	});
+});
+
+describe('fanTransform', () => {
+	it('gives each of a full fan of cards its own place', () => {
+		const places = Array.from({ length: fanSize }, (_, depth) => fanTransform(depth));
+		expect(new Set(places).size).toBe(fanSize);
+	});
+});
+
+describe('turnFan', () => {
+	it.each([
+		[0, 1, 1],
+		[3, 1, 0],
+		[0, -1, 3],
+		[2, -1, 1]
+	])('pages from card %i by %i to card %i of four', (front, step, next) => {
+		expect(turnFan(front, step, 4)).toBe(next);
 	});
 });
 

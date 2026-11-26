@@ -41,6 +41,7 @@ export const sampleDecks = [
 /** How many of the note's slides the landing page deals as cards. */
 export const fanSize = 4;
 
+// The places run from the back of the fan to the front.
 const fan = [
 	'translate(0%, 18%) rotate(-7deg)',
 	'translate(9%, 10%) rotate(-2.5deg)',
@@ -48,9 +49,22 @@ const fan = [
 	'translate(26%, 0%) rotate(6deg)'
 ];
 
-/** The transform of the card at `index` of `count` dealt cards. Fewer cards take the places on the right. */
-export function fanTransform(index: number, count: number): string {
-	return fan[(fanSize - Math.min(count, fanSize) + index) % fanSize]!;
+/**
+ * How far behind the front card the card at `index` of `count` sits, when the card at `front` is in front: 0 for the
+ * front card, then each later card one further back, and the cards before `front` behind those in order.
+ */
+export function fanDepth(index: number, front: number, count: number): number {
+	return (((index - front) % count) + count) % count;
+}
+
+/** The transform of the card at `depth`. Fewer cards than the fan holds take the places at its front, on the right. */
+export function fanTransform(depth: number): string {
+	return fan[fanSize - 1 - depth]!;
+}
+
+/** The front card after paging `step` cards from `front` through `count` cards, wrapping around at either end. */
+export function turnFan(front: number, step: number, count: number): number {
+	return fanDepth(front + step, 0, count);
 }
 
 /** The schemes the landing page shows a slide in, by slug. */
