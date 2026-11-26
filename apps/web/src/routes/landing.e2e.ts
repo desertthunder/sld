@@ -366,6 +366,7 @@ test.describe('index cards', () => {
 async function expectFront(page: Page, number: string) {
 	const front = page.locator('.fan').getByRole('option', { selected: true });
 	await expect(front.locator('.number')).toHaveText(number);
+	await expect(page.locator('.fan')).toHaveAttribute('aria-activedescendant', (await front.getAttribute('id'))!);
 	await front.scrollIntoViewIfNeeded();
 	const isOnTop = await front.evaluate((card) => {
 		const box = card.getBoundingClientRect();
@@ -426,11 +427,57 @@ test.describe('paging the fan', () => {
 		await page.getByRole('listbox', { name: 'Slide cards' }).focus();
 		await page.keyboard.press('ArrowLeft');
 		await expectFront(page, '4 / 4');
-		await noteBox(page).fill('# One\n\n---\n\n# Two\n\nNew text');
-		await expect(page.locator('.fan .title')).toHaveText(['One', 'Two']);
-		await expect(page.locator('.fan .number')).toHaveText(['1 / 2', '2 / 2']);
-		await expectFront(page, '2 / 2');
+		await noteBox(page).fill('# One\n\n---\n\n# Two\n\nNew text\n\n---\n\n# Three');
+		await expect(page.locator('.fan .title')).toHaveText(['One', 'Two', 'Three']);
+		await expect(page.locator('.fan .number')).toHaveText(['1 / 3', '2 / 3', '3 / 3']);
+		await expectFront(page, '3 / 3');
 		await expect(page.locator('.fan .card:nth-child(2) .lines')).toHaveText('New text');
+	});
+
+	test('a note pasted after the fan empties deals its slide 1 in front, and an empty fan takes no focus', async ({
+		page
+	}) => {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		await page.goto('/');
+		await waitForCards(page);
+		await page.getByRole('listbox', { name: 'Slide cards' }).focus();
+		await page.keyboard.press('ArrowLeft');
+		await expectFront(page, '4 / 4');
+		await noteBox(page).fill('');
+		await expect(page.locator('.fan .card')).toHaveCount(0);
+		await expect(page.locator('.fan')).toHaveAttribute('tabindex', '-1');
+		await expect(page.locator('.fan')).not.toHaveAttribute('aria-activedescendant');
+		await noteBox(page).fill('# A\n\n---\n\n# B\n\n---\n\n# C\n\n---\n\n# D');
+		await expectFront(page, '1 / 4');
+		await expect(page.locator('.fan')).toHaveAttribute('tabindex', '0');
+	});
+
+	test('Home and End bring the first and last cards to the front, and modified arrow keys pass through', async ({
+		page
+	}) => {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		await page.goto('/');
+		await waitForCards(page);
+		const fan = page.getByRole('listbox', { name: 'Slide cards' });
+		await fan.focus();
+		await page.keyboard.press('End');
+		await expectFront(page, '4 / 4');
+		await page.keyboard.press('Home');
+		await expectFront(page, '1 / 4');
+		for (const modifier of ['altKey', 'ctrlKey', 'metaKey']) {
+			const isPrevented = await fan.evaluate((element, held) => {
+				const event = new KeyboardEvent('keydown', {
+					key: 'ArrowLeft',
+					[held]: true,
+					bubbles: true,
+					cancelable: true
+				});
+				element.dispatchEvent(event);
+				return event.defaultPrevented;
+			}, modifier);
+			expect(isPrevented).toBe(false);
+			await expectFront(page, '1 / 4');
+		}
 	});
 });
 

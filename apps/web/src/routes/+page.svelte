@@ -26,7 +26,8 @@
 	const slides = $derived(splitDeck(note.markdown).slides);
 	const dealt = $derived(slides.slice(0, fanSize));
 	const fan = $state({ front: 0 });
-	// Deleting slides from the note leaves the last card in front when the one in front is gone.
+	// Deleting slides from the note leaves the last card in front when the one in front is gone, and `keepFront` keeps
+	// it there, so slides added later don't take the front back.
 	const front = $derived(Math.max(0, Math.min(fan.front, dealt.length - 1)));
 	const page = $state({ canDrawSlides: false, isWarming: false });
 	const statuses = {
@@ -78,10 +79,21 @@
 	}
 
 	function pageFan(event: KeyboardEvent) {
-		const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
-		if (!step || dealt.length === 0) return;
+		if (dealt.length === 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+		const last = dealt.length - 1;
+		const target = {
+			ArrowLeft: turnFan(front, -1, dealt.length),
+			ArrowRight: turnFan(front, 1, dealt.length),
+			Home: 0,
+			End: last
+		}[event.key];
+		if (target === undefined) return;
 		event.preventDefault();
-		fan.front = turnFan(front, step, dealt.length);
+		fan.front = target;
+	}
+
+	function keepFront() {
+		fan.front = front;
 	}
 
 	function pasteNote(event: MouseEvent) {
@@ -129,8 +141,12 @@
 							<label for="note">
 								Your slides as markdown. A <code>---</code> line starts a new slide.
 							</label>
-							<textarea id="note" spellcheck="false" bind:value={note.markdown} bind:this={noteBox}
-							></textarea>
+							<textarea
+								id="note"
+								spellcheck="false"
+								bind:value={note.markdown}
+								bind:this={noteBox}
+								oninput={keepFront}></textarea>
 							<div class="note-actions">
 								<button
 									type="button"
@@ -148,7 +164,7 @@
 							aria-label="Slide cards"
 							aria-orientation="horizontal"
 							aria-activedescendant={dealt.length > 0 ? `fan-card-${front}` : undefined}
-							tabindex="0"
+							tabindex={dealt.length > 0 ? 0 : -1}
 							onclick={bringToFront}
 							onkeydown={pageFan}>
 							{#each dealt as markdown, index (index)}

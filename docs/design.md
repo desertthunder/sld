@@ -91,7 +91,7 @@ The landing page's index cards don't draw a scaled-down slide. Each card sets th
 
 Sizes in this section are CSS pixels, not stage pixels. The grid scales with the card's width: the band is 11% of it and each rule 7%, with floors of 30 and 20 px. Titles stay at 20 px or more and body text at 14 px or more. A card writes six lines, five on a card under 300 px wide and four under 240 px, as on a phone or beside the note on a tablet.
 
-The cards for a note's first four slides fan out beside the note. Slide 1 sits in front, on the right, and the later slides fan out behind it to the left in order. Clicking or tapping a card brings it to the front, and so do the left and right arrow keys while the fan has focus. Paging wraps around, and the cards before the front one go to the back in order. The front card doesn't follow the note's cursor.
+The cards for a note's first four slides fan out next to the note, or under it on a phone. Slide 1 sits in front, on the right, and the later slides sit behind it to the left in order. Clicking or tapping a card brings it to the front. While the fan has focus, the left and right arrow keys page through the cards, wrapping around at either end, and Home and End bring the first and last cards forward. The cards before the front one go to the back in order. The front card doesn't follow the note's cursor, and when an edit removes its slide, the last card comes to the front.
 
 ## Icons
 
