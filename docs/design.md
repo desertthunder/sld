@@ -77,9 +77,9 @@ A markdown link or image in a slide keeps its address unless it is one of these.
 
 A link whose address is dropped shows as its text, and an image as its alt text. Every other address stays, such as `https://example.com`, `mailto:someone@example.com` or a relative path like `pictures/chart.png`. Raw HTML keeps its addresses as the person typed it, `javascript:` included. Only an imported deck's raw HTML is cleaned, when the deck is imported.
 
-## Style sheet links and popovers
+## Style sheet links, popovers and dialogs
 
-A slide's raw HTML draws on the slide and nowhere else. Wherever sld shows a slide, it drops each `<link rel="stylesheet">` in the slide, and each preload link `as="style"`, so none loads. A popover shows inline where it sits on the slide, as if it had no `popover` attribute, and a button's `popovertarget` does nothing. For content that opens on a click, use `<details>`. A slide's `<noscript>` never shows. A slide whose HTML would parse into different elements once sld has cleaned it, such as a `<style>` the parser moves into MathML, draws empty. The slide's markdown keeps the links and attributes as typed.
+A slide's raw HTML draws on the slide and nowhere else. Wherever sld shows a slide, it drops each `<link rel="stylesheet">` in the slide, and each preload link `as="style"`, so none loads. A popover shows inline where it sits on the slide, as if it had no `popover` attribute, and a button's `popovertarget` does nothing. A button's `command` and `commandfor` do nothing either, so a slide's `<dialog>` never opens above the app. For content that opens on a click, use `<details>`. A slide's `<noscript>` never shows. A slide whose HTML would parse into different elements once sld has cleaned it, such as a `<style>` the parser moves into MathML, draws empty. The slide's markdown keeps the links and attributes as typed.
 
 ## Landing page headline
 
