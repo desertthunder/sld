@@ -177,8 +177,9 @@ function isStyleLink(link: HTMLLinkElement): boolean {
 	);
 }
 
-// A popover opens in the top layer, above the app's controls, so a slide's popover shows where it sits instead.
-const popoverAttributes = ['popover', 'popovertarget', 'popovertargetaction'];
+// A popover, or a dialog an invoker command opens as a modal, shows in the top layer, above the app's controls, so a
+// slide's popover shows where it sits instead and its buttons open nothing.
+const topLayerAttributes = ['popover', 'popovertarget', 'popovertargetaction', 'command', 'commandfor'];
 
 /** Whether `html` parses back into `content`, as `{@html}` will parse it, rather than into a different tree. */
 function doesParseInto(html: string, content: DocumentFragment): boolean {
@@ -191,11 +192,12 @@ function doesParseInto(html: string, content: DocumentFragment): boolean {
 /**
  * A slide's HTML with the rules of each `<style>` in it, SVG's included, scoped to the slide's element, so a slide's
  * styles can't restyle the page around it, and with no `data-slide-scope` of its own, so it can't take another slide's
- * styles. Its style sheet links and `<noscript>` are dropped, and its popovers show inline. HTML with none of these
- * comes back as it is. HTML that wouldn't parse back into what was cleaned comes back empty. Needs a DOM.
+ * styles. Its style sheet links and `<noscript>` are dropped, its popovers show inline, and its invoker commands open
+ * nothing. HTML with none of these comes back as it is. HTML that wouldn't parse back into what was cleaned comes
+ * back empty. Needs a DOM.
  */
 export function scopeSlideStyles(html: string): ScopedSlide {
-	if (!/<style|<link|<noscript|popover|data-slide-scope/i.test(html)) return { html, scope: undefined };
+	if (!/<style|<link|<noscript|popover|command|data-slide-scope/i.test(html)) return { html, scope: undefined };
 	const template = document.createElement('template');
 	template.innerHTML = html;
 	const forged = template.content.querySelectorAll<HTMLElement | SVGElement | MathMLElement>('[data-slide-scope]');
@@ -205,10 +207,10 @@ export function scopeSlideStyles(html: string): ScopedSlide {
 	// Content that never shows while scripts run, and that an `innerHTML` with scripts on parses as raw text instead.
 	const noscripts = template.content.querySelectorAll('noscript');
 	for (const element of noscripts) element.remove();
-	const popovers = template.content.querySelectorAll(popoverAttributes.map((name) => `[${name}]`).join(', '));
-	for (const element of popovers) for (const name of popoverAttributes) element.removeAttribute(name);
+	const invokers = template.content.querySelectorAll(topLayerAttributes.map((name) => `[${name}]`).join(', '));
+	for (const element of invokers) for (const name of topLayerAttributes) element.removeAttribute(name);
 	const styles = template.content.querySelectorAll('style');
-	if (forged.length + links.length + noscripts.length + popovers.length + styles.length === 0) {
+	if (forged.length + links.length + noscripts.length + invokers.length + styles.length === 0) {
 		return { html, scope: undefined };
 	}
 	const scope = scopeName(html);
@@ -216,7 +218,7 @@ export function scopeSlideStyles(html: string): ScopedSlide {
 	// eslint-disable-next-line unicorn/prefer-dom-node-html-methods -- `getHTML()` needs Safari 18, and the app supports 17.4.
 	const cleaned = template.innerHTML;
 	// Some trees, such as a `<style>` the parser moved into MathML, serialize to markup that parses into other elements,
-	// which could bring back a link, a popover or an unscoped style.
+	// which could bring back a link, a popover, an invoker command or an unscoped style.
 	if (!doesParseInto(cleaned, template.content)) return { html: '', scope: undefined };
 	return { html: cleaned, scope: styles.length > 0 ? scope : undefined };
 }

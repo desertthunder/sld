@@ -466,6 +466,16 @@ const popovers = lines(
 	'# Popovers'
 );
 
+// Each button would open the dialog as a modal in the top layer, leaving the app inert, if it kept its command.
+const invokers = lines(
+	'<dialog id="dialog"><p>Dialog note</p></dialog>',
+	'',
+	'<button commandfor="dialog" command="show-modal">Open dialog</button>',
+	'<button COMMANDFOR="dialog" COMMAND="show-modal">Open loud dialog</button>',
+	'',
+	'# Invokers'
+);
+
 /** Serves `/hostile.css`, and returns the address of each request for it the page makes. */
 async function serveHostileCss(page: Page): Promise<string[]> {
 	const requested: string[] = [];
@@ -487,6 +497,15 @@ async function serveHostileCss(page: Page): Promise<string[]> {
 async function expectNoPopover(page: Page, target: Locator) {
 	expect(await page.evaluate(() => document.querySelectorAll(':popover-open, [popover]').length)).toBe(0);
 	expect(await isOnTop(target)).toBe(true);
+}
+
+/** Checks that the page has no open dialog or invoker command, and that `target` is on top and still takes clicks. */
+async function expectNoDialog(page: Page, target: Locator) {
+	expect(
+		await page.evaluate(() => document.querySelectorAll('dialog[open], :modal, [command], [commandfor]').length)
+	).toBe(0);
+	expect(await isOnTop(target)).toBe(true);
+	expect(await target.evaluate((element) => element.closest('[inert]') === null)).toBe(true);
 }
 
 test("a typed slide's style sheet links never load, and stay in its markdown", async ({ page }) => {
@@ -548,6 +567,50 @@ test("a slide's popovers show inline and can't cover the app's controls", async 
 	expect(await storedSlides(page, id)).toEqual([popovers, '# Next']);
 });
 
+test("a slide's invoker commands can't open its dialog above the app's controls", async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const id = await createDeck(page, [invokers, '# Next']);
+	await page.goto(`/app/deck/${id}`);
+	const preview = previewSlide(page);
+	await expect(preview.locator('h1')).toHaveText('Invokers', { timeout: 30_000 });
+	await preview.getByRole('button', { name: 'Open dialog' }).click();
+	await preview.getByRole('button', { name: 'Open loud dialog' }).click();
+	await expect(page.getByText('Dialog note', { exact: true }).filter({ visible: true })).toHaveCount(0);
+	await expectNoDialog(page, page.getByRole('button', { name: /Present/ }));
+	await expectNoDialog(page, page.locator('.cm-content'));
+
+	await page.goto(`/app/deck/${id}/present`);
+	const slide = page.locator('article.slide');
+	await expect(slide.locator('h1')).toHaveText('Invokers', { timeout: 30_000 });
+	await slide.getByRole('button', { name: 'Open dialog' }).click();
+	await page.mouse.move(200, 200);
+	await page.mouse.move(220, 220);
+	await expect(controls(page)).toHaveCSS('opacity', '1');
+	await expectNoDialog(page, controls(page).getByRole('button', { name: 'Next slide' }));
+	await controls(page).getByRole('button', { name: 'Next slide' }).click();
+	await expect(slide.locator('h1')).toHaveText('Next');
+	expect(await storedSlides(page, id)).toEqual([invokers, '# Next']);
+});
+
+test("an imported slide's invoker commands stay in its markdown and can't open its dialog", async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto('/app');
+	await waitForApp(page);
+	const importButton = page.getByRole('button', { name: 'Import', exact: true });
+	await expect(importButton).toBeEnabled();
+	const chooser = page.waitForEvent('filechooser');
+	await importButton.click();
+	const fileChooser = await chooser;
+	await fileChooser.setFiles([{ name: 'Invokers.md', mimeType: 'text/markdown', buffer: Buffer.from(invokers) }]);
+	await expect(page).toHaveURL(/\/app\/deck\/[\da-f-]{36}(\?|$)/, { timeout: 30_000 });
+	const id = /\/app\/deck\/([\da-f-]{36})/.exec(page.url())![1]!;
+	await expect(previewSlide(page).locator('h1')).toHaveText('Invokers', { timeout: 30_000 });
+	expect(await storedSlides(page, id)).toEqual([invokers]);
+	await previewSlide(page).getByRole('button', { name: 'Open dialog' }).click();
+	await expect(page.getByText('Dialog note', { exact: true }).filter({ visible: true })).toHaveCount(0);
+	await expectNoDialog(page, page.getByRole('button', { name: /Present/ }));
+});
+
 test("an imported slide's style sheet links are dropped at import, and its popovers show inline", async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	const requested = await serveHostileCss(page);
@@ -582,12 +645,12 @@ test("an imported slide's style sheet links are dropped at import, and its popov
 	expect(requested).toEqual([]);
 });
 
-test('only style sheet links and popover attributes leave a slide', async ({ page }) => {
+test('only style sheet links, popover attributes and invoker commands leave a slide', async ({ page }) => {
 	await page.goto('/app');
 	await waitForApp(page);
 	const result = await page.evaluate(async (url) => {
 		const { scopeSlideStyles } = (await import(url)) as typeof SlideStylesModule;
-		const prose = '<p>The popover attribute and &lt;link&gt; tag</p>';
+		const prose = '<p>The popover and command attributes and &lt;link&gt; tag</p>';
 		return {
 			prose: scopeSlideStyles(prose),
 			proseHtml: prose,
@@ -602,6 +665,9 @@ test('only style sheet links and popover attributes leave a slide', async ({ pag
 			),
 			popovers: scopeSlideStyles(
 				'<div POPOVER="auto" id="a">A</div><input popovertarget="a" popovertargetaction="toggle" value="B"><p>C</p>'
+			),
+			commands: scopeSlideStyles(
+				'<dialog id="d">A</dialog><button commandfor="d" command="show-modal" type="button">B</button><button COMMAND="--next">C</button>'
 			)
 		};
 	}, modules.styles);
@@ -611,6 +677,10 @@ test('only style sheet links and popover attributes leave a slide', async ({ pag
 		scope: undefined
 	});
 	expect(result.popovers).toEqual({ html: '<div id="a">A</div><input value="B"><p>C</p>', scope: undefined });
+	expect(result.commands).toEqual({
+		html: '<dialog id="d">A</dialog><button type="button">B</button><button>C</button>',
+		scope: undefined
+	});
 });
 
 // The parser moves this `<style>` into MathML when it reads the slide's HTML a second time, so its CSS string becomes
@@ -656,6 +726,7 @@ test("a slide's markup that parses into other elements a second time draws nothi
 	const slides = {
 		link: confused('<p><link rel=stylesheet href=/a.css>'),
 		popover: confused('<p><div popover>A</div>'),
+		command: confused('<p><dialog id=d>A</dialog><button commandfor=d command=show-modal>B</button>'),
 		style: confused('<p><style>body { display: none; }'),
 		noscript: '<div><noscript><p title="</noscript><link rel=stylesheet href=/a.css>">A</p></noscript>B</div>',
 		kept: '<p>A<link rel="stylesheet" href="/a.css">B</p><svg><foreignObject><div><style>p { color: red; }</style></div></foreignObject></svg>'
@@ -669,6 +740,7 @@ test("a slide's markup that parses into other elements a second time draws nothi
 	);
 	expect(result.link).toEqual({ html: '', scope: undefined });
 	expect(result.popover).toEqual({ html: '', scope: undefined });
+	expect(result.command).toEqual({ html: '', scope: undefined });
 	expect(result.style).toEqual({ html: '', scope: undefined });
 	expect(result.noscript).toEqual({ html: '<div>B</div>', scope: undefined });
 	expect(result.kept!.html).toMatch(/^<p>AB<\/p><svg><foreignObject><div><style>@scope/);
