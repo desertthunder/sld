@@ -404,7 +404,10 @@
 			{/if}
 		</section>
 	</main>
-	<footer class="foot"><AppVersion /></footer>
+	<footer class="foot">
+		<a class="home" href={resolve('/')}>Home page</a>
+		<AppVersion />
+	</footer>
 	{#if library.isDragging}
 		<div class="drop" aria-hidden="true">
 			<p><span class="i-ri-markdown-line icon"></span>Drop markdown files to import them as decks</p>
@@ -457,7 +460,26 @@
 		margin: 0 auto;
 		/* Keeps the version clear of the undo toast when scrolled to the end. */
 		padding: 0 24px 120px;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 8px 24px;
 		font-size: 15px;
+	}
+
+	.home {
+		color: var(--muted);
+		text-underline-offset: 3px;
+	}
+
+	.home:hover {
+		color: var(--heading);
+	}
+
+	.home:focus-visible {
+		outline: 3px solid var(--accent);
+		outline-offset: 2px;
+		border-radius: 2px;
 	}
 
 	.error {

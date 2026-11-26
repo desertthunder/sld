@@ -2,14 +2,16 @@
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import HomeLink from '#lib/HomeLink.svelte';
 
 	let { toolbar, children }: { toolbar?: Snippet; children: Snippet } = $props();
 </script>
 
 <div class="frame">
 	<header class="toolbar">
+		<span class="home"><HomeLink /></span>
 		<a class="back" href={resolve('/app')}>
-			<span class="i-ri-arrow-left-s-line icon" aria-hidden="true"></span>Decks
+			<span class="i-ri-arrow-left-s-line icon" aria-hidden="true"></span><span class="label">Decks</span>
 		</a>
 		{@render toolbar?.()}
 		<a
@@ -57,6 +59,11 @@
 		padding: 0 12px 0 8px;
 		box-sizing: border-box;
 		border-bottom: 1px solid var(--border);
+	}
+
+	.home {
+		flex: none;
+		padding-left: 8px;
 	}
 
 	.back {
@@ -108,8 +115,22 @@
 			padding: 0 8px 0 4px;
 		}
 
+		.home {
+			padding-left: 4px;
+		}
+
 		.back {
-			padding: 0 8px 0 6px;
+			padding: 0 11px;
+		}
+
+		/* The arrow stands for the link at phone width, so the deck title keeps its room beside the mark. */
+		.label {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
 		}
 	}
 </style>

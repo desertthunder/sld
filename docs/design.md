@@ -101,7 +101,7 @@ The app icon is the brand mark in `apps/web/icons/icon.svg`: three stacked slide
 
 ## Header mark
 
-The landing page and `/app` headers show the brand mark alone, with no wordmark. `Mark.svelte` draws it as inline SVG from the geometry of `icon.svg`, and its accessible name is "sld", so the `/app` header's heading still reads "sld".
+The landing page and `/app` headers show the brand mark alone, with no wordmark. `Mark.svelte` draws it as inline SVG from the geometry of `icon.svg`, and its accessible name is "sld". In `/app` the mark starts the library header and the editor and settings toolbars, and links to the landing page as "sld home". The library header's heading still reads "sld", in text only screen readers get, and the library footer links to the landing page as "Home page". At phone width the toolbars' Decks link shows only its arrow, so the deck title keeps room beside the mark; "Decks" stays its accessible name.
 
 - The landing page shows it at 36 px on its tile in the brand's colors: a `#1b1e2b` tile, `#3a3f58` back slide and progress track, `#5b6078` middle slide, and `#37f499` front slide and progress. It is the one thing on a page that keeps fixed colors instead of reading a scheme.
 - `/app` shows it at 32 px with no tile, cropped to `80 80 352 352` of the icon's 512 grid, in scheme colors: base02 for the back slide and the track, base03 for the middle slide, and base0B for the front slide and the progress.
