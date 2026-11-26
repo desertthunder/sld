@@ -14,7 +14,7 @@
 	import { handOff } from '#lib/handoff.ts';
 	import IndexCard from '#lib/IndexCard.svelte';
 	import Mark from '#lib/Mark.svelte';
-	import { fanSize, fanTransform, sampleDecks, sampleNote, slideCount } from '#lib/landing.ts';
+	import { fanDepth, fanSize, fanTransform, sampleDecks, sampleNote, slideCount, turnFan } from '#lib/landing.ts';
 	import Slide from '#lib/Slide.svelte';
 	import { renderSlide } from '#lib/slide-render.ts';
 	import { openDecks, whenIdle } from '#lib/warm.ts';
@@ -25,6 +25,10 @@
 	const note = $state({ markdown: sampleNote, preview: sampleSlides[1] ?? '' });
 	const slides = $derived(splitDeck(note.markdown).slides);
 	const dealt = $derived(slides.slice(0, fanSize));
+	const fan = $state({ front: 0 });
+	// Deleting slides from the note leaves the last card in front when the one in front is gone, and `keepFront` keeps
+	// it there, so slides added later don't take the front back.
+	const front = $derived(Math.max(0, Math.min(fan.front, dealt.length - 1)));
 	const page = $state({ canDrawSlides: false, isWarming: false });
 	const statuses = {
 		opening: { isReady: false, label: 'Opening decks' },
@@ -67,6 +71,29 @@
 			// TODO: say so when the note is too big for `sessionStorage`; `/app` opens without it.
 		}
 		await goto(resolve('/app'));
+	}
+
+	function bringToFront(event: MouseEvent) {
+		const card = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-index]') : undefined;
+		if (card) fan.front = Number(card.dataset.index);
+	}
+
+	function pageFan(event: KeyboardEvent) {
+		if (dealt.length === 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+		const last = dealt.length - 1;
+		const target = {
+			ArrowLeft: turnFan(front, -1, dealt.length),
+			ArrowRight: turnFan(front, 1, dealt.length),
+			Home: 0,
+			End: last
+		}[event.key];
+		if (target === undefined) return;
+		event.preventDefault();
+		fan.front = target;
+	}
+
+	function keepFront() {
+		fan.front = front;
 	}
 
 	function pasteNote(event: MouseEvent) {
@@ -114,8 +141,12 @@
 							<label for="note">
 								Your slides as markdown. A <code>---</code> line starts a new slide.
 							</label>
-							<textarea id="note" spellcheck="false" bind:value={note.markdown} bind:this={noteBox}
-							></textarea>
+							<textarea
+								id="note"
+								spellcheck="false"
+								bind:value={note.markdown}
+								bind:this={noteBox}
+								oninput={keepFront}></textarea>
 							<div class="note-actions">
 								<button
 									type="button"
@@ -127,9 +158,25 @@
 								<span class="count">{slideCount(slides.length)}</span>
 							</div>
 						</div>
-						<div class="fan">
+						<div
+							class="fan"
+							role="listbox"
+							aria-label="Slide cards"
+							aria-orientation="horizontal"
+							aria-activedescendant={dealt.length > 0 ? `fan-card-${front}` : undefined}
+							tabindex={dealt.length > 0 ? 0 : -1}
+							onclick={bringToFront}
+							onkeydown={pageFan}>
 							{#each dealt as markdown, index (index)}
-								<div class="card" style:transform={fanTransform(index, dealt.length)}>
+								{@const depth = fanDepth(index, front, dealt.length)}
+								<div
+									id="fan-card-{index}"
+									class="card"
+									role="option"
+									aria-selected={depth === 0}
+									style:transform={fanTransform(depth)}
+									style:z-index={fanSize - depth}
+									data-index={index}>
 									<IndexCard
 										{markdown}
 										number="{index + 1} / {slides.length}"
@@ -359,7 +406,7 @@
 		color: var(--heading);
 	}
 
-	:is(.button, .ghost, .mark, textarea):focus-visible {
+	:is(.button, .ghost, .mark, textarea, .fan):focus-visible {
 		outline: 3px solid var(--accent);
 		outline-offset: 3px;
 	}
@@ -439,6 +486,11 @@
 	.fan {
 		position: relative;
 		height: 460px;
+		border-radius: 12px;
+	}
+
+	.fan .card[aria-selected='false'] {
+		cursor: pointer;
 	}
 
 	/* An index card: a raised surface whose ruled face `IndexCard` draws, its grid scaled to the card's width. */
