@@ -40,6 +40,23 @@ async function openDeck(page: Page, id: string) {
 	await expect(editor(page)).toBeVisible({ timeout: 30_000 });
 }
 
+/** Holds the database in an open transaction until the returned function releases it, so writes wait. */
+async function holdWrites(page: Page): Promise<() => Promise<void>> {
+	await page.evaluate(async (url) => {
+		const { openDatabase } = (await import(url)) as typeof DatabaseModule;
+		const { $client } = await openDatabase();
+		const { promise: held, resolve: hold } = Promise.withResolvers<void>();
+		const { promise: release, resolve } = Promise.withResolvers<void>();
+		Object.assign(globalThis, { releaseWrites: resolve });
+		void $client.transaction(async () => {
+			hold();
+			await release;
+		});
+		await held;
+	}, modules.database);
+	return () => page.evaluate(() => (globalThis as unknown as { releaseWrites: () => void }).releaseWrites());
+}
+
 async function storedSlides(page: Page, id: string): Promise<string[] | undefined> {
 	return page.evaluate(
 		async ({ urls, id }) => {
@@ -101,16 +118,14 @@ test('Enter on the mark in the editor header opens the landing page', async ({ p
 test('the mark in the editor waits for the latest edit to be stored before it leaves', async ({ page }) => {
 	const id = await createDeck(page, ['# One']);
 	await openDeck(page, id);
-	await page.evaluate(async (url) => {
-		const { openDatabase } = (await import(url)) as typeof DatabaseModule;
-		const { $client } = await openDatabase();
-		// Holds the database, so the edit's write waits until the transaction ends.
-		void $client.transaction(() => new Promise((resolve) => setTimeout(resolve, 3000)));
-	}, modules.database);
+	const release = await holdWrites(page);
 	await editor(page).fill('# One, edited');
 	await homeLink(page).click();
-	await page.waitForTimeout(1500);
+	await expect(page.getByRole('banner').locator('.saved')).toHaveText('Saving…');
+	// The hold lasts until the release, so this wait can only give a link that leaves too soon the time to show it.
+	await page.waitForTimeout(1000);
 	await expect(page).toHaveURL(new RegExp(`/app/deck/${id}`));
+	await release();
 	await expectLandingPage(page);
 	expect(await storedSlides(page, id)).toEqual(['# One, edited']);
 });
