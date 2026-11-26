@@ -1,6 +1,6 @@
-import { PGlite } from '@electric-sql/pglite';
+import { PGlite, protocol } from '@electric-sql/pglite';
 import { describe, expect, it, vi } from 'vitest';
-import { serializeSyncs, serializeSyncToFs } from '#lib/durable.ts';
+import { serializeSyncs, serializeSyncToFs, syncOnlyWhenAsked } from '#lib/durable.ts';
 
 function controlledSync() {
 	const runs: PromiseWithResolvers<void>[] = [];
@@ -131,6 +131,69 @@ describe('serializeSyncToFs', { timeout: 30_000 }, () => {
 		await Promise.all([running, waiting]);
 		await vi.waitFor(() => expect(query.isSettled).toBe(true));
 		expect(fsSync).toHaveBeenCalledTimes(2);
+		await client.close();
+	});
+});
+
+describe('syncOnlyWhenAsked', { timeout: 30_000 }, () => {
+	// The database worker passes on a tab's message with no options, so PGlite would sync after it.
+	it('starts no sync after a message, so none reads the files while the next message changes them', async () => {
+		const client = await PGlite.create();
+		const fsSync = vi.spyOn(client.fs!, 'syncToFs');
+		syncOnlyWhenAsked(serializeSyncToFs(client));
+		await client.execProtocolStream(protocol.serialize.query('create table t (n int)'));
+		await client.execProtocolRawStream(protocol.serialize.query('insert into t values (1)'), {
+			onRawData: () => {}
+		});
+		await client.execProtocolRaw(protocol.serialize.query('select n from t'));
+		expect(fsSync).not.toHaveBeenCalled();
+		await client.close();
+	});
+
+	it('holds a message until the sync running reads the files, as another tab sends during a write', async () => {
+		const client = syncOnlyWhenAsked(serializeSyncToFs(await PGlite.create()));
+		await client.exec('create table t (n int)');
+		const { fs } = client;
+		const syncFiles = fs!.syncToFs.bind(fs);
+		const held = Promise.withResolvers<void>();
+		const events: string[] = [];
+		vi.spyOn(fs!, 'syncToFs').mockImplementation(async () => {
+			events.push('sync started');
+			await held.promise;
+			await syncFiles();
+			events.push('sync finished');
+		});
+		const synced = client.syncToFs();
+		const message = (async () => {
+			await client.execProtocolRaw(protocol.serialize.query('insert into t values (1)'));
+			events.push('message ran');
+		})();
+		await tick();
+		expect(events).toEqual(['sync started']);
+		held.resolve();
+		await synced;
+		await message;
+		expect(events).toEqual(['sync started', 'sync finished', 'message ran']);
+		await client.close();
+	});
+
+	it('still makes an explicit sync wait until IndexedDB holds the write before it', async () => {
+		const client = await PGlite.create();
+		const { fs } = client;
+		const syncFiles = fs!.syncToFs.bind(fs);
+		const held = Promise.withResolvers<void>();
+		const fsSync = vi.spyOn(fs!, 'syncToFs').mockImplementation(async () => {
+			await held.promise;
+			await syncFiles();
+		});
+		syncOnlyWhenAsked(serializeSyncToFs(client));
+		await client.execProtocolStream(protocol.serialize.query('create table t (n int); insert into t values (1)'));
+		const synced = settled(client.syncToFs());
+		await tick();
+		expect(synced.isSettled).toBe(false);
+		held.resolve();
+		await vi.waitFor(() => expect(synced.isSettled).toBe(true));
+		expect(fsSync).toHaveBeenCalledOnce();
 		await client.close();
 	});
 });

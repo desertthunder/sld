@@ -157,6 +157,8 @@ test("typing not yet stored stays through another tab's changes, and its write t
 	expect(await storedSlides(b, id)).toEqual(['# One, from A', '# Two, from A', '']);
 
 	await runSql(b, 'DROP TRIGGER hold_typing ON slides');
+	// Firefox fires no blur in a page behind another.
+	await b.bringToFront();
 	await editor(b).focus();
 	await editor(b).blur();
 	await expect(saveState(b)).toHaveText('Saved');
